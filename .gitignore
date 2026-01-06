@@ -81,3 +81,6 @@ Thumbs.db
 # Packed files
 *.apk
 *.unitypackage
+
+# Unity crash dumps
+mono_crash.mem.*.blob
