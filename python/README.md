@@ -20,3 +20,4 @@
    - `pip install -r requirements.txt`
 2) Запустить примеры из папки `python/`:
    - `python examples/random_agent.py --base-url http://127.0.0.1:8000`
+   - `python examples/ks0223_random_pwm.py --base-url http://127.0.0.1:8000`

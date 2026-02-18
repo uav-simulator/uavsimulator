@@ -16,10 +16,12 @@ namespace UavSimulator.Core
         private PluginRegistrySnapshot registry;
         private TrackBase activeTrack;
         private VehicleBase activeVehicle;
+        private float defaultTimeScale = 1f;
 
         private void Awake()
         {
             registry = PluginRegistry.Load();
+            defaultTimeScale = Time.timeScale;
         }
 
         public SimulatorContractDescriptor GetContract()
@@ -50,23 +52,17 @@ namespace UavSimulator.Core
 
         public void ResetSimulation(SimulationConfig config)
         {
-            if (config == null) throw new ArgumentNullException(nameof(config));
-
-            var vehicleDescriptor = FindRequired(registry.Vehicles, config.selectedVehicleId, "vehicle");
-            var trackDescriptor = FindRequired(registry.Tracks, config.selectedTrackId, "track");
+            var validation = SimulationConfigValidator.Validate(config, registry);
 
             DestroyActiveInstances();
 
-            activeTrack = InstantiateTrack(trackDescriptor);
-            activeVehicle = InstantiateVehicle(vehicleDescriptor);
+            activeTrack = InstantiateTrack(validation.Track);
+            activeVehicle = InstantiateVehicle(validation.Vehicle);
 
             activeTrack.ResetTrack(config.seed);
             activeVehicle.ResetVehicle(config.seed);
 
-            if (config.timeScale > 0f)
-            {
-                Time.timeScale = config.timeScale;
-            }
+            Time.timeScale = validation.TimeScale;
         }
 
         public StepResult Step(ControlCommand command)
@@ -77,6 +73,7 @@ namespace UavSimulator.Core
             }
 
             activeVehicle.ApplyControl(command);
+            activeVehicle.TryReadCameraFrame(out var frame);
 
             var result = new StepResult
             {
@@ -84,7 +81,7 @@ namespace UavSimulator.Core
                 reward = 0f,
                 done = false,
                 info = Array.Empty<ConfigKeyValue>(),
-                frame = null,
+                frame = frame,
             };
 
             return result;
@@ -113,11 +110,6 @@ namespace UavSimulator.Core
 
         private static T FindRequired<T>(T[] items, string id, string kind) where T : PluginDescriptorBase
         {
-            if (string.IsNullOrWhiteSpace(id))
-            {
-                throw new ArgumentException($"Missing selected {kind} id.", nameof(id));
-            }
-
             var match = (items ?? Array.Empty<T>()).FirstOrDefault(v => v != null && v.id == id);
             if (match == null)
             {
@@ -129,12 +121,18 @@ namespace UavSimulator.Core
 
         private VehicleBase InstantiateVehicle(VehiclePluginDescriptor descriptor)
         {
+            var parent = vehicleRoot != null ? vehicleRoot : transform;
+
             if (descriptor.prefab == null)
             {
+                if (BuiltinPluginFactory.TryCreateVehicleInstance(descriptor.id, parent, out var runtimeVehicle))
+                {
+                    return runtimeVehicle;
+                }
+
                 throw new InvalidOperationException($"Vehicle plugin '{descriptor.id}' has no prefab assigned.");
             }
 
-            var parent = vehicleRoot != null ? vehicleRoot : transform;
             var instance = Instantiate(descriptor.prefab, parent);
             var vehicle = instance.GetComponentInChildren<VehicleBase>();
             if (vehicle == null)
@@ -147,12 +145,18 @@ namespace UavSimulator.Core
 
         private TrackBase InstantiateTrack(TrackPluginDescriptor descriptor)
         {
+            var parent = trackRoot != null ? trackRoot : transform;
+
             if (descriptor.prefab == null)
             {
+                if (BuiltinPluginFactory.TryCreateTrackInstance(descriptor.id, parent, out var runtimeTrack))
+                {
+                    return runtimeTrack;
+                }
+
                 throw new InvalidOperationException($"Track plugin '{descriptor.id}' has no prefab assigned.");
             }
 
-            var parent = trackRoot != null ? trackRoot : transform;
             var instance = Instantiate(descriptor.prefab, parent);
             var track = instance.GetComponentInChildren<TrackBase>();
             if (track == null)
@@ -176,6 +180,8 @@ namespace UavSimulator.Core
                 Destroy(activeTrack.gameObject);
                 activeTrack = null;
             }
+
+            Time.timeScale = defaultTimeScale;
         }
     }
 }

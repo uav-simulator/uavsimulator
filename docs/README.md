@@ -22,6 +22,8 @@
 - Обучение (концептуально): `docs/training.md`
 - Интеграция ML: `docs/mlagents.md`
 - Транспорт: `docs/vehicles.md`
+- Роботы (профили): `docs/robots/`
+  - Keyestudio KS0223: `docs/robots/ks0223.md`
 - Плагины: `docs/plugins.md`
 - API симулятора: `docs/api.md`
 - CI: `docs/ci.md`

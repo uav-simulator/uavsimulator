@@ -1,6 +1,11 @@
 {
   "name": "UavSimulator.PlayModeTests",
-  "references": [],
+  "references": [
+    "UavSimulator.Runtime"
+  ],
+  "optionalUnityReferences": [
+    "TestAssemblies"
+  ],
   "includePlatforms": [],
   "excludePlatforms": [],
   "allowUnsafeCode": false,
@@ -11,4 +16,3 @@
   "versionDefines": [],
   "noEngineReferences": false
 }
-

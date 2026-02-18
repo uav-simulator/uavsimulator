@@ -58,6 +58,9 @@ namespace UavSimulator.Contracts
 
         public long timestamp;
         public string timeBase;
+
+        // Plugin-specific scalar telemetry (line sensors, ultrasonic, battery, etc.).
+        public ConfigKeyValue[] telemetry;
     }
 
     [Serializable]
@@ -69,6 +72,10 @@ namespace UavSimulator.Contracts
 
         public long timestamp;
         public string timeBase;
+
+        // Plugin-specific control extensions. Example keys:
+        // drive.left_pwm_norm, drive.right_pwm_norm, camera.pan_norm, camera.tilt_norm.
+        public ConfigKeyValue[] extensions;
     }
 
     [Serializable]
@@ -109,6 +116,7 @@ namespace UavSimulator.Contracts
         public string id;
         public string sensorType;
         public string format;
+        public string unit;
 
         public int[] shape;
         public float rateHz;
@@ -119,6 +127,7 @@ namespace UavSimulator.Contracts
     {
         public string id;
         public string actuatorType;
+        public string unit;
 
         public float min;
         public float max;
