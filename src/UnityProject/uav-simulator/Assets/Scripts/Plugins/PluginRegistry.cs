@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
@@ -14,16 +15,18 @@ namespace UavSimulator.Plugins
             var registryAsset = Resources.Load<PluginRegistryAsset>(RegistryAssetPath);
             if (registryAsset != null)
             {
-                return PluginRegistrySnapshot.FromAsset(registryAsset);
+                var snapshot = PluginRegistrySnapshot.FromAsset(registryAsset);
+                return snapshot.IsEmpty ? BuiltinPluginFactory.CreateSnapshot() : snapshot;
             }
 
             var vehicles = Resources.LoadAll<VehiclePluginDescriptor>(DescriptorsFolderPath) ?? new VehiclePluginDescriptor[0];
             var tracks = Resources.LoadAll<TrackPluginDescriptor>(DescriptorsFolderPath) ?? new TrackPluginDescriptor[0];
 
-            return new PluginRegistrySnapshot(
+            var loadedSnapshot = new PluginRegistrySnapshot(
                 vehicles: vehicles.Where(v => v != null).ToArray(),
                 tracks: tracks.Where(t => t != null).ToArray()
             );
+            return loadedSnapshot.IsEmpty ? BuiltinPluginFactory.CreateSnapshot() : loadedSnapshot;
         }
     }
 
@@ -53,5 +56,6 @@ namespace UavSimulator.Plugins
 
         public IReadOnlyList<VehiclePluginDescriptor> VehiclesList => Vehicles;
         public IReadOnlyList<TrackPluginDescriptor> TracksList => Tracks;
+        public bool IsEmpty => Vehicles.Length == 0 || Tracks.Length == 0;
     }
 }

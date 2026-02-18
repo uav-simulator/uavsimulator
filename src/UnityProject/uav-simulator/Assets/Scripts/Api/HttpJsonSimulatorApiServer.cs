@@ -98,7 +98,12 @@ namespace UavSimulator.Api
                 var response = await DispatchAsync(ctx.Request, token);
                 await WriteResponseAsync(ctx.Response, response.statusCode, response.contentType, response.body, token);
             }
-            catch (Exception ex)
+            catch (ArgumentException ex)
+            {
+                var body = $"{{\"error\":\"{EscapeJson(ex.Message)}\"}}";
+                await WriteResponseAsync(ctx.Response, 400, "application/json; charset=utf-8", body, token);
+            }
+            catch (InvalidOperationException ex)
             {
                 var body = $"{{\"error\":\"{EscapeJson(ex.Message)}\"}}";
                 await WriteResponseAsync(ctx.Response, 500, "application/json; charset=utf-8", body, token);
@@ -144,7 +149,8 @@ namespace UavSimulator.Api
         private static async Task<string> ReadBodyAsync(HttpListenerRequest req, CancellationToken token)
         {
             using var reader = new StreamReader(req.InputStream, req.ContentEncoding ?? Encoding.UTF8);
-            var body = await reader.ReadToEndAsync(token);
+            token.ThrowIfCancellationRequested();
+            var body = await reader.ReadToEndAsync();
             return body ?? string.Empty;
         }
 
@@ -165,4 +171,3 @@ namespace UavSimulator.Api
             (value ?? string.Empty).Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\r", "\\r");
     }
 }
-

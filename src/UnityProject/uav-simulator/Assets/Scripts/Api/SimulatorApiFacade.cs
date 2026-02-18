@@ -21,6 +21,7 @@ namespace UavSimulator.Api
         public StepResult Reset(SimulationConfig config)
         {
             simulationManager.ResetSimulation(config);
+            simulationManager.TryReadCameraFrame(out var frame);
 
             var result = new StepResult
             {
@@ -28,7 +29,7 @@ namespace UavSimulator.Api
                 reward = 0f,
                 done = false,
                 info = Array.Empty<ConfigKeyValue>(),
-                frame = null,
+                frame = frame,
             };
 
             return result;
@@ -49,4 +50,3 @@ namespace UavSimulator.Api
         }
     }
 }
-

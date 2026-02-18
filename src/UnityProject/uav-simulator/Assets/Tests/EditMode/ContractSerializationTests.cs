@@ -39,6 +39,11 @@ namespace UavSimulator.Tests.EditMode
                 brake = 0.0f,
                 timestamp = 42,
                 timeBase = "unix_ms",
+                extensions = new[]
+                {
+                    new ConfigKeyValue { key = "drive.left_pwm_norm", value = "0.35" },
+                    new ConfigKeyValue { key = "drive.right_pwm_norm", value = "0.55" },
+                },
             };
 
             var json = JsonUtility.ToJson(command);
@@ -46,7 +51,8 @@ namespace UavSimulator.Tests.EditMode
 
             Assert.That(parsed.timeBase, Is.EqualTo("unix_ms"));
             Assert.That(parsed.throttle, Is.EqualTo(0.5f));
+            Assert.That(parsed.extensions, Is.Not.Null);
+            Assert.That(parsed.extensions.Length, Is.EqualTo(2));
         }
     }
 }
-

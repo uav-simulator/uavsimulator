@@ -13,8 +13,15 @@ Assumptions:
 
 Steps:
 1) Откройте Unity проект: `src/UnityProject/uav-simulator`.
-2) Откройте сцену: `Assets/Scenes/TrackScence.unity`.
-3) Нажмите Play.
+2) Для презентации откройте сцену: `Assets/Scenes/PresentationTrack.unity`.
+3) Для базового минимального шаблона можно открыть: `Assets/Scenes/TrackScence.unity`.
+4) Нажмите Play.
+
+Примечание:
+- Если на сцене нет настроенных plugin assets, загрузится встроенный runtime fallback:
+  - трек `track.basic_arena.v1`;
+  - робот `vehicle.ks0223.v1`.
+- API host поднимается автоматически на `http://127.0.0.1:8000`.
 
 ## Документация
 - Индекс: `docs/README.md`

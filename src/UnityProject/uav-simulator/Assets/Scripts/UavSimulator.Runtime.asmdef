@@ -1,9 +1,7 @@
 {
-  "name": "UavSimulator.EditModeTests",
-  "references": [
-    "UavSimulator.Runtime"
-  ],
-  "includePlatforms": [ "Editor" ],
+  "name": "UavSimulator.Runtime",
+  "references": [],
+  "includePlatforms": [],
   "excludePlatforms": [],
   "allowUnsafeCode": false,
   "overrideReferences": false,
