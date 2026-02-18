@@ -26,6 +26,7 @@
   - Keyestudio KS0223: `docs/robots/ks0223.md`
 - Плагины: `docs/plugins.md`
 - API симулятора: `docs/api.md`
+- ROS2 bridge: `docs/ros2.md`
 - CI: `docs/ci.md`
 - Ассеты и лицензии: `docs/assets.md`
 - Эксперименты: `docs/experiments.md`
