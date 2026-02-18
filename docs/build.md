@@ -11,6 +11,10 @@
 - Если plugin assets отсутствуют, загружается встроенный fallback:
   - трек `track.basic_arena.v1`;
   - робот `vehicle.ks0223.v1`.
+- ROS2 bridge опционален:
+  - Unity host: `Ros2BridgeProcessHost`;
+  - автостарт bridge через env `UAVSIM_ENABLE_ROS2_BRIDGE=1`;
+  - внешний скрипт: `python/bridges/ros2_bridge.py`.
 
 ## Next steps
 - Добавить документированный процесс сборки билда под целевые платформы после стабилизации сцены и конфигов.

@@ -17,15 +17,6 @@ namespace UavSimulator.Core
         private void Start()
         {
             vehicle = FindFirstObjectByType<Ks0223Vehicle>();
-            labelStyle = new GUIStyle(GUI.skin.label)
-            {
-                fontSize = 15,
-                normal = { textColor = new Color(0.96f, 0.97f, 0.99f) },
-            };
-            boxStyle = new GUIStyle(GUI.skin.box)
-            {
-                normal = { background = Texture2D.blackTexture },
-            };
         }
 
         private void OnGUI()
@@ -33,6 +24,19 @@ namespace UavSimulator.Core
             if (!visible || vehicle == null)
             {
                 return;
+            }
+
+            if (labelStyle == null || boxStyle == null)
+            {
+                labelStyle = new GUIStyle(GUI.skin.label)
+                {
+                    fontSize = 15,
+                    normal = { textColor = new Color(0.96f, 0.97f, 0.99f) },
+                };
+                boxStyle = new GUIStyle(GUI.skin.box)
+                {
+                    normal = { background = Texture2D.blackTexture },
+                };
             }
 
             var state = vehicle.ReadState();

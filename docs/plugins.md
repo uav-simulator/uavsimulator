@@ -13,6 +13,10 @@
   - `DeviceContractDescriptorAsset` (сенсоры/актуаторы/схемы);
   - runtime adapter (опционально) для реального железа.
 - Для реального робота (KS0223) используется отдельный hardware adapter, который не меняет core API и может быть отключён.
+- ROS2 поддержка оформлена как отдельный bridge-plugin слой:
+  - Unity host (`Ros2BridgeProcessHost`) поднимает внешний process bridge;
+  - bridge читает/пишет через текущий HTTP API и публикует/подписывается в ROS2 топики;
+  - core контракты `SimulationConfig/ControlCommand/StepResult` не меняются.
 
 ## Next steps
 - Формат регистрации (runtime): `Resources` (чтобы работало в build без AssetDatabase).

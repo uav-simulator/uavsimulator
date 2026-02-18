@@ -31,6 +31,7 @@ Steps:
 - Обучение (концептуально): `docs/training.md`
 - Плагины: `docs/plugins.md`
 - API (план): `docs/api.md`
+- ROS2 bridge: `docs/ros2.md`
 - CI (план): `docs/ci.md`
 - Ассеты и лицензии: `docs/assets.md`
 - Магистерская (черновик структуры): `docs/master-thesis/README.md`

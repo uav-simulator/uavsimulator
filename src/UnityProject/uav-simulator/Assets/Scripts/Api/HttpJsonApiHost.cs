@@ -10,6 +10,7 @@ namespace UavSimulator.Api
         [SerializeField] private bool autoStart = true;
 
         private HttpJsonSimulatorApiServer server;
+        public int Port => port;
 
         private void Awake()
         {
