@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import argparse
 import base64
+import io
 import json
+import math
 import os
 import sys
 import time
@@ -28,18 +30,37 @@ except ModuleNotFoundError as exc:
         _ = step_result
         return {}
 
+_PIL_IMPORT_ERROR: Exception | None = None
+try:
+    from PIL import Image as PilImage
+except ModuleNotFoundError as exc:
+    _PIL_IMPORT_ERROR = exc
+    PilImage = None  # type: ignore[assignment,misc]
+
 _ROS2_IMPORT_ERROR: Exception | None = None
 try:
     import rclpy
+    from geometry_msgs.msg import Twist
+    from nav_msgs.msg import Odometry
     from rclpy.node import Node
+    from sensor_msgs.msg import BatteryState
     from sensor_msgs.msg import CompressedImage
+    from sensor_msgs.msg import Image as RosImage
+    from sensor_msgs.msg import Range
+    from std_msgs.msg import Float32
     from std_msgs.msg import Float32MultiArray
     from std_msgs.msg import String
 except ModuleNotFoundError as exc:
     _ROS2_IMPORT_ERROR = exc
     rclpy = None  # type: ignore[assignment]
     Node = object  # type: ignore[assignment,misc]
+    Twist = object  # type: ignore[assignment,misc]
+    Odometry = object  # type: ignore[assignment,misc]
+    BatteryState = object  # type: ignore[assignment,misc]
     CompressedImage = object  # type: ignore[assignment,misc]
+    RosImage = object  # type: ignore[assignment,misc]
+    Range = object  # type: ignore[assignment,misc]
+    Float32 = object  # type: ignore[assignment,misc]
     Float32MultiArray = object  # type: ignore[assignment,misc]
     String = object  # type: ignore[assignment,misc]
 
@@ -53,6 +74,51 @@ def _safe_ns(value: str) -> str:
     if not ns.startswith("/"):
         ns = "/" + ns
     return ns.rstrip("/")
+
+
+def _clamp(value: float, lo: float, hi: float) -> float:
+    return max(lo, min(hi, value))
+
+
+def _as_float(value: Any, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _telemetry_float(telemetry: Mapping[str, str], key: str, default: float = 0.0) -> float:
+    value = telemetry.get(key)
+    if value is None:
+        return default
+    try:
+        return float(value)
+    except ValueError:
+        return default
+
+
+def _decode_frame_bytes(frame: Mapping[str, Any]) -> bytes:
+    data_base64 = frame.get("dataBase64")
+    if not isinstance(data_base64, str) or not data_base64:
+        return b""
+
+    try:
+        return base64.b64decode(data_base64)
+    except Exception:
+        return b""
+
+
+def _decode_rgb8(image_bytes: bytes) -> tuple[bytes, int, int] | None:
+    if PilImage is None or not image_bytes:
+        return None
+
+    try:
+        with PilImage.open(io.BytesIO(image_bytes)) as image:
+            rgb = image.convert("RGB")
+            width, height = rgb.size
+            return rgb.tobytes(), int(width), int(height)
+    except Exception:
+        return None
 
 
 class UavSimRos2Bridge(Node):
@@ -71,14 +137,30 @@ class UavSimRos2Bridge(Node):
         self._left_pwm = 0.0
         self._right_pwm = 0.0
         self._brake = 0.0
+        self._warned_missing_pillow = False
 
-        self._state_pub = self.create_publisher(String, f"{self._ns}/state_json", 10)
-        self._telemetry_pub = self.create_publisher(String, f"{self._ns}/telemetry_json", 10)
-        self._camera_pub = self.create_publisher(
+        # Backward-compatible JSON channels.
+        self._state_json_pub = self.create_publisher(String, f"{self._ns}/state_json", 10)
+        self._telemetry_json_pub = self.create_publisher(String, f"{self._ns}/telemetry_json", 10)
+
+        # Typed channels.
+        self._odom_pub = self.create_publisher(Odometry, f"{self._ns}/odom", 10)
+        self._speed_pub = self.create_publisher(Float32, f"{self._ns}/speedometer/mps", 10)
+        self._battery_pub = self.create_publisher(BatteryState, f"{self._ns}/battery_state", 10)
+        self._ultrasonic_pub = self.create_publisher(Range, f"{self._ns}/ultrasonic/front", 10)
+        self._line_tracker_pub = self.create_publisher(Float32MultiArray, f"{self._ns}/line_tracker/front_norm", 10)
+        self._powertrain_pub = self.create_publisher(Float32MultiArray, f"{self._ns}/powertrain/estimate", 10)
+        self._camera_raw_pub = self.create_publisher(RosImage, f"{self._ns}/camera/front/image_raw", 3)
+        self._camera_compressed_pub = self.create_publisher(
             CompressedImage, f"{self._ns}/camera/front/image_raw/compressed", 3
         )
+
+        # Control channels.
         self.create_subscription(Float32MultiArray, f"{self._ns}/cmd_drive", self._on_cmd_drive_array, 10)
         self.create_subscription(String, f"{self._ns}/cmd_drive_json", self._on_cmd_drive_json, 10)
+        self.create_subscription(Twist, f"{self._ns}/cmd_vel", self._on_cmd_vel, 10)
+        # Default topic for rqt_robot_steering convenience.
+        self.create_subscription(Twist, "/cmd_vel", self._on_cmd_vel, 10)
 
         if reset_on_start:
             self._reset(vehicle_id=vehicle_id, track_id=track_id)
@@ -103,10 +185,10 @@ class UavSimRos2Bridge(Node):
 
     def _on_cmd_drive_array(self, msg: Float32MultiArray) -> None:
         if len(msg.data) >= 2:
-            self._left_pwm = float(max(-1.0, min(1.0, msg.data[0])))
-            self._right_pwm = float(max(-1.0, min(1.0, msg.data[1])))
+            self._left_pwm = _clamp(_as_float(msg.data[0]), -1.0, 1.0)
+            self._right_pwm = _clamp(_as_float(msg.data[1]), -1.0, 1.0)
         if len(msg.data) >= 3:
-            self._brake = float(max(0.0, min(1.0, msg.data[2])))
+            self._brake = _clamp(_as_float(msg.data[2]), 0.0, 1.0)
 
     def _on_cmd_drive_json(self, msg: String) -> None:
         try:
@@ -121,9 +203,18 @@ class UavSimRos2Bridge(Node):
         left = payload.get("left_pwm_norm", self._left_pwm)
         right = payload.get("right_pwm_norm", self._right_pwm)
         brake = payload.get("brake", self._brake)
-        self._left_pwm = float(max(-1.0, min(1.0, float(left))))
-        self._right_pwm = float(max(-1.0, min(1.0, float(right))))
-        self._brake = float(max(0.0, min(1.0, float(brake))))
+        self._left_pwm = _clamp(_as_float(left), -1.0, 1.0)
+        self._right_pwm = _clamp(_as_float(right), -1.0, 1.0)
+        self._brake = _clamp(_as_float(brake), 0.0, 1.0)
+
+    def _on_cmd_vel(self, msg: Twist) -> None:
+        linear = _clamp(_as_float(msg.linear.x), -1.0, 1.0)
+        angular = _clamp(_as_float(msg.angular.z), -1.0, 1.0)
+        half_track = 0.5
+
+        self._left_pwm = _clamp(linear - angular * half_track, -1.0, 1.0)
+        self._right_pwm = _clamp(linear + angular * half_track, -1.0, 1.0)
+        self._brake = _clamp(_as_float(msg.linear.z), 0.0, 1.0)
 
     def _tick(self) -> None:
         try:
@@ -135,44 +226,179 @@ class UavSimRos2Bridge(Node):
                 time_base="unix_ms",
             ).to_step_command()
             step_result = self._client.step(cmd)
-            self._publish_state(step_result)
-            self._publish_telemetry(step_result)
-            self._publish_camera(step_result)
+            self._publish_step(step_result)
         except Exception as exc:
             self.get_logger().warning(f"Bridge tick failed: {exc}")
 
-    def _publish_state(self, step_result: Mapping[str, Any]) -> None:
-        msg = String()
-        msg.data = json.dumps(step_result.get("state", {}), ensure_ascii=False)
-        self._state_pub.publish(msg)
+    def _publish_step(self, step_result: Mapping[str, Any]) -> None:
+        state = step_result.get("state")
+        if not isinstance(state, Mapping):
+            state = {}
 
-    def _publish_telemetry(self, step_result: Mapping[str, Any]) -> None:
         telemetry = parse_telemetry(step_result)
-        msg = String()
-        msg.data = json.dumps(telemetry, ensure_ascii=False)
-        self._telemetry_pub.publish(msg)
+        stamp = self.get_clock().now().to_msg()
 
-    def _publish_camera(self, step_result: Mapping[str, Any]) -> None:
+        self._publish_state_json(state)
+        self._publish_telemetry_json(telemetry)
+        self._publish_odometry(state, stamp)
+        self._publish_speedometer(state, stamp)
+        self._publish_battery(telemetry, stamp)
+        self._publish_ultrasonic(telemetry, stamp)
+        self._publish_line_tracker(telemetry)
+        self._publish_powertrain(telemetry)
+        self._publish_camera(step_result, stamp)
+
+    def _publish_state_json(self, state: Mapping[str, Any]) -> None:
+        msg = String()
+        msg.data = json.dumps(state, ensure_ascii=False)
+        self._state_json_pub.publish(msg)
+
+    def _publish_telemetry_json(self, telemetry: Mapping[str, str]) -> None:
+        msg = String()
+        msg.data = json.dumps(dict(telemetry), ensure_ascii=False)
+        self._telemetry_json_pub.publish(msg)
+
+    def _publish_odometry(self, state: Mapping[str, Any], stamp: Any) -> None:
+        pose = state.get("pose")
+        if not isinstance(pose, Mapping):
+            pose = {}
+        position = pose.get("position")
+        if not isinstance(position, Mapping):
+            position = {}
+        rotation = pose.get("rotation")
+        if not isinstance(rotation, Mapping):
+            rotation = {}
+
+        linear_velocity = state.get("linearVelocity")
+        if not isinstance(linear_velocity, Mapping):
+            linear_velocity = {}
+        angular_velocity = state.get("angularVelocity")
+        if not isinstance(angular_velocity, Mapping):
+            angular_velocity = {}
+
+        odom = Odometry()
+        odom.header.stamp = stamp
+        odom.header.frame_id = "odom"
+        odom.child_frame_id = "base_link"
+
+        odom.pose.pose.position.x = _as_float(position.get("x"))
+        odom.pose.pose.position.y = _as_float(position.get("y"))
+        odom.pose.pose.position.z = _as_float(position.get("z"))
+
+        odom.pose.pose.orientation.x = _as_float(rotation.get("x"))
+        odom.pose.pose.orientation.y = _as_float(rotation.get("y"))
+        odom.pose.pose.orientation.z = _as_float(rotation.get("z"))
+        odom.pose.pose.orientation.w = _as_float(rotation.get("w"), 1.0)
+
+        odom.twist.twist.linear.x = _as_float(linear_velocity.get("x"))
+        odom.twist.twist.linear.y = _as_float(linear_velocity.get("y"))
+        odom.twist.twist.linear.z = _as_float(linear_velocity.get("z"))
+
+        odom.twist.twist.angular.x = _as_float(angular_velocity.get("x"))
+        odom.twist.twist.angular.y = _as_float(angular_velocity.get("y"))
+        odom.twist.twist.angular.z = _as_float(angular_velocity.get("z"))
+
+        self._odom_pub.publish(odom)
+
+    def _publish_speedometer(self, state: Mapping[str, Any], stamp: Any) -> None:
+        _ = stamp
+        speed_msg = Float32()
+        speed_msg.data = _as_float(state.get("speed"))
+        self._speed_pub.publish(speed_msg)
+
+    def _publish_battery(self, telemetry: Mapping[str, str], stamp: Any) -> None:
+        voltage = _telemetry_float(telemetry, "power.battery.voltage_v", math.nan)
+        current = _telemetry_float(telemetry, "power.battery.current_a", math.nan)
+
+        battery_msg = BatteryState()
+        battery_msg.header.stamp = stamp
+        battery_msg.header.frame_id = "base_link"
+        battery_msg.voltage = float(voltage)
+        battery_msg.current = float(current)
+        battery_msg.charge = math.nan
+        battery_msg.capacity = math.nan
+        battery_msg.design_capacity = math.nan
+        battery_msg.percentage = math.nan
+        battery_msg.power_supply_status = BatteryState.POWER_SUPPLY_STATUS_UNKNOWN
+        battery_msg.power_supply_health = BatteryState.POWER_SUPPLY_HEALTH_UNKNOWN
+        battery_msg.power_supply_technology = BatteryState.POWER_SUPPLY_TECHNOLOGY_UNKNOWN
+        battery_msg.present = True
+        self._battery_pub.publish(battery_msg)
+
+    def _publish_ultrasonic(self, telemetry: Mapping[str, str], stamp: Any) -> None:
+        value = _telemetry_float(telemetry, "sensor.ultrasonic.front.m", 0.0)
+
+        msg = Range()
+        msg.header.stamp = stamp
+        msg.header.frame_id = "ultrasonic_front"
+        msg.radiation_type = Range.ULTRASOUND
+        msg.field_of_view = 0.26
+        msg.min_range = 0.02
+        msg.max_range = 4.0
+        msg.range = _clamp(value, msg.min_range, msg.max_range)
+        self._ultrasonic_pub.publish(msg)
+
+    def _publish_line_tracker(self, telemetry: Mapping[str, str]) -> None:
+        values = [
+            _telemetry_float(telemetry, "sensor.line_tracker.s1_norm", 0.0),
+            _telemetry_float(telemetry, "sensor.line_tracker.s2_norm", 0.0),
+            _telemetry_float(telemetry, "sensor.line_tracker.s3_norm", 0.0),
+            _telemetry_float(telemetry, "sensor.line_tracker.s4_norm", 0.0),
+            _telemetry_float(telemetry, "sensor.line_tracker.s5_norm", 0.0),
+        ]
+        msg = Float32MultiArray()
+        msg.data = [float(v) for v in values]
+        self._line_tracker_pub.publish(msg)
+
+    def _publish_powertrain(self, telemetry: Mapping[str, str]) -> None:
+        values = [
+            _telemetry_float(telemetry, "power.battery.voltage_v", 0.0),
+            _telemetry_float(telemetry, "power.battery.current_a", 0.0),
+            _telemetry_float(telemetry, "power.motor.estimated_w", 0.0),
+        ]
+        msg = Float32MultiArray()
+        msg.data = [float(v) for v in values]
+        self._powertrain_pub.publish(msg)
+
+    def _publish_camera(self, step_result: Mapping[str, Any], stamp: Any) -> None:
         frame = step_result.get("frame")
         if not isinstance(frame, Mapping):
             return
 
-        encoding = str(frame.get("encoding", "")).lower()
-        data_base64 = frame.get("dataBase64")
-        if encoding != "base64" or not isinstance(data_base64, str) or not data_base64:
+        image_bytes = _decode_frame_bytes(frame)
+        if not image_bytes:
             return
 
-        try:
-            image_bytes = base64.b64decode(data_base64)
-        except Exception:
+        frame_id = str(frame.get("frameId", "camera/front/image_raw"))
+        image_format = str(frame.get("format", "jpeg")).lower()
+
+        compressed = CompressedImage()
+        compressed.header.stamp = stamp
+        compressed.header.frame_id = frame_id
+        compressed.format = image_format
+        compressed.data = image_bytes
+        self._camera_compressed_pub.publish(compressed)
+
+        decoded = _decode_rgb8(image_bytes)
+        if decoded is None:
+            if PilImage is None and not self._warned_missing_pillow:
+                self.get_logger().warning(
+                    "Pillow is not installed. sensor_msgs/Image topic will be skipped; compressed image still published."
+                )
+                self._warned_missing_pillow = True
             return
 
-        cam_msg = CompressedImage()
-        cam_msg.header.stamp = self.get_clock().now().to_msg()
-        cam_msg.header.frame_id = str(frame.get("frameId", "camera/front/image_raw"))
-        cam_msg.format = str(frame.get("format", "jpeg"))
-        cam_msg.data = image_bytes
-        self._camera_pub.publish(cam_msg)
+        rgb_bytes, width, height = decoded
+        raw = RosImage()
+        raw.header.stamp = stamp
+        raw.header.frame_id = frame_id
+        raw.height = int(height)
+        raw.width = int(width)
+        raw.encoding = "rgb8"
+        raw.is_bigendian = 0
+        raw.step = int(width * 3)
+        raw.data = rgb_bytes
+        self._camera_raw_pub.publish(raw)
 
 
 def parse_args() -> argparse.Namespace:
@@ -239,9 +465,9 @@ def run_mock_bridge(
             json.dumps(
                 {
                     "tick": i,
-                    "publish.state_json": bool(step_result.get("state")),
-                    "publish.telemetry_json.keys": sorted(list(telemetry.keys()))[:6],
-                    "publish.camera.frame_base64_len": frame_len,
+                    "publish.typed.odom": bool(step_result.get("state")),
+                    "publish.typed.line_tracker_len": len([k for k in telemetry.keys() if "line_tracker" in k]),
+                    "publish.typed.camera_frame_base64_len": frame_len,
                 },
                 ensure_ascii=False,
             )
@@ -281,7 +507,7 @@ def main() -> int:
 
     if _ROS2_IMPORT_ERROR is not None:
         print(
-            f"ROS2 bridge dependency missing: {_ROS2_IMPORT_ERROR}. Install ROS2 Python environment (rclpy, std_msgs, sensor_msgs).",
+            f"ROS2 bridge dependency missing: {_ROS2_IMPORT_ERROR}. Install ROS2 Python environment (rclpy, geometry_msgs, nav_msgs, sensor_msgs, std_msgs).",
             file=sys.stderr,
         )
         return 3

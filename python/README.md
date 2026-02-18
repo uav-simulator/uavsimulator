@@ -26,4 +26,6 @@
 - Скрипт bridge: `python/bridges/ros2_bridge.py`
 - Запуск:
   - `python python/bridges/ros2_bridge.py --base-url http://127.0.0.1:8000 --namespace /uavsim/ks0223 --rate-hz 15 --reset-on-start`
-- Требуется ROS2 Python среда (`rclpy`, `std_msgs`, `sensor_msgs`).
+- Demo одной командой:
+  - `python/bridges/run_ros2_demo.sh`
+- Требуется ROS2 Python среда (`rclpy`, `geometry_msgs`, `nav_msgs`, `std_msgs`, `sensor_msgs`).
