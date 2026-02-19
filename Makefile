@@ -31,7 +31,7 @@ ROS2_VNC_PORT ?= 5901
 ROS_BRIDGE_RESET_FLAG := $(if $(filter 1 true TRUE yes YES,$(UAVSIM_ROS_RESET_ON_START)),--reset-on-start,)
 
 .PHONY: help quickstart venv sim sim-public sim-health sim-step sim-reset \
-	demo-up demo-reset demo-status demo-down demo-restart ros-demo-reset \
+	demo-up demo-control demo-reset demo-status demo-down demo-restart ros-demo-reset \
 	ros-mock ros-bridge ros-demo ros-up ros-down ros-shell ros-bridge-container \
 	ros-ui-container ros-control-ui-container ros-topics ros-install-image-plugins \
 	ros-install-control-ui ros-cmd-vel ros-stop clean-pyc
@@ -42,6 +42,7 @@ help:
 	@echo "  make demo-up     - start ROS desktop + bridge + RViz/rqt windows"
 	@echo "  make demo-reset  - reset simulator to baseline robot/track"
 	@echo "  make demo-status - quick health check (API + ROS topics + bridge log)"
+	@echo "  make demo-control - demo-up + ROS steering UI (cmd_vel)"
 	@echo "  make demo-down   - stop ROS desktop container"
 	@echo "  make demo-restart - full ROS restart (down -> up)"
 	@echo ""
@@ -93,6 +94,9 @@ sim-reset:
 demo-up: ros-up ros-bridge-container ros-ui-container demo-reset
 	@echo "ROS UI ready: http://127.0.0.1:$(ROS2_HTTP_PORT)"
 	@echo "Camera topic default: $(UAVSIM_CAMERA_TOPIC)"
+
+demo-control: demo-up ros-install-control-ui ros-control-ui-container
+	@echo "Control UI ready: Robot Steering on topic $(UAVSIM_CMD_TOPIC)"
 
 demo-reset: sim-reset
 	@echo "Simulator reset done: vehicle=$(UAVSIM_VEHICLE_ID), track=$(UAVSIM_TRACK_ID)"

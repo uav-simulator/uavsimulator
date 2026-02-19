@@ -34,6 +34,7 @@ Subscribe:
 2. В Unity открыть `PresentationTrack` и нажать `Play`.
 3. Единый запуск ROS demo-контура:
    - `make demo-up`
+   - или сразу с UI-рулём: `make demo-control`
 4. Проверка состояния:
    - `make demo-status`
 5. При необходимости ручной reset:
