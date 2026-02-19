@@ -1,31 +1,37 @@
-# Python SDK (черновик)
+# Python SDK
 
 ## Purpose
-Минимальный клиент для управления симулятором из Python через HTTP JSON fallback.
+Минимальный клиент и инструменты для управления симулятором из Python.
 
 ## Assumptions
-- Unity сцена содержит `SimulationManager` и `HttpJsonApiHost`.
-- Сервер слушает `http://127.0.0.1:<port>`.
+- Unity API поднят (`/health`, `/contract`, `/reset`, `/step`).
+- Рекомендуемое окружение: `.venv` в корне проекта.
 
 ## Decisions
-- Транспорт: HTTP JSON (fallback) для ранней стадии; gRPC добавляется отдельно.
+- Python слой остается тонким: клиент + examples + notebook.
+- ROS2 bridge хранится в `python/bridges/` как отдельный модуль.
 
-## Next steps
-- Добавить потоковую доставку кадров камеры (`dataRef`/stream).
+## Setup
+- `make venv`
 
 ## Быстрый старт
-1) Создать виртуальное окружение и установить зависимости:
-   - `python3 -m venv .venv`
-   - `source .venv/bin/activate`
-   - `pip install -r requirements.txt`
-2) Запустить примеры из папки `python/`:
-   - `python examples/random_agent.py --base-url http://127.0.0.1:8000`
-   - `python examples/ks0223_random_pwm.py --base-url http://127.0.0.1:8000`
+- `python examples/random_agent.py --base-url http://127.0.0.1:8000`
+- `python examples/ks0223_random_pwm.py --base-url http://127.0.0.1:8000`
 
-## ROS2 bridge (optional)
-- Скрипт bridge: `python/bridges/ros2_bridge.py`
-- Запуск:
-  - `python python/bridges/ros2_bridge.py --base-url http://127.0.0.1:8000 --namespace /uavsim/ks0223 --rate-hz 15 --reset-on-start`
-- Demo одной командой:
-  - `python/bridges/run_ros2_demo.sh`
-- Требуется ROS2 Python среда (`rclpy`, `geometry_msgs`, `nav_msgs`, `std_msgs`, `sensor_msgs`).
+## Presentation Notebook
+- Файл: `output/jupyter-notebook/ks0223-presentation-demo.ipynb`
+- Что делает:
+  - API sanity check
+  - camera preview
+  - scripted drive + telemetry plots
+  - interactive control widgets
+
+## ROS2 bridge
+- Док: `python/bridges/README.md`
+- Native запуск: `make ros-bridge`
+- Mock запуск без ROS: `make ros-mock`
+- Docker demo flow: `make demo-up` + `make demo-status`
+
+## Next steps
+- Добавить helpers для типизированных telemetry DTO в Python.
+- Добавить e2e notebook smoke (auto-run cells subset).

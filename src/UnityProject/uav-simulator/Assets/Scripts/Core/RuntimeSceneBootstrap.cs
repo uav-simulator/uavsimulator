@@ -8,9 +8,16 @@ namespace UavSimulator.Core
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
         private static void EnsureRuntimeObjects()
         {
+            ConfigureRuntimeExecution();
             EnsureSimulationManager();
             EnsureApiHost();
             EnsureRos2BridgeHostIfEnabled();
+        }
+
+        private static void ConfigureRuntimeExecution()
+        {
+            // Keep simulation/API responsive even when Unity window is not focused.
+            Application.runInBackground = true;
         }
 
         private static void EnsureSimulationManager()

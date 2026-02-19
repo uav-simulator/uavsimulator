@@ -3191,7 +3191,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 05cc62cb339aa4f3e96c764e32e8c507, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  autoDrive: 1
+  autoDrive: 0
   startDelaySec: 0.8
 --- !u!114 &1253091606
 MonoBehaviour:

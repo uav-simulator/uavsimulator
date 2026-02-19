@@ -7,7 +7,7 @@ namespace UavSimulator.Core
 {
     public sealed class PresentationDemoDriver : MonoBehaviour
     {
-        [SerializeField] private bool autoDrive = true;
+        [SerializeField] private bool autoDrive = false;
         [SerializeField] private float startDelaySec = 0.8f;
 
         private VehicleBase vehicle;
