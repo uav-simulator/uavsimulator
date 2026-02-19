@@ -7,10 +7,13 @@ import io
 import json
 import math
 import os
+import re
 import sys
 import time
 from pathlib import Path
 from typing import Any, Dict, Mapping
+
+import requests
 
 # Allow running as standalone script from any working directory.
 _PYTHON_DIR = Path(__file__).resolve().parent.parent
@@ -43,6 +46,7 @@ try:
     from geometry_msgs.msg import Twist
     from nav_msgs.msg import Odometry
     from rclpy.node import Node
+    from rclpy.qos import qos_profile_sensor_data
     from sensor_msgs.msg import BatteryState
     from sensor_msgs.msg import CompressedImage
     from sensor_msgs.msg import Image as RosImage
@@ -54,6 +58,7 @@ except ModuleNotFoundError as exc:
     _ROS2_IMPORT_ERROR = exc
     rclpy = None  # type: ignore[assignment]
     Node = object  # type: ignore[assignment,misc]
+    qos_profile_sensor_data = None  # type: ignore[assignment,misc]
     Twist = object  # type: ignore[assignment,misc]
     Odometry = object  # type: ignore[assignment,misc]
     BatteryState = object  # type: ignore[assignment,misc]
@@ -121,6 +126,16 @@ def _decode_rgb8(image_bytes: bytes) -> tuple[bytes, int, int] | None:
         return None
 
 
+def _sanitize_frame_id(value: str, default: str = "camera_front_optical") -> str:
+    text = (value or "").strip()
+    if not text:
+        return default
+    # ROS frame IDs should not contain slashes and other special chars.
+    text = text.replace("/", "_")
+    text = re.sub(r"[^a-zA-Z0-9_]", "_", text)
+    return text or default
+
+
 class UavSimRos2Bridge(Node):
     def __init__(
         self,
@@ -138,6 +153,9 @@ class UavSimRos2Bridge(Node):
         self._right_pwm = 0.0
         self._brake = 0.0
         self._warned_missing_pillow = False
+        self._vehicle_id = vehicle_id
+        self._track_id = track_id
+        self._last_auto_reset_attempt_sec = 0.0
 
         # Backward-compatible JSON channels.
         self._state_json_pub = self.create_publisher(String, f"{self._ns}/state_json", 10)
@@ -150,9 +168,15 @@ class UavSimRos2Bridge(Node):
         self._ultrasonic_pub = self.create_publisher(Range, f"{self._ns}/ultrasonic/front", 10)
         self._line_tracker_pub = self.create_publisher(Float32MultiArray, f"{self._ns}/line_tracker/front_norm", 10)
         self._powertrain_pub = self.create_publisher(Float32MultiArray, f"{self._ns}/powertrain/estimate", 10)
-        self._camera_raw_pub = self.create_publisher(RosImage, f"{self._ns}/camera/front/image_raw", 3)
+        self._camera_raw_pub = self.create_publisher(
+            RosImage,
+            f"{self._ns}/camera/front/image_raw",
+            qos_profile_sensor_data,
+        )
         self._camera_compressed_pub = self.create_publisher(
-            CompressedImage, f"{self._ns}/camera/front/image_raw/compressed", 3
+            CompressedImage,
+            f"{self._ns}/camera/front/image_raw/compressed",
+            qos_profile_sensor_data,
         )
 
         # Control channels.
@@ -163,7 +187,10 @@ class UavSimRos2Bridge(Node):
         self.create_subscription(Twist, "/cmd_vel", self._on_cmd_vel, 10)
 
         if reset_on_start:
-            self._reset(vehicle_id=vehicle_id, track_id=track_id)
+            try:
+                self._reset(vehicle_id=vehicle_id, track_id=track_id)
+            except Exception as exc:
+                self.get_logger().warning(f"Initial reset failed: {exc}. Bridge will retry automatically.")
 
         timer_period_sec = 1.0 / max(1.0, rate_hz)
         self.create_timer(timer_period_sec, self._tick)
@@ -228,7 +255,44 @@ class UavSimRos2Bridge(Node):
             step_result = self._client.step(cmd)
             self._publish_step(step_result)
         except Exception as exc:
+            if self._is_vehicle_not_initialized_error(exc):
+                now = time.monotonic()
+                if now - self._last_auto_reset_attempt_sec >= 1.0:
+                    self._last_auto_reset_attempt_sec = now
+                    self._try_auto_reset()
+                return
             self.get_logger().warning(f"Bridge tick failed: {exc}")
+
+    def _try_auto_reset(self) -> None:
+        try:
+            self._reset(vehicle_id=self._vehicle_id, track_id=self._track_id)
+            self.get_logger().info("Auto-reset succeeded after uninitialized vehicle error.")
+        except Exception as exc:
+            self.get_logger().warning(f"Auto-reset attempt failed: {exc}")
+
+    def _is_vehicle_not_initialized_error(self, exc: Exception) -> bool:
+        if "Active vehicle is not initialized" in str(exc):
+            return True
+
+        if isinstance(exc, requests.HTTPError):
+            response = exc.response
+            if response is None:
+                return False
+
+            body = (response.text or "").strip()
+            if "Active vehicle is not initialized" in body:
+                return True
+
+            try:
+                payload = json.loads(body)
+            except json.JSONDecodeError:
+                return False
+
+            if isinstance(payload, Mapping):
+                error_value = payload.get("error")
+                return isinstance(error_value, str) and "Active vehicle is not initialized" in error_value
+
+        return False
 
     def _publish_step(self, step_result: Mapping[str, Any]) -> None:
         state = step_result.get("state")
@@ -369,7 +433,7 @@ class UavSimRos2Bridge(Node):
         if not image_bytes:
             return
 
-        frame_id = str(frame.get("frameId", "camera/front/image_raw"))
+        frame_id = _sanitize_frame_id(str(frame.get("frameId", "camera_front_optical")))
         image_format = str(frame.get("format", "jpeg")).lower()
 
         compressed = CompressedImage()

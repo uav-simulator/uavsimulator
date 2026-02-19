@@ -1,22 +1,37 @@
 ## Purpose
-Кратко описать проект и контекст магистерской работы.
+Кратко зафиксировать, что уже реализовано, какие сценарии поддерживаются и куда проект движется.
 
 ## Assumptions
-- Репозиторий — Unity проект: `src/UnityProject/uav-simulator`.
-- Документ фиксирует цели и текущее состояние без предположений о содержимом сцены.
+- Текущий baseline: наземный дифференциальный робот `KS0223`.
+- Основной runtime: Unity Editor в режиме `Play`.
 
 ## Decisions
-- Цель: расширяемый симулятор для обучения управлению беспилотным транспортом.
-- MVP: 1 трасса, 1 машина, камера + численное состояние, управление рулем/газом/тормозом, API, запуск обучения из Python.
+- Core транспорта симулятора: HTTP JSON API.
+- ROS2 интеграция: опциональный слой (bridge), не меняет core DTO.
+- Расширение симулятора: через плагины треков/роботов.
+
+## Что уже работает
+- Сцены:
+  - `Assets/Scenes/PresentationTrack.unity` (презентационная трасса).
+  - `Assets/Scenes/TrackScence.unity` (базовый шаблон).
+- Контракт и runtime:
+  - `SimulationManager` + plugin registry + fallback assets.
+  - API `GET /health`, `GET /contract`, `POST /reset`, `POST /step`.
+- Сенсоры/телеметрия:
+  - camera, speedometer, ultrasonic, line tracker, powertrain.
+- Python:
+  - SDK `python/sim_client/*`.
+  - examples и notebook `output/jupyter-notebook/ks0223-presentation-demo.ipynb`.
+- ROS2:
+  - typed topics + `cmd_vel` control через `python/bridges/ros2_bridge.py`.
+  - RViz конфиг `ros2/rviz/uavsim_demo.rviz`.
+
+## Ограничения текущего этапа
+- API работает только в `Play` режиме Unity.
+- ROS2 desktop в Docker требует доступного API host (рекомендуется запуск симулятора через `make sim-public`).
+- `rqt_plot` может требовать дополнительные Python зависимости в контейнере.
 
 ## Next steps
-- Зафиксировать фактическое содержимое `Assets/Scenes/TrackScence.unity` отдельным аудитом.
-- После появления доменных скриптов обновить контракты API и наблюдений.
-
-## Тема магистерской работы
-Разработка расширяемого симулятора в Unity для обучения нейросетевых моделей управления беспилотным транспортом на трассе.
-
-## Статус репозитория
-- В `Assets/Scripts` не обнаружены доменные скрипты симулятора (есть только `TutorialInfo` Readme скрипты Unity).
-- В `Assets/Scenes` присутствует `TrackScence.unity`.
-- В `Packages/manifest.json` не указан пакет ML-Agents.
+- Добавить watchdog и аварийный stop в ROS2 bridge.
+- Добавить стабильный сценарий симуляции для regression smoke.
+- Начать упаковку custom ROS2 msg для line/powertrain diagnostics.
