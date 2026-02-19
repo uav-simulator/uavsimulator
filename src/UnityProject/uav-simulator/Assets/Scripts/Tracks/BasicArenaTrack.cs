@@ -179,32 +179,41 @@ namespace UavSimulator.Tracks
         {
             var boundariesRoot = new GameObject("RoadBoundaries");
             boundariesRoot.transform.SetParent(transform, false);
+            var halfRoad = roadWidth * 0.5f;
+            var sideOffset = halfRoad + barrierThickness * 0.5f;
+            var capOffset = barrierThickness * 0.5f;
+            var y = barrierHeight * 0.5f;
 
             // Segment A boundaries.
-            CreateInvisibleBarrier(boundariesRoot.transform, "A_Left", new Vector3(-roadWidth * 0.5f, barrierHeight * 0.5f, -4.5f), new Vector3(barrierThickness, barrierHeight, 7f));
-            CreateInvisibleBarrier(boundariesRoot.transform, "A_Right", new Vector3(roadWidth * 0.5f, barrierHeight * 0.5f, -4.5f), new Vector3(barrierThickness, barrierHeight, 7f));
+            CreateInvisibleBarrier(boundariesRoot.transform, "A_Left", new Vector3(-sideOffset, y, -4.5f), new Vector3(barrierThickness, barrierHeight, 7f));
+            CreateInvisibleBarrier(boundariesRoot.transform, "A_Right", new Vector3(sideOffset, y, -4.5f), new Vector3(barrierThickness, barrierHeight, 7f));
 
             // Segment B boundaries.
-            CreateInvisibleBarrier(boundariesRoot.transform, "B_Bottom", new Vector3(3f, barrierHeight * 0.5f, -1f - roadWidth * 0.5f), new Vector3(6f, barrierHeight, barrierThickness));
-            CreateInvisibleBarrier(boundariesRoot.transform, "B_Top", new Vector3(3f, barrierHeight * 0.5f, -1f + roadWidth * 0.5f), new Vector3(6f, barrierHeight, barrierThickness));
+            CreateInvisibleBarrier(boundariesRoot.transform, "B_Bottom", new Vector3(3f, y, -1f - sideOffset), new Vector3(6f, barrierHeight, barrierThickness));
+            CreateInvisibleBarrier(boundariesRoot.transform, "B_Top", new Vector3(3f, y, -1f + sideOffset), new Vector3(6f, barrierHeight, barrierThickness));
 
             // Segment C boundaries.
-            CreateInvisibleBarrier(boundariesRoot.transform, "C_Left", new Vector3(6f - roadWidth * 0.5f, barrierHeight * 0.5f, 2f), new Vector3(barrierThickness, barrierHeight, 6f));
-            CreateInvisibleBarrier(boundariesRoot.transform, "C_Right", new Vector3(6f + roadWidth * 0.5f, barrierHeight * 0.5f, 2f), new Vector3(barrierThickness, barrierHeight, 6f));
+            CreateInvisibleBarrier(boundariesRoot.transform, "C_Left", new Vector3(6f - sideOffset, y, 2f), new Vector3(barrierThickness, barrierHeight, 6f));
+            CreateInvisibleBarrier(boundariesRoot.transform, "C_Right", new Vector3(6f + sideOffset, y, 2f), new Vector3(barrierThickness, barrierHeight, 6f));
+
+            // Extensions around turns to remove boundary gaps.
+            CreateInvisibleBarrier(boundariesRoot.transform, "TurnA_LeftExtension", new Vector3(-sideOffset, y, -0.4f), new Vector3(barrierThickness, barrierHeight, 1.2f));
+            CreateInvisibleBarrier(boundariesRoot.transform, "TurnB_RightExtension", new Vector3(6f + sideOffset, y, -1.6f), new Vector3(barrierThickness, barrierHeight, 1.2f));
 
             // End caps to avoid exiting road from start/end.
-            CreateInvisibleBarrier(boundariesRoot.transform, "StartCap", new Vector3(0f, barrierHeight * 0.5f, -8f), new Vector3(roadWidth, barrierHeight, barrierThickness));
-            CreateInvisibleBarrier(boundariesRoot.transform, "FinishCap", new Vector3(6f, barrierHeight * 0.5f, 5f), new Vector3(roadWidth, barrierHeight, barrierThickness));
+            CreateInvisibleBarrier(boundariesRoot.transform, "StartCap", new Vector3(0f, y, -8f - capOffset), new Vector3(roadWidth, barrierHeight, barrierThickness));
+            CreateInvisibleBarrier(boundariesRoot.transform, "FinishCap", new Vector3(6f, y, 5f + capOffset), new Vector3(roadWidth, barrierHeight, barrierThickness));
         }
 
         private static void CreateInvisibleBarrier(Transform parent, string name, Vector3 localPosition, Vector3 localScale)
         {
-            var barrier = CreateBlock(name, parent, localPosition, localScale);
-            var renderer = barrier.GetComponent<Renderer>();
-            if (renderer != null)
-            {
-                renderer.enabled = false;
-            }
+            var barrier = new GameObject(name);
+            barrier.transform.SetParent(parent, false);
+            barrier.transform.localPosition = localPosition;
+            barrier.transform.localRotation = Quaternion.identity;
+
+            var collider = barrier.AddComponent<BoxCollider>();
+            collider.size = localScale;
         }
 
         private static void CreateTree(Transform parent, string name, Vector3 localPosition, float scale)

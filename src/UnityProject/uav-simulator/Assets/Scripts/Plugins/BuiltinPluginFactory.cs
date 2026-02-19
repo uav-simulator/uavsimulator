@@ -46,25 +46,26 @@ namespace UavSimulator.Plugins
             var body = GameObject.CreatePrimitive(PrimitiveType.Cube);
             body.name = "Body";
             body.transform.SetParent(root.transform, false);
-            body.transform.localScale = new Vector3(0.30f, 0.11f, 0.44f);
-            body.transform.localPosition = new Vector3(0f, 0.055f, 0f);
+            body.transform.localScale = new Vector3(0.34f, 0.09f, 0.50f);
+            body.transform.localPosition = new Vector3(0f, 0.05f, 0f);
 
-            var roof = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            roof.name = "Roof";
-            roof.transform.SetParent(root.transform, false);
-            roof.transform.localScale = new Vector3(0.20f, 0.07f, 0.20f);
-            roof.transform.localPosition = new Vector3(0f, 0.135f, 0.02f);
+            CreateDecorBlock(root.transform, "Hood", new Vector3(0.30f, 0.06f, 0.18f), new Vector3(0f, 0.09f, 0.15f));
+            CreateDecorBlock(root.transform, "Cabin", new Vector3(0.22f, 0.08f, 0.19f), new Vector3(0f, 0.13f, -0.03f));
+            CreateDecorBlock(root.transform, "RearDeck", new Vector3(0.30f, 0.05f, 0.12f), new Vector3(0f, 0.09f, -0.19f));
+            CreateDecorBlock(root.transform, "Windshield", new Vector3(0.20f, 0.05f, 0.03f), new Vector3(0f, 0.14f, 0.07f), new Vector3(-22f, 0f, 0f));
+            CreateDecorBlock(root.transform, "RearWindow", new Vector3(0.20f, 0.05f, 0.03f), new Vector3(0f, 0.14f, -0.11f), new Vector3(22f, 0f, 0f));
 
             var cameraPod = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
             cameraPod.name = "CameraPod";
             cameraPod.transform.SetParent(root.transform, false);
-            cameraPod.transform.localScale = new Vector3(0.022f, 0.035f, 0.022f);
-            cameraPod.transform.localPosition = new Vector3(0f, 0.20f, 0.18f);
+            cameraPod.transform.localScale = new Vector3(0.02f, 0.03f, 0.02f);
+            cameraPod.transform.localPosition = new Vector3(0f, 0.20f, 0.20f);
+            DisableCollider(cameraPod);
 
-            CreateWheel(root.transform, "WheelFL", new Vector3(-0.12f, 0.03f, 0.14f));
-            CreateWheel(root.transform, "WheelFR", new Vector3(0.12f, 0.03f, 0.14f));
-            CreateWheel(root.transform, "WheelRL", new Vector3(-0.12f, 0.03f, -0.14f));
-            CreateWheel(root.transform, "WheelRR", new Vector3(0.12f, 0.03f, -0.14f));
+            CreateWheel(root.transform, "WheelFL", new Vector3(-0.14f, 0.03f, 0.18f));
+            CreateWheel(root.transform, "WheelFR", new Vector3(0.14f, 0.03f, 0.18f));
+            CreateWheel(root.transform, "WheelRL", new Vector3(-0.14f, 0.03f, -0.18f));
+            CreateWheel(root.transform, "WheelRR", new Vector3(0.14f, 0.03f, -0.18f));
 
             var rb = root.AddComponent<Rigidbody>();
             rb.mass = 1.0f;
@@ -207,6 +208,33 @@ namespace UavSimulator.Plugins
             wheel.transform.localScale = new Vector3(0.04f, 0.015f, 0.04f);
             wheel.transform.localPosition = localPosition;
             wheel.transform.localRotation = Quaternion.Euler(0f, 0f, 90f);
+        }
+
+        private static void CreateDecorBlock(
+            Transform parent,
+            string name,
+            Vector3 localScale,
+            Vector3 localPosition,
+            Vector3 localEuler = default)
+        {
+            var part = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            part.name = name;
+            part.transform.SetParent(parent, false);
+            part.transform.localScale = localScale;
+            part.transform.localPosition = localPosition;
+            part.transform.localRotation = Quaternion.Euler(localEuler);
+            DisableCollider(part);
+        }
+
+        private static void DisableCollider(GameObject go)
+        {
+            var collider = go.GetComponent<Collider>();
+            if (collider == null)
+            {
+                return;
+            }
+
+            UnityEngine.Object.Destroy(collider);
         }
     }
 }

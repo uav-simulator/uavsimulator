@@ -288,25 +288,42 @@ namespace UavSimulator.Vehicles
 
         private void EnsurePresentationVisuals()
         {
-            if (transform.Find("Roof") == null)
-            {
-                var roof = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                roof.name = "Roof";
-                roof.transform.SetParent(transform, false);
-                roof.transform.localScale = new Vector3(0.20f, 0.07f, 0.20f);
-                roof.transform.localPosition = new Vector3(0f, 0.135f, 0.02f);
-                DisableCollider(roof);
-            }
+            EnsureVisualPart("Hood", PrimitiveType.Cube, new Vector3(0.30f, 0.06f, 0.18f), new Vector3(0f, 0.09f, 0.15f));
+            EnsureVisualPart("Cabin", PrimitiveType.Cube, new Vector3(0.22f, 0.08f, 0.19f), new Vector3(0f, 0.13f, -0.03f));
+            EnsureVisualPart("RearDeck", PrimitiveType.Cube, new Vector3(0.30f, 0.05f, 0.12f), new Vector3(0f, 0.09f, -0.19f));
+            EnsureVisualPart("Windshield", PrimitiveType.Cube, new Vector3(0.20f, 0.05f, 0.03f), new Vector3(0f, 0.14f, 0.07f), new Vector3(-22f, 0f, 0f));
+            EnsureVisualPart("RearWindow", PrimitiveType.Cube, new Vector3(0.20f, 0.05f, 0.03f), new Vector3(0f, 0.14f, -0.11f), new Vector3(22f, 0f, 0f));
 
             if (transform.Find("CameraPod") == null)
             {
                 var cameraPod = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
                 cameraPod.name = "CameraPod";
                 cameraPod.transform.SetParent(transform, false);
-                cameraPod.transform.localScale = new Vector3(0.022f, 0.035f, 0.022f);
-                cameraPod.transform.localPosition = new Vector3(0f, 0.20f, 0.18f);
+                cameraPod.transform.localScale = new Vector3(0.02f, 0.03f, 0.02f);
+                cameraPod.transform.localPosition = new Vector3(0f, 0.20f, 0.20f);
                 DisableCollider(cameraPod);
             }
+        }
+
+        private void EnsureVisualPart(
+            string name,
+            PrimitiveType primitiveType,
+            Vector3 localScale,
+            Vector3 localPosition,
+            Vector3 localEuler = default)
+        {
+            if (transform.Find(name) != null)
+            {
+                return;
+            }
+
+            var part = GameObject.CreatePrimitive(primitiveType);
+            part.name = name;
+            part.transform.SetParent(transform, false);
+            part.transform.localScale = localScale;
+            part.transform.localPosition = localPosition;
+            part.transform.localRotation = Quaternion.Euler(localEuler);
+            DisableCollider(part);
         }
 
         private static void DisableCollider(GameObject go)
@@ -320,9 +337,13 @@ namespace UavSimulator.Vehicles
 
         private void ApplyVisualPalette()
         {
-            ApplyColor("Body", new Color(0.84f, 0.16f, 0.14f), 0.32f);
-            ApplyColor("Roof", new Color(0.10f, 0.10f, 0.11f), 0.28f);
-            ApplyColor("CameraPod", new Color(0.80f, 0.80f, 0.82f), 0.18f);
+            ApplyColor("Body", new Color(0.77f, 0.11f, 0.10f), 0.34f);
+            ApplyColor("Hood", new Color(0.77f, 0.11f, 0.10f), 0.34f);
+            ApplyColor("Cabin", new Color(0.10f, 0.10f, 0.11f), 0.28f);
+            ApplyColor("RearDeck", new Color(0.77f, 0.11f, 0.10f), 0.33f);
+            ApplyColor("Windshield", new Color(0.23f, 0.32f, 0.38f), 0.7f);
+            ApplyColor("RearWindow", new Color(0.21f, 0.29f, 0.35f), 0.68f);
+            ApplyColor("CameraPod", new Color(0.82f, 0.82f, 0.85f), 0.2f);
             ApplyColor("WheelFL", new Color(0.08f, 0.08f, 0.08f), 0.52f);
             ApplyColor("WheelFR", new Color(0.08f, 0.08f, 0.08f), 0.52f);
             ApplyColor("WheelRL", new Color(0.08f, 0.08f, 0.08f), 0.52f);

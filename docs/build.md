@@ -23,6 +23,7 @@
   - `make sim-public`
   - в Unity нажать `Play`
   - `make demo-up`
+  - (опционально, для ручного ROS2 управления) `make demo-control`
   - `make demo-status`
 - Точечные операции:
   - `make demo-reset`

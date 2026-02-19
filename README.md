@@ -23,7 +23,9 @@ Assumptions:
 4. Нажми `Play`.
 5. Подними ROS UI и bridge одной командой:
    - `make demo-up`
-6. Быстрая проверка:
+6. Для демо-управления через ROS2 (`/cmd_vel`) открой steering UI:
+   - `make demo-control`
+7. Быстрая проверка:
    - `make demo-status`
 
 Примечание:
@@ -34,6 +36,7 @@ Assumptions:
 - `make demo-up`: ROS desktop + bridge + `rviz/rqt` + reset baseline.
 - `make demo-reset`: ручной reset baseline робота/трека.
 - `make demo-status`: быстрый статус API/топиков/bridge.
+- `make demo-control`: `demo-up` + запуск `rqt_robot_steering` для ручного управления через ROS2.
 - `make demo-down`: остановка ROS desktop контейнера.
 - `make ros-install-image-plugins`: опционально для `compressed` image transport в `rqt_image_view`.
 
@@ -47,6 +50,17 @@ Assumptions:
 - API: `docs/api.md`
 - Транспорт/роботы: `docs/vehicles.md`, `docs/robots/ks0223.md`
 - Python SDK: `python/README.md`
+
+## Материалы магистерской
+- Индекс: `docs/master-thesis/README.md`
+- Введение: `docs/master-thesis/02-introduction.md`
+- Архитектура: `docs/master-thesis/04-architecture.md`
+- Реализация: `docs/master-thesis/05-implementation.md`
+- API: `docs/master-thesis/06-api-spec.md`
+- Плагины и расширение: `docs/master-thesis/07-plugin-development.md`
+- Обучение и Python: `docs/master-thesis/08-training-python.md`
+- Sim2Real и реальная машинка: `docs/master-thesis/09-sim2real-real-car.md`
+- Тестирование/сборка/релиз: `docs/master-thesis/10-testing-build-release.md`
 
 ## Вклад
 - Правила работы: `CONTRIBUTING.md`

@@ -26,6 +26,13 @@
   - scripted drive + telemetry plots
   - interactive control widgets
 
+## ROS2 Training Notebook
+- Файл: `output/jupyter-notebook/ks0223-ros2-training-demo.ipynb`
+- Что делает:
+  - сбор сенсоров из ROS2 топиков (`line_tracker`, `speedometer`)
+  - мини-обучение линейной steering-модели
+  - rollout обученной политики через ROS2 `/cmd_vel`
+
 ## ROS2 bridge
 - Док: `python/bridges/README.md`
 - Native запуск: `make ros-bridge`
