@@ -36,3 +36,11 @@ jobs:
         run: |
           python -c "from sim_client.http_client import SimClient; print(SimClient)"
         working-directory: python
+
+  demo-proof-ci:
+    name: Demo Proof (graceful skip)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Demo proof smoke
+        run: make demo-proof-ci

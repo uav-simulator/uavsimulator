@@ -42,6 +42,7 @@ Assumptions:
 
 Примечание:
 - По умолчанию при старте сцены транспорт **не спавнится автоматически**. Экземпляр появляется после `reset` (API/ROS/demo-reset).
+- Порог `odom hz` в `demo-proof` регулируется через `UAVSIM_ODOM_HZ_MIN` (по умолчанию `10`).
 - Переключение визуала машины (через plugin id):
   - `make demo-reset UAVSIM_VEHICLE_ID=vehicle.ks0223.arcade.blue.v1`
   - `make demo-reset UAVSIM_VEHICLE_ID=vehicle.ks0223.arcade.red.v1`

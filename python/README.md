@@ -26,6 +26,14 @@
   - scripted drive + telemetry plots
   - interactive control widgets
 
+## Quickstart Notebook
+- Файл: `output/jupyter-notebook/uavsim-quickstart-demo.ipynb`
+- Что делает:
+  - пошаговый smoke (`health/contract/reset`)
+  - короткий rollout с `step`
+  - графики скорости и управляющих сигналов
+  - несколько кадров фронтальной камеры
+
 ## ROS2 Training Notebook
 - Файл: `output/jupyter-notebook/ks0223-ros2-training-demo.ipynb`
 - Что делает:
