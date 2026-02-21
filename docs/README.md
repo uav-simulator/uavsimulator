@@ -25,6 +25,7 @@
 - Транспорт и роботы: `docs/vehicles.md`, `docs/robots/ks0223.md`
 - Drone plugin: `docs/robots/simple-drone.md`
 - Интеграция ML и обучение: `docs/mlagents.md`, `docs/training.md`, `docs/experiments.md`
+- Demo-ноутбуки: `output/jupyter-notebook/uavsim-quickstart-demo.ipynb`, `output/jupyter-notebook/ks0223-presentation-demo.ipynb`, `output/jupyter-notebook/ks0223-ros2-training-demo.ipynb`
 - Прогресс/задачи: `docs/tasks.md`
 - Отчёты: `docs/reports/`
 - Магистерская: `docs/master-thesis/README.md`
@@ -37,3 +38,4 @@
   - `task-09`…`task-11`: структура экспериментов и каркас training pipeline.
   - `task-12`: контракт и профиль реального робота Keyestudio KS0223.
   - `task-13`: pre-demo proof команды и preflight проверки ROS image transport.
+  - `task-14`: CI smoke для `demo-proof` и параметр порога `odom hz`.
