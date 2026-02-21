@@ -36,6 +36,7 @@ make ros-mock
 make sim-public
 make demo-up
 make demo-status
+make demo-proof
 ```
 
 noVNC URL: `http://127.0.0.1:6080`
@@ -50,6 +51,7 @@ noVNC URL: `http://127.0.0.1:6080`
 - Для `sensor_msgs/Image` bridge использует `Pillow`.
 - Bridge публикует данные только когда Unity в `Play` и API `step` отвечает.
 - По умолчанию демо использует `.../camera/front/image_raw` (raw transport).
+- `make demo-status` показывает preflight по image transport plugins в ROS контейнере.
 - Если нужен `.../compressed` в `rqt_image_view`, установи plugins:
   - `make ros-install-image-plugins`
 - При ошибке `Active vehicle is not initialized` bridge пытается сделать auto-reset и продолжает цикл.

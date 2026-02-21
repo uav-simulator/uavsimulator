@@ -23,6 +23,7 @@
 - ROS2 bridge: `docs/ros2.md`
 - Плагины: `docs/plugins.md`
 - Транспорт и роботы: `docs/vehicles.md`, `docs/robots/ks0223.md`
+- Drone plugin: `docs/robots/simple-drone.md`
 - Интеграция ML и обучение: `docs/mlagents.md`, `docs/training.md`, `docs/experiments.md`
 - Прогресс/задачи: `docs/tasks.md`
 - Отчёты: `docs/reports/`
@@ -35,3 +36,4 @@
   - `task-04`…`task-08`: контракт управления, физическая модель, сенсоры, reset-логика, reward/termination.
   - `task-09`…`task-11`: структура экспериментов и каркас training pipeline.
   - `task-12`: контракт и профиль реального робота Keyestudio KS0223.
+  - `task-13`: pre-demo proof команды и preflight проверки ROS image transport.

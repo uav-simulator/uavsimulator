@@ -37,6 +37,7 @@ Subscribe:
    - или сразу с UI-рулём: `make demo-control`
 4. Проверка состояния:
    - `make demo-status`
+   - `make demo-proof` (строгая pre-demo проверка)
 5. При необходимости ручной reset:
    - `make demo-reset`
 
@@ -71,6 +72,8 @@ CLI-вариант управления без UI:
   - `make sim-health`
 - Перезапустить весь ROS демо-контур:
   - `make demo-restart`
+- Проверить preflight и сквозной smoke одной командой:
+  - `make demo-proof`
 - Проверить, что поток реально идет:
   - `docker exec uavsim-ros2-desktop bash -lc 'su - ubuntu -c "source /opt/ros/humble/setup.bash; ros2 topic hz /uavsim/ks0223/camera/front/image_raw"'`
 - Если в UI пусто после долгой сессии, перезапустить только UI:
@@ -86,6 +89,7 @@ CLI-вариант управления без UI:
 - Для Docker ROS2 на macOS нужен доступный API host у Unity (`make sim-public`).
 - Для просмотра `.../compressed` в `rqt_image_view` нужны image transport plugins:
   - `make ros-install-image-plugins`
+  - быстрая проверка наличия plugins выводится в `make demo-status`.
 
 ## Next steps
 - Добавить watchdog и аварийный stop в bridge.

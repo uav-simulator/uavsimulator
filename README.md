@@ -5,6 +5,14 @@
 ## Текущее состояние
 - Плагинная архитектура для треков и роботов.
 - Runtime fallback-плагины (`track.basic_arena.v1`, `vehicle.ks0223.v1`).
+- Ассетные визуалы машин (через plugin `vehicleId`):
+  - `vehicle.ks0223.v1` (PROMETEO visual)
+  - `vehicle.ks0223.arcade.blue.v1`
+  - `vehicle.ks0223.arcade.red.v1`
+  - `vehicle.ks0223.arcade.gray.v1`
+  - `vehicle.ks0223.arcade.purple.v1`
+- Дрон-плагин:
+  - `vehicle.drone.simple.v1`
 - HTTP JSON API (`/health`, `/contract`, `/reset`, `/step`).
 - Презентационная сцена `PresentationTrack` с разметкой и sensor HUD.
 - Python SDK + Jupyter презентационный notebook.
@@ -20,6 +28,8 @@ Assumptions:
    - `make sim-public`
 3. В Unity открой сцену:
    - `Assets/Scenes/PresentationTrack.unity`
+   - или `Assets/Scenes/RoadSystemTrack.unity` (spline-трек на базе `Road System`)
+   - при необходимости пересобери RoadSystem-сцену через меню: `UavSimulator/Scene/Build RoadSystem Track Scene`
 4. Нажми `Play`.
 5. Подними ROS UI и bridge одной командой:
    - `make demo-up`
@@ -27,18 +37,34 @@ Assumptions:
    - `make demo-control`
 7. Быстрая проверка:
    - `make demo-status`
+8. Строгая pre-demo проверка (fail-fast):
+   - `make demo-proof`
 
 Примечание:
-- По умолчанию demo-машина **не едет сама** при старте (`autoDrive = false`).
+- По умолчанию при старте сцены транспорт **не спавнится автоматически**. Экземпляр появляется после `reset` (API/ROS/demo-reset).
+- Переключение визуала машины (через plugin id):
+  - `make demo-reset UAVSIM_VEHICLE_ID=vehicle.ks0223.arcade.blue.v1`
+  - `make demo-reset UAVSIM_VEHICLE_ID=vehicle.ks0223.arcade.red.v1`
+  - `make demo-reset UAVSIM_VEHICLE_ID=vehicle.ks0223.v1`
+  - `make demo-reset UAVSIM_VEHICLE_ID=vehicle.drone.simple.v1`
+  - `make demo-reset UAVSIM_TRACK_ID=track.roadsystem_arena.v1`
 
 ## Упрощённый Make Workflow
 - `make sim-public`: запуск Unity с API для Docker/внешних клиентов.
 - `make demo-up`: ROS desktop + bridge + `rviz/rqt` + reset baseline.
 - `make demo-reset`: ручной reset baseline робота/трека.
-- `make demo-status`: быстрый статус API/топиков/bridge.
+- `make demo-status`: быстрый статус API/топиков/bridge + preflight image transport plugins.
+- `make demo-proof`: строгая проверка перед презентацией (`health/reset/step-frame/camera-one-shot/odom-hz`).
 - `make demo-control`: `demo-up` + запуск `rqt_robot_steering` для ручного управления через ROS2.
 - `make demo-down`: остановка ROS desktop контейнера.
 - `make ros-install-image-plugins`: опционально для `compressed` image transport в `rqt_image_view`.
+
+## Asset Store / Package Manager
+- Дороги: Road System package подключён как UPM пакет `com.barmetler.roadsystem` (папка `src/UnityProject/uav-simulator/Packages/com.barmetler.roadsystem`).
+- Машины:
+  - `PROMETEO - Car Controller` импортирован в `Assets/PROMETEO - Car Controller`.
+  - `ARCADE - FREE Racing Car` импортирован в `Assets/ARCADE - FREE Racing Car`.
+- Симулятор использует эти ассеты как **визуальные плагины** поверх KS0223 физики/сенсоров.
 
 ## Документация
 - Индекс: `docs/README.md`
@@ -48,7 +74,7 @@ Assumptions:
 - ROS2: `docs/ros2.md`
 - Плагины: `docs/plugins.md`
 - API: `docs/api.md`
-- Транспорт/роботы: `docs/vehicles.md`, `docs/robots/ks0223.md`
+- Транспорт/роботы: `docs/vehicles.md`, `docs/robots/ks0223.md`, `docs/robots/simple-drone.md`
 - Python SDK: `python/README.md`
 
 ## Материалы магистерской
