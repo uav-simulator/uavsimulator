@@ -31,7 +31,7 @@ ROS2_VNC_PORT ?= 5901
 ROS_BRIDGE_RESET_FLAG := $(if $(filter 1 true TRUE yes YES,$(UAVSIM_ROS_RESET_ON_START)),--reset-on-start,)
 
 .PHONY: help quickstart venv sim sim-public sim-health sim-step sim-reset \
-	demo-up demo-control demo-reset demo-status demo-down demo-restart ros-demo-reset \
+	demo-up demo-control demo-reset demo-status demo-proof demo-down demo-restart ros-demo-reset \
 	ros-mock ros-bridge ros-demo ros-up ros-down ros-shell ros-bridge-container \
 	ros-ui-container ros-control-ui-container ros-topics ros-install-image-plugins \
 	ros-install-control-ui ros-cmd-vel ros-stop clean-pyc
@@ -42,7 +42,10 @@ help:
 	@echo "  make demo-up     - start ROS desktop + bridge + RViz/rqt windows"
 	@echo "  make demo-reset  - reset simulator to baseline robot/track"
 	@echo "  make demo-status - quick health check (API + ROS topics + bridge log)"
+	@echo "  make demo-proof  - strict pre-demo proof (health + reset + camera + ROS hz)"
 	@echo "  make demo-control - demo-up + ROS steering UI (cmd_vel)"
+	@echo "  make demo-reset UAVSIM_TRACK_ID=track.roadsystem_arena.v1"
+	@echo "  make demo-reset UAVSIM_VEHICLE_ID=vehicle.drone.simple.v1"
 	@echo "  make demo-down   - stop ROS desktop container"
 	@echo "  make demo-restart - full ROS restart (down -> up)"
 	@echo ""
@@ -109,7 +112,38 @@ demo-status:
 	@echo "[ros] container:" && (docker ps --filter "name=$(ROS2_CONTAINER)" --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}' || true)
 	@echo "[ros] bridge process:" && (docker exec "$(ROS2_CONTAINER)" bash -lc 'ps -ef | grep "python3 /workspace/python/bridges/ros2_bridge.py" | grep -v grep || true' || true)
 	@echo "[ros] topics (uavsim):" && (docker exec "$(ROS2_CONTAINER)" bash -lc 'su - ubuntu -c "source /opt/ros/humble/setup.bash; ros2 daemon stop >/dev/null 2>&1 || true; ros2 daemon start >/dev/null 2>&1 || true; ros2 topic list | grep \"^$(UAVSIM_ROS_NAMESPACE)\" | sort || true"' || true)
+	@echo "[ros] image transport plugins:" && (docker exec "$(ROS2_CONTAINER)" bash -lc 'dpkg -s ros-humble-image-transport-plugins >/dev/null 2>&1 && echo "installed (compressed topic supported)" || echo "not installed (optional; run: make ros-install-image-plugins for .../compressed)"' || true)
 	@echo "[ros] bridge log tail:" && (docker exec "$(ROS2_CONTAINER)" bash -lc 'tail -n 8 /home/ubuntu/uavsim_bridge.log 2>/dev/null || tail -n 8 /tmp/uavsim_bridge.log 2>/dev/null || true' || true)
+
+demo-proof:
+	@set -euo pipefail; \
+	echo "[1/6] simulator health"; \
+	health_json="$$(curl -m 4 -fsS "$(BASE_URL)/health")"; \
+	echo "$$health_json"; \
+	echo "[2/6] simulator reset"; \
+	reset_json="$$(curl -m 10 -fsS -X POST "$(BASE_URL)/reset" -H 'Content-Type: application/json' -d '{"seed":1,"timeScale":1.0,"selectedTrackId":"$(UAVSIM_TRACK_ID)","selectedVehicleId":"$(UAVSIM_VEHICLE_ID)","trackParams":[],"vehicleParams":[],"flags":[]}')"; \
+	echo "$$reset_json" | head -c 220; \
+	echo; \
+	echo "[3/6] simulator step + frame payload check"; \
+	step_json="$$(curl -m 10 -fsS -X POST "$(BASE_URL)/step" -H 'Content-Type: application/json' -d '{"throttle":0.0,"steer":0.0,"brake":0.0,"extensions":[],"timestamp":0,"timeBase":"sim_ms"}')"; \
+	STEP_JSON="$$step_json" python3 -c 'import json, os; payload = json.loads(os.environ.get("STEP_JSON", "{}")); state = payload.get("state"); frame = payload.get("frame") if isinstance(payload, dict) else None; frame_data = frame.get("dataBase64") if isinstance(frame, dict) else None; \
+if not isinstance(state, dict): raise SystemExit("StepResult.state is missing."); \
+if not isinstance(frame, dict): raise SystemExit("StepResult.frame is missing."); \
+if not isinstance(frame_data, str) or len(frame_data) < 32: raise SystemExit("StepResult.frame.dataBase64 is empty."); \
+print(f"step ok: frame_base64_len={len(frame_data)} speed={state.get(\"speed\", 0.0)}")'
+	@set -euo pipefail; \
+	echo "[4/6] check ROS container"; \
+	if ! docker ps --filter "name=$(ROS2_CONTAINER)" --format '{{.Names}}' | grep -qx "$(ROS2_CONTAINER)"; then \
+		echo "ROS container '$(ROS2_CONTAINER)' is not running. Start with: make demo-up" >&2; \
+		exit 1; \
+	fi; \
+	echo "[5/6] ROS camera one-shot on $(UAVSIM_CAMERA_TOPIC)"; \
+	docker exec -e UAVSIM_CAMERA_TOPIC="$(UAVSIM_CAMERA_TOPIC)" "$(ROS2_CONTAINER)" bash -lc 'source /opt/ros/humble/setup.bash; ros2 daemon stop >/dev/null 2>&1 || true; ros2 daemon start >/dev/null 2>&1 || true; timeout 12s ros2 topic echo --once "$$UAVSIM_CAMERA_TOPIC" > /tmp/uavsim_camera_once.log 2>&1'; \
+	docker exec "$(ROS2_CONTAINER)" bash -lc 'tail -n 2 /tmp/uavsim_camera_once.log'; \
+	echo "[6/6] ROS odom hz check"; \
+	docker exec -e UAVSIM_HZ_TOPIC="$(UAVSIM_ROS_NAMESPACE)/odom" "$(ROS2_CONTAINER)" bash -lc 'source /opt/ros/humble/setup.bash; timeout 12s ros2 topic hz "$$UAVSIM_HZ_TOPIC" > /tmp/uavsim_odom_hz.log 2>&1 || true; grep "average rate" /tmp/uavsim_odom_hz.log | tail -n 1 >/tmp/uavsim_odom_hz_last.log; test -s /tmp/uavsim_odom_hz_last.log'; \
+	docker exec "$(ROS2_CONTAINER)" bash -lc 'cat /tmp/uavsim_odom_hz_last.log'; \
+	echo "demo-proof passed"
 
 demo-down: ros-down
 

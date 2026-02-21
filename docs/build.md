@@ -21,12 +21,16 @@
   - `make venv`
 - Ежедневный флоу:
   - `make sim-public`
-  - в Unity нажать `Play`
+  - в Unity открыть `Assets/Scenes/PresentationTrack.unity` или `Assets/Scenes/RoadSystemTrack.unity`
+  - если нужно пересоздать RoadSystem-сцену: `UavSimulator/Scene/Build RoadSystem Track Scene`
+  - нажать `Play`
   - `make demo-up`
   - (опционально, для ручного ROS2 управления) `make demo-control`
   - `make demo-status`
+  - перед показом: `make demo-proof`
 - Точечные операции:
   - `make demo-reset`
+  - `make demo-proof`
   - `make demo-down`
   - `make demo-restart`
 - Advanced:
@@ -35,6 +39,10 @@
   - `make ros-bridge`, `make ros-mock`
   - `make sim-health`, `make sim-step`, `make sim-reset`
 
+Примечание:
+- `make demo-status` теперь выводит preflight по `ros-humble-image-transport-plugins`.
+- `make demo-proof` завершится ошибкой, если не выполняется любой из шагов проверки (`health/reset/step-frame/camera-one-shot/odom-hz`).
+
 ## Runtime поведение
 - `RuntimeSceneBootstrap` гарантирует наличие:
   - `SimulationManager`
@@ -42,8 +50,23 @@
   - `Ros2BridgeProcessHost` (опционально, по `UAVSIM_ENABLE_ROS2_BRIDGE=1`)
 - Если plugin assets отсутствуют, включается fallback:
   - `track.basic_arena.v1`
-  - `vehicle.ks0223.v1`
+  - `track.roadsystem_arena.v1`
+  - `vehicle.ks0223.v1` (PROMETEO visual)
+  - `vehicle.ks0223.arcade.blue.v1`
+  - `vehicle.ks0223.arcade.red.v1`
+  - `vehicle.ks0223.arcade.gray.v1`
+  - `vehicle.ks0223.arcade.purple.v1`
+  - `vehicle.drone.simple.v1`
 - В презентационной сцене автодрайв отключён по умолчанию.
+- При старте сцены транспорт не создаётся автоматически: нужен явный `reset`.
+
+## Быстрое переключение машины
+- Через reset API/Makefile:
+  - `make demo-reset UAVSIM_VEHICLE_ID=vehicle.ks0223.v1`
+  - `make demo-reset UAVSIM_VEHICLE_ID=vehicle.ks0223.arcade.blue.v1`
+  - `make demo-reset UAVSIM_VEHICLE_ID=vehicle.ks0223.arcade.red.v1`
+  - `make demo-reset UAVSIM_VEHICLE_ID=vehicle.drone.simple.v1`
+  - `make demo-reset UAVSIM_TRACK_ID=track.roadsystem_arena.v1`
 
 ## Next steps
 - Добавить формальный build pipeline для standalone player.
