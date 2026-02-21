@@ -38,6 +38,7 @@ Subscribe:
 4. Проверка состояния:
    - `make demo-status`
    - `make demo-proof` (строгая pre-demo проверка)
+   - при необходимости ослабить порог `odom hz`: `UAVSIM_ODOM_HZ_MIN=8 make demo-proof`
 5. При необходимости ручной reset:
    - `make demo-reset`
 

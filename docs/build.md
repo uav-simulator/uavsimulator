@@ -42,6 +42,7 @@
 Примечание:
 - `make demo-status` теперь выводит preflight по `ros-humble-image-transport-plugins`.
 - `make demo-proof` завершится ошибкой, если не выполняется любой из шагов проверки (`health/reset/step-frame/camera-one-shot/odom-hz`).
+- Порог `odom hz` можно настроить через `UAVSIM_ODOM_HZ_MIN` (по умолчанию `10`).
 
 ## Runtime поведение
 - `RuntimeSceneBootstrap` гарантирует наличие:
@@ -70,4 +71,4 @@
 
 ## Next steps
 - Добавить формальный build pipeline для standalone player.
-- Добавить отдельный make target для batch smoke в CI.
+- Добавить notebook-smoke в CI (без Unity — graceful skip, с Unity — полный прогон).
