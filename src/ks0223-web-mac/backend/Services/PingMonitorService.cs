@@ -4,11 +4,11 @@ namespace Ks0223.Web.Backend.Services;
 
 public sealed class PingMonitorService : BackgroundService
 {
-    private readonly PiTcpClientService piTcpClientService;
+    private readonly RuntimeControlService runtimeControlService;
 
-    public PingMonitorService(PiTcpClientService piTcpClientService)
+    public PingMonitorService(RuntimeControlService runtimeControlService)
     {
-        this.piTcpClientService = piTcpClientService;
+        this.runtimeControlService = runtimeControlService;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -18,14 +18,14 @@ public sealed class PingMonitorService : BackgroundService
         {
             try
             {
-                var target = piTcpClientService.GetConnectionTarget();
+                var target = runtimeControlService.GetConnectionTarget();
                 var reply = await ping.SendPingAsync(target.Host, 1000);
                 var latency = reply.Status == IPStatus.Success ? reply.RoundtripTime : (long?)null;
-                await piTcpClientService.UpdateLatencyAsync(latency);
+                await runtimeControlService.UpdateLatencyAsync(latency);
             }
             catch
             {
-                await piTcpClientService.UpdateLatencyAsync(null);
+                await runtimeControlService.UpdateLatencyAsync(null);
             }
 
             await Task.Delay(TimeSpan.FromSeconds(2), stoppingToken);

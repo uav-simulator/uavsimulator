@@ -5,22 +5,22 @@ namespace Ks0223.Web.Backend.Hubs;
 
 public sealed class TelemetryHub : Hub
 {
-    private readonly PiTcpClientService piTcpClientService;
+    private readonly RuntimeControlService runtimeControlService;
 
-    public TelemetryHub(PiTcpClientService piTcpClientService)
+    public TelemetryHub(RuntimeControlService runtimeControlService)
     {
-        this.piTcpClientService = piTcpClientService;
+        this.runtimeControlService = runtimeControlService;
     }
 
     public override async Task OnConnectedAsync()
     {
-        await piTcpClientService.RegisterUiConnectionAsync(Context.ConnectionId);
+        await runtimeControlService.RegisterUiConnectionAsync(Context.ConnectionId);
         await base.OnConnectedAsync();
     }
 
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
-        await piTcpClientService.UnregisterUiConnectionAsync(Context.ConnectionId);
+        await runtimeControlService.UnregisterUiConnectionAsync(Context.ConnectionId);
         await base.OnDisconnectedAsync(exception);
     }
 }
