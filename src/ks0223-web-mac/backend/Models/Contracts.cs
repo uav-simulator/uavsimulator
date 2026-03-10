@@ -4,9 +4,9 @@ public sealed record CommandRequest(string Command);
 
 public sealed record CommandResponse(bool Sent, string? Error = null);
 
-public sealed record ConnectRequest(string? Host, int? Port);
+public sealed record ConnectRequest(string? Host, int? Port, string? RuntimeMode = null);
 
-public sealed record ConnectionTargetDto(string Host, int Port);
+public sealed record ConnectionTargetDto(string Host, int Port, string RuntimeMode = "real-robot");
 
 public sealed record StartLoggingRequest(string? Tag);
 
@@ -30,7 +30,8 @@ public sealed record StatusDto(
     DateTimeOffset? LastTcpMessageAt,
     bool IsLogging,
     string? CurrentLogFile,
-    bool HasParsedTelemetry);
+    bool HasParsedTelemetry,
+    string RuntimeMode = "real-robot");
 
 public sealed record CameraStatusDto(
     bool UdpListenerEnabled,

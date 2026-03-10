@@ -28,6 +28,9 @@ builder.Services.AddCors(options =>
 builder.Services.AddSingleton<SessionLogger>();
 builder.Services.AddSingleton<TelemetryParser>();
 builder.Services.AddSingleton<PiTcpClientService>();
+builder.Services.AddSingleton<IKs0223RuntimeProvider, RealKs0223RuntimeProvider>();
+builder.Services.AddSingleton<IKs0223RuntimeProvider, UnityKs0223RuntimeProvider>();
+builder.Services.AddSingleton<RuntimeControlService>();
 builder.Services.AddSingleton<CameraStreamService>();
 builder.Services.AddSingleton<SensorBridgeService>();
 builder.Services.AddHostedService(serviceProvider => serviceProvider.GetRequiredService<PiTcpClientService>());
@@ -45,10 +48,10 @@ if (hasStaticFiles)
     app.UseStaticFiles();
 }
 
-app.MapGet("/api/status", (PiTcpClientService service) => Results.Ok(service.GetStatus()));
-app.MapGet("/api/health", (PiTcpClientService service, CameraStreamService cameraService, SensorBridgeService sensorBridgeService) =>
+app.MapGet("/api/status", (RuntimeControlService runtimeControlService) => Results.Ok(runtimeControlService.GetStatus()));
+app.MapGet("/api/health", (RuntimeControlService runtimeControlService, CameraStreamService cameraService, SensorBridgeService sensorBridgeService) =>
 {
-    var control = service.GetStatus();
+    var control = runtimeControlService.GetStatus();
     var camera = cameraService.GetStatus();
     var sensors = sensorBridgeService.GetStatus();
     var controlDegraded = control.DesiredConnection && !control.TcpConnected;
@@ -58,26 +61,30 @@ app.MapGet("/api/health", (PiTcpClientService service, CameraStreamService camer
     return Results.Ok(new HealthDto(status, DateTimeOffset.UtcNow, version, control, camera, sensors));
 });
 
-app.MapPost("/api/connection/connect", async (ConnectRequest? request, PiTcpClientService service, CancellationToken cancellationToken) =>
+app.MapPost("/api/connection/connect", async (ConnectRequest? request, RuntimeControlService runtimeControlService, CancellationToken cancellationToken) =>
 {
     try
     {
-        await service.ConnectAsync(request?.Host, request?.Port, cancellationToken);
-        return Results.Ok(service.GetStatus());
+        await runtimeControlService.ConnectAsync(request?.RuntimeMode, request?.Host, request?.Port, cancellationToken);
+        return Results.Ok(runtimeControlService.GetStatus());
     }
     catch (ArgumentException ex)
     {
         return Results.BadRequest(new { error = ex.Message });
     }
+    catch (NotSupportedException ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
 });
 
-app.MapPost("/api/connection/disconnect", async (PiTcpClientService service, CancellationToken cancellationToken) =>
+app.MapPost("/api/connection/disconnect", async (RuntimeControlService runtimeControlService, CancellationToken cancellationToken) =>
 {
-    await service.DisconnectAsync(cancellationToken);
-    return Results.Ok(service.GetStatus());
+    await runtimeControlService.DisconnectAsync(cancellationToken);
+    return Results.Ok(runtimeControlService.GetStatus());
 });
 
-app.MapGet("/api/connection/target", (PiTcpClientService service) => Results.Ok(service.GetConnectionTarget()));
+app.MapGet("/api/connection/target", (RuntimeControlService runtimeControlService) => Results.Ok(runtimeControlService.GetConnectionTarget()));
 app.MapGet("/api/camera/status", (CameraStreamService service) => Results.Ok(service.GetStatus()));
 app.MapGet("/api/sensors/status", (SensorBridgeService service) => Results.Ok(service.GetStatus()));
 app.MapGet("/api/sensors/latest", (SensorBridgeService service) =>
@@ -227,23 +234,23 @@ app.MapGet("/api/camera/mjpeg", async (HttpContext context, CameraStreamService 
     }
 });
 
-app.MapPost("/api/command", async (CommandRequest request, PiTcpClientService service, CancellationToken cancellationToken) =>
+app.MapPost("/api/command", async (CommandRequest request, RuntimeControlService runtimeControlService, CancellationToken cancellationToken) =>
 {
-    var response = await service.SendCommandAsync(request.Command, "ui", cancellationToken);
+    var response = await runtimeControlService.SendCommandAsync(request.Command, "ui", cancellationToken);
     return response.Sent ? Results.Ok(response) : Results.BadRequest(response);
 });
 
-app.MapPost("/api/logs/start", async (StartLoggingRequest request, SessionLogger logger, PiTcpClientService service, CancellationToken cancellationToken) =>
+app.MapPost("/api/logs/start", async (StartLoggingRequest request, SessionLogger logger, RuntimeControlService runtimeControlService, CancellationToken cancellationToken) =>
 {
     var state = await logger.StartAsync(request.Tag, cancellationToken);
-    await service.BroadcastStatusAsync(cancellationToken);
+    await runtimeControlService.BroadcastStatusAsync(cancellationToken);
     return Results.Ok(state);
 });
 
-app.MapPost("/api/logs/stop", async (SessionLogger logger, PiTcpClientService service, CancellationToken cancellationToken) =>
+app.MapPost("/api/logs/stop", async (SessionLogger logger, RuntimeControlService runtimeControlService, CancellationToken cancellationToken) =>
 {
     var state = await logger.StopAsync(cancellationToken);
-    await service.BroadcastStatusAsync(cancellationToken);
+    await runtimeControlService.BroadcastStatusAsync(cancellationToken);
     return Results.Ok(state);
 });
 
@@ -255,12 +262,13 @@ app.MapPost("/api/logs/open-folder", async (SessionLogger logger) =>
     return Results.Ok(new { opened = true, path = logger.LogsDirectory });
 });
 
-app.MapGet("/api/protocol", (PiTcpClientService service) =>
+app.MapGet("/api/protocol", (RuntimeControlService runtimeControlService) =>
 {
-    var target = service.GetConnectionTarget();
+    var target = runtimeControlService.GetConnectionTarget();
     return Results.Ok(new
     {
-        transport = "tcp",
+        runtimeMode = target.RuntimeMode,
+        transport = target.RuntimeMode == RuntimeModes.RealRobot ? "tcp" : "http-json-step",
         host = target.Host,
         port = target.Port,
         encoding = "utf-8 text",
