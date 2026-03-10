@@ -1,0 +1,16 @@
+[Unit]
+Description=KS0223 Sensor Telemetry Bridge
+After=network.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/RaspberryPi-Car/ks0223_sensor_bridge
+ExecStart=/usr/bin/python3 /home/pi/RaspberryPi-Car/ks0223_sensor_bridge/ks0223_sensor_bridge.py --host 0.0.0.0 --port 8765
+Restart=always
+RestartSec=1
+StandardOutput=append:/home/pi/RaspberryPi-Car/ks0223_sensor_bridge/bridge.log
+StandardError=append:/home/pi/RaspberryPi-Car/ks0223_sensor_bridge/bridge.log
+
+[Install]
+WantedBy=multi-user.target

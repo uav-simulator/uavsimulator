@@ -1,0 +1,18 @@
+[Unit]
+Description=KS0223 MainControl TCP service (port 5051)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+WorkingDirectory=/home/pi/RaspberryPi-Car
+Environment=PYTHONUNBUFFERED=1
+ExecStartPre=/bin/bash -lc 'for i in {1..40}; do ip -4 -o addr show wlan0 | grep -q "inet " && exit 0; sleep 1; done; exit 0'
+ExecStart=/usr/bin/python3 /home/pi/RaspberryPi-Car/MainControl.py
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

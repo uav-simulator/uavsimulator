@@ -1,0 +1,16 @@
+[Unit]
+Description=KS0223 camera UDP sender (FramesSend.py)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/pi/RaspberryPi-Car
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 /home/pi/RaspberryPi-Car/FramesSend.py
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
