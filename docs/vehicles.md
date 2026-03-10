@@ -19,6 +19,8 @@
   - Базовый канал `throttle/steer/brake` остаётся fallback для сима и универсальных агентов.
   - Сенсоры/термины выравниваются с CARLA/ROS2-подходом:
     - `sensor.camera.rgb`, `sensor.speedometer`, `sensor.range`, `sensor.line_tracker`, `sensor.powertrain`.
+- Дополнительно добавлен базовый drone профиль:
+  - `vehicle.drone.simple.v1` (MVP квадрокоптер для расширяемости архитектуры).
 
 ## Next steps
 - Добавить отдельный runtime adapter для KS0223 (Raspberry Pi), который переводит контракт симулятора в GPIO/PWM команды робота.

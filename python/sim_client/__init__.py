@@ -1,8 +1,17 @@
-from sim_client.ks0223 import Ks0223Command, parse_telemetry
+from .carla_like import Client, Map, Waypoint, default_command
+from .ks0223 import Ks0223Command, parse_telemetry
 
 try:
-    from sim_client.http_client import SimClient
+    from .http_client import SimClient
 except ModuleNotFoundError:
     SimClient = None
 
-__all__ = ["SimClient", "Ks0223Command", "parse_telemetry"]
+__all__ = [
+    "SimClient",
+    "Client",
+    "Map",
+    "Waypoint",
+    "default_command",
+    "Ks0223Command",
+    "parse_telemetry",
+]

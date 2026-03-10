@@ -14,6 +14,7 @@
 - Дрон-плагин:
   - `vehicle.drone.simple.v1`
 - HTTP JSON API (`/health`, `/contract`, `/reset`, `/step`).
+- CARLA-подобный high-level Python слой (`Client/World/Map/BlueprintLibrary`) поверх текущего API.
 - Презентационная сцена `PresentationTrack` с разметкой и sensor HUD.
 - Python SDK + Jupyter презентационный notebook.
 - Опциональный ROS2 bridge (typed topics + compat JSON topics).
@@ -24,6 +25,7 @@ Assumptions:
 
 1. Создай Python окружение:
    - `make venv`
+   - `python -m pip install ./python`
 2. Запусти симулятор (публичный API для ROS/Docker):
    - `make sim-public`
 3. В Unity открой сцену:
@@ -39,6 +41,9 @@ Assumptions:
    - `make demo-status`
 8. Строгая pre-demo проверка (fail-fast):
    - `make demo-proof`
+
+CLI пример CARLA-style:
+- `python python/examples/carla_like_quickstart.py --base-url http://127.0.0.1:8000`
 
 Примечание:
 - По умолчанию при старте сцены транспорт **не спавнится автоматически**. Экземпляр появляется после `reset` (API/ROS/demo-reset).

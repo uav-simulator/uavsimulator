@@ -109,16 +109,16 @@ namespace UavSimulator.Tracks
             var halfRoad = roadWidth * 0.5f;
 
             // Segment A (vertical).
-            CreateBlock("EdgeA_Left", transform, new Vector3(-halfRoad + hz, y, -4.5f), new Vector3(hz, 0.01f, 7f));
-            CreateBlock("EdgeA_Right", transform, new Vector3(halfRoad - hz, y, -4.5f), new Vector3(hz, 0.01f, 7f));
+            DisableCollider(CreateBlock("EdgeA_Left", transform, new Vector3(-halfRoad + hz, y, -4.5f), new Vector3(hz, 0.01f, 7f)));
+            DisableCollider(CreateBlock("EdgeA_Right", transform, new Vector3(halfRoad - hz, y, -4.5f), new Vector3(hz, 0.01f, 7f)));
 
             // Segment B (horizontal).
-            CreateBlock("EdgeB_Down", transform, new Vector3(3f, y, -1f - halfRoad + hz), new Vector3(6f, 0.01f, hz));
-            CreateBlock("EdgeB_Up", transform, new Vector3(3f, y, -1f + halfRoad - hz), new Vector3(6f, 0.01f, hz));
+            DisableCollider(CreateBlock("EdgeB_Down", transform, new Vector3(3f, y, -1f - halfRoad + hz), new Vector3(6f, 0.01f, hz)));
+            DisableCollider(CreateBlock("EdgeB_Up", transform, new Vector3(3f, y, -1f + halfRoad - hz), new Vector3(6f, 0.01f, hz)));
 
             // Segment C (vertical).
-            CreateBlock("EdgeC_Left", transform, new Vector3(6f - halfRoad + hz, y, 2f), new Vector3(hz, 0.01f, 6f));
-            CreateBlock("EdgeC_Right", transform, new Vector3(6f + halfRoad - hz, y, 2f), new Vector3(hz, 0.01f, 6f));
+            DisableCollider(CreateBlock("EdgeC_Left", transform, new Vector3(6f - halfRoad + hz, y, 2f), new Vector3(hz, 0.01f, 6f)));
+            DisableCollider(CreateBlock("EdgeC_Right", transform, new Vector3(6f + halfRoad - hz, y, 2f), new Vector3(hz, 0.01f, 6f)));
         }
 
         private void CreateDashedMarkings()
@@ -129,31 +129,31 @@ namespace UavSimulator.Tracks
             // Segment A markings.
             for (var z = -7.5f; z <= -1.5f; z += 1.0f)
             {
-                CreateBlock(
+                DisableCollider(CreateBlock(
                     "DashA",
                     markingsRoot.transform,
                     new Vector3(0f, 0.05f, z),
-                    new Vector3(0.2f, 0.01f, 0.55f));
+                    new Vector3(0.2f, 0.01f, 0.55f)));
             }
 
             // Segment B markings.
             for (var x = 0.8f; x <= 5.2f; x += 1.0f)
             {
-                CreateBlock(
+                DisableCollider(CreateBlock(
                     "DashB",
                     markingsRoot.transform,
                     new Vector3(x, 0.05f, -1f),
-                    new Vector3(0.55f, 0.01f, 0.2f));
+                    new Vector3(0.55f, 0.01f, 0.2f)));
             }
 
             // Segment C markings.
             for (var z = -0.2f; z <= 4.2f; z += 1.0f)
             {
-                CreateBlock(
+                DisableCollider(CreateBlock(
                     "DashC",
                     markingsRoot.transform,
                     new Vector3(6f, 0.05f, z),
-                    new Vector3(0.2f, 0.01f, 0.55f));
+                    new Vector3(0.2f, 0.01f, 0.55f)));
             }
         }
 

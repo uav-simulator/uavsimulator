@@ -1,6 +1,8 @@
 {
   "name": "UavSimulator.Runtime",
-  "references": [],
+  "references": [
+    "GUID:13bb748a4cdc23745900902b3024379d"
+  ],
   "includePlatforms": [],
   "excludePlatforms": [],
   "allowUnsafeCode": false,
@@ -8,6 +10,12 @@
   "precompiledReferences": [],
   "autoReferenced": true,
   "defineConstraints": [],
-  "versionDefines": [],
+  "versionDefines": [
+    {
+      "name": "com.barmetler.roadsystem",
+      "expression": "[0.0.0,)",
+      "define": "UAVSIM_ROADSYSTEM"
+    }
+  ],
   "noEngineReferences": false
 }

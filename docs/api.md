@@ -70,3 +70,28 @@ Decisions:
 
 Next steps:
 - Определить схему `dataRef` для кадров (отдельный endpoint/stream).
+
+## CARLA-подобный сценарий поверх текущего контракта
+Assumptions:
+- Нужен знакомый workflow в стиле CARLA (`load_world`, `spawn_actor`, `tick`) без смены транспорта и без поломки DTO.
+
+Decisions:
+- Смена карты/машины делается через существующий `POST /reset`:
+  - `SimulationConfig.selectedTrackId` = id карты (`track.*`);
+  - `SimulationConfig.selectedVehicleId` = id машинки (`vehicle.*`).
+- Маршрут обучения (waypoints) задаётся через `SimulationConfig.trackParams`:
+  - `route.waypoints` = строка `x,y,z;x,y,z;...` (поддерживается также формат `x,z`);
+  - `route.reach_distance_m` = порог достижения waypoint в метрах;
+  - `route.loop` = `true/false` (зацикливание маршрута).
+- На каждом `POST /step` симулятор возвращает прогресс маршрута в `StepResult.info`:
+  - `route.total_waypoints`
+  - `route.current_index`
+  - `route.remaining_waypoints`
+  - `route.reach_distance_m`
+  - `route.loop`
+  - `route.completed`
+  - `route.distance_to_target_m`
+
+Rationale:
+- Не добавляем новый транспорт/протокол и сохраняем обратную совместимость API.
+- Python SDK может предоставить CARLA-подобные абстракции поверх уже работающего backend.

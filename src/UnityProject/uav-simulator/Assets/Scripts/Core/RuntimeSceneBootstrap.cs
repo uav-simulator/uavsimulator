@@ -1,15 +1,22 @@
 using UavSimulator.Api;
+using UavSimulator.Tracks;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 namespace UavSimulator.Core
 {
     public static class RuntimeSceneBootstrap
     {
+        private const string RoadSystemSceneName = "RoadSystemTrack";
+        private static bool sceneHookInstalled;
+
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
         private static void EnsureRuntimeObjects()
         {
             ConfigureRuntimeExecution();
-            EnsureSimulationManager();
+            var manager = EnsureSimulationManager();
+            InstallSceneHooks();
+            OnSceneLoaded(SceneManager.GetActiveScene(), LoadSceneMode.Single);
             EnsureApiHost();
             EnsureRos2BridgeHostIfEnabled();
         }
@@ -20,16 +27,96 @@ namespace UavSimulator.Core
             Application.runInBackground = true;
         }
 
-        private static void EnsureSimulationManager()
+        private static SimulationManager EnsureSimulationManager()
         {
-            if (Object.FindFirstObjectByType<SimulationManager>() != null)
+            var manager = Object.FindFirstObjectByType<SimulationManager>();
+            if (manager == null)
+            {
+                var go = new GameObject(nameof(SimulationManager));
+                Object.DontDestroyOnLoad(go);
+                manager = go.AddComponent<SimulationManager>();
+            }
+
+            BindSceneRoots(manager);
+            return manager;
+        }
+
+        private static void BindSceneRoots(SimulationManager manager)
+        {
+            if (manager == null)
             {
                 return;
             }
 
-            var go = new GameObject(nameof(SimulationManager));
-            Object.DontDestroyOnLoad(go);
-            go.AddComponent<SimulationManager>();
+            var trackRoot = GameObject.Find("TrackRoot")?.transform;
+            var vehicleRoot = GameObject.Find("VehicleRoot")?.transform;
+            if (trackRoot == null && vehicleRoot == null)
+            {
+                return;
+            }
+
+            manager.ConfigureRoots(trackRoot, vehicleRoot);
+            manager.RemoveSceneVehiclePlaceholders();
+        }
+
+        private static void InstallSceneHooks()
+        {
+            if (sceneHookInstalled)
+            {
+                return;
+            }
+
+            SceneManager.sceneLoaded += OnSceneLoaded;
+            sceneHookInstalled = true;
+        }
+
+        private static void OnSceneLoaded(Scene scene, LoadSceneMode mode)
+        {
+            _ = mode;
+
+            var manager = EnsureSimulationManager();
+            EnsureSceneSpecificTrack(scene);
+            BindSceneRoots(manager);
+        }
+
+        private static void EnsureSceneSpecificTrack(Scene scene)
+        {
+            if (!string.Equals(scene.name, RoadSystemSceneName, System.StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            var trackRoot = GameObject.Find("TrackRoot");
+            if (trackRoot == null)
+            {
+                trackRoot = new GameObject("TrackRoot");
+            }
+
+            var existingRoadSystemTrack = trackRoot.GetComponentInChildren<RoadSystemArenaTrack>(includeInactive: true);
+            if (existingRoadSystemTrack != null)
+            {
+                existingRoadSystemTrack.ResetTrack(seed: 1);
+                return;
+            }
+
+            for (var i = trackRoot.transform.childCount - 1; i >= 0; i--)
+            {
+                var child = trackRoot.transform.GetChild(i).gameObject;
+                if (Application.isPlaying)
+                {
+                    Object.Destroy(child);
+                }
+                else
+                {
+                    Object.DestroyImmediate(child);
+                }
+            }
+
+            var roadTrack = new GameObject("RoadSystemArenaTrack");
+            roadTrack.transform.SetParent(trackRoot.transform, false);
+            roadTrack.transform.localPosition = Vector3.zero;
+            roadTrack.transform.localRotation = Quaternion.identity;
+            roadTrack.AddComponent<RoadSystemArenaTrack>();
         }
 
         private static void EnsureApiHost()

@@ -23,3 +23,21 @@
   - Опционально: `PluginRegistry` asset в `Assets/Resources/UavSimulator/PluginRegistry.asset`.
   - Альтернатива: отдельные descriptors в `Assets/Resources/UavSimulator/Plugins/` и загрузка через `Resources.LoadAll`.
 - Добавить lifecycle hook’и для hardware adapter (`connect`, `apply`, `read`, `disconnect`) и использовать их только в plugin scope.
+
+## Текущие vehicle plugins (runtime fallback)
+- `vehicle.ks0223.v1`:
+  - KS0223 контракт/сенсоры + визуал из `PROMETEO - Car Controller` (если ассет доступен).
+- `vehicle.ks0223.arcade.blue.v1`
+- `vehicle.ks0223.arcade.red.v1`
+- `vehicle.ks0223.arcade.gray.v1`
+- `vehicle.ks0223.arcade.purple.v1`
+- `vehicle.drone.simple.v1`:
+  - Базовый квадрокоптер с камерой, высотой/скоростью и thrust/pitch/yaw контролем.
+
+## Текущие track plugins (runtime fallback)
+- `track.basic_arena.v1`
+- `track.roadsystem_arena.v1` (на базе `Road System`)
+
+Примечание:
+- Все перечисленные `vehicleId` используют общую KS0223 физику/сенсоры (`Ks0223Vehicle`), но разные визуальные модели.
+- Встроенный fallback загрузчик визуалов использует `AssetDatabase` (Unity Editor). Для standalone/server build рекомендован `Resources`-реестр плагинов с проставленными prefab references.
