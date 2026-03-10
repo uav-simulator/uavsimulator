@@ -84,3 +84,15 @@ Thumbs.db
 
 # Unity crash dumps
 mono_crash.mem.*.blob
+
+# Python caches
+__pycache__/
+*.py[cod]
+
+# Local preview/debug artifacts
+tmp/
+output/*.png
+output/*.jpg
+output/*.xwd
+output/*.log
+output/debug_turns/
