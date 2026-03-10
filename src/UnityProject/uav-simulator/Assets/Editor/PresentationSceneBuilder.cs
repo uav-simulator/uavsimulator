@@ -2,7 +2,6 @@ using System.IO;
 using UavSimulator.Core;
 using UavSimulator.Plugins;
 using UavSimulator.Tracks;
-using UavSimulator.Vehicles;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -33,11 +32,6 @@ namespace UavSimulator.EditorTools
 
             var vehicleRoot = new GameObject("VehicleRoot");
             vehicleRoot.transform.SetParent(root.transform, false);
-            BuiltinPluginFactory.TryCreateVehicleInstance(BuiltinPluginFactory.Ks0223VehicleId, vehicleRoot.transform, out VehicleBase vehicle);
-            if (vehicle != null)
-            {
-                vehicle.ResetVehicle(seed: 1);
-            }
 
             CreateCamera(root.transform);
             CreateLight(root.transform);

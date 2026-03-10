@@ -52,8 +52,11 @@ namespace UavSimulator.Vehicles
             body.mass = 1.0f;
 
             EnsureFrontCamera();
-            EnsurePresentationVisuals();
-            ApplyVisualPalette();
+            if (transform.Find("VisualModel") == null)
+            {
+                EnsurePresentationVisuals();
+                ApplyVisualPalette();
+            }
         }
 
         public override void ApplyControl(ControlCommand command)
