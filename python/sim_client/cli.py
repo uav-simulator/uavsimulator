@@ -20,6 +20,9 @@ DEFAULT_UNITY_BIN = f"/Applications/Unity/Hub/Editor/{DEFAULT_UNITY_VERSION}/Uni
 DEFAULT_PROJECT_PATH = "src/UnityProject/uav-simulator"
 DEFAULT_SCENE_PATH = "Assets/Scenes/TrackScence.unity"
 DEFAULT_RUNTIME_APP = "build/runtime/macos/uav-simulator.app"
+REPO_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_BIN_DIR = Path.home() / ".local" / "bin"
+DEFAULT_ZSHRC = Path.home() / ".zshrc"
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -31,6 +34,31 @@ def build_parser() -> argparse.ArgumentParser:
 
     contract = subparsers.add_parser("contract", help="Print simulator contract.")
     contract.add_argument("--base-url", default="http://127.0.0.1:8000")
+
+    install = subparsers.add_parser("install", help="Install rusim wrapper into user PATH.")
+    install.add_argument("--bin-dir", default=str(DEFAULT_BIN_DIR))
+    install.add_argument("--rc-file", default=str(DEFAULT_ZSHRC))
+    install.add_argument("--write-shell-config", action="store_true")
+
+    list_cmd = subparsers.add_parser("list", help="List available runtime entities from simulator contract.")
+    list_sub = list_cmd.add_subparsers(dest="list_command", required=True)
+    for name in ("tracks", "scenes", "vehicles"):
+        parser_item = list_sub.add_parser(name, help=f"List available {name}.")
+        parser_item.add_argument("--base-url", default="http://127.0.0.1:8000")
+
+    inspect = subparsers.add_parser("inspect", help="Inspect a vehicle or track from simulator contract.")
+    inspect_sub = inspect.add_subparsers(dest="inspect_command", required=True)
+    for name in ("track", "scene", "vehicle"):
+        parser_item = inspect_sub.add_parser(name, help=f"Inspect {name} by id.")
+        parser_item.add_argument("id")
+        parser_item.add_argument("--base-url", default="http://127.0.0.1:8000")
+
+    reset_cmd = subparsers.add_parser("reset", help="Reset simulator by selecting track and vehicle directly.")
+    reset_cmd.add_argument("--base-url", default="http://127.0.0.1:8000")
+    reset_cmd.add_argument("--track-id", default="")
+    reset_cmd.add_argument("--vehicle-id", default="")
+    reset_cmd.add_argument("--seed", type=int, default=0)
+    reset_cmd.add_argument("--time-scale", type=float, default=1.0)
 
     runtime = subparsers.add_parser("runtime", help="Build and inspect standalone runtime.")
     runtime_sub = runtime.add_subparsers(dest="runtime_command", required=True)
@@ -94,6 +122,14 @@ def main(argv: list[str] | None = None) -> int:
             return _doctor(args.base_url)
         if args.command == "contract":
             return _contract(args.base_url)
+        if args.command == "install":
+            return _install(args)
+        if args.command == "list":
+            return _list_entities(args)
+        if args.command == "inspect":
+            return _inspect_entity(args)
+        if args.command == "reset":
+            return _reset_runtime(args)
         if args.command == "runtime":
             return _runtime(args)
         if args.command == "server":
@@ -133,6 +169,136 @@ def _doctor(base_url: str) -> int:
 def _contract(base_url: str) -> int:
     client = SimClient(base_url=base_url)
     print(json.dumps(client.get_contract(), ensure_ascii=False, indent=2))
+    return 0
+
+
+def _install(args: argparse.Namespace) -> int:
+    bin_dir = Path(args.bin_dir).expanduser().resolve()
+    rc_file = Path(args.rc_file).expanduser().resolve()
+    wrapper_path = REPO_ROOT / "rusim"
+
+    if not wrapper_path.exists():
+        raise FileNotFoundError(f"rusim wrapper not found: {wrapper_path}")
+
+    wrapper_path.chmod(wrapper_path.stat().st_mode | 0o111)
+    bin_dir.mkdir(parents=True, exist_ok=True)
+
+    target = bin_dir / "rusim"
+    if target.exists() or target.is_symlink():
+        target.unlink()
+    target.symlink_to(wrapper_path)
+
+    path_entry = str(bin_dir)
+    path_ok = _path_contains(path_entry, os.environ.get("PATH", ""))
+    rc_updated = False
+    export_line = f'export PATH="{path_entry}:$PATH"'
+
+    if args.write_shell_config and not _rc_contains_line(rc_file, export_line):
+        if not rc_file.exists():
+            rc_file.parent.mkdir(parents=True, exist_ok=True)
+            rc_file.write_text("", encoding="utf-8")
+        with rc_file.open("a", encoding="utf-8") as handle:
+            if rc_file.stat().st_size > 0:
+                handle.write("\n")
+            handle.write(f"{export_line}\n")
+        rc_updated = True
+
+    result = {
+        "wrapper": str(wrapper_path),
+        "installedSymlink": str(target),
+        "pathEntry": path_entry,
+        "pathConfiguredInCurrentShell": path_ok,
+        "rcFile": str(rc_file),
+        "rcUpdated": rc_updated,
+        "nextStep": "source ~/.zshrc" if args.write_shell_config and not path_ok else "rusim --help",
+    }
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0
+
+
+def _list_entities(args: argparse.Namespace) -> int:
+    contract = SimClient(base_url=args.base_url).get_contract()
+    if args.list_command in ("tracks", "scenes"):
+        items = [_normalize_track_descriptor(item) for item in contract.get("availableTracks") or []]
+        result = {
+            "baseUrl": args.base_url,
+            "kind": "tracks",
+            "count": len(items),
+            "items": items,
+        }
+    else:
+        items = [_normalize_vehicle_descriptor(item) for item in contract.get("availableVehicles") or []]
+        result = {
+            "baseUrl": args.base_url,
+            "kind": "vehicles",
+            "count": len(items),
+            "items": items,
+        }
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0
+
+
+def _inspect_entity(args: argparse.Namespace) -> int:
+    contract = SimClient(base_url=args.base_url).get_contract()
+    if args.inspect_command in ("track", "scene"):
+        item = _find_track(contract, args.id)
+        result = {
+            "baseUrl": args.base_url,
+            "kind": "track",
+            "track": _normalize_track_descriptor(item),
+            "resetExample": {
+                "command": f"rusim reset --base-url {args.base_url} --track-id {item.get('trackId')}",
+            },
+        }
+    else:
+        item = _find_vehicle(contract, args.id)
+        result = {
+            "baseUrl": args.base_url,
+            "kind": "vehicle",
+            "vehicle": _normalize_vehicle_descriptor(item, include_contract=True),
+            "connectionMode": {
+                "type": "shared-runtime",
+                "description": "К машинке в Unity не подключаются отдельным портом. Нужно подключаться к runtime и выбирать vehicle через reset.",
+            },
+            "resetExample": {
+                "command": f"rusim reset --base-url {args.base_url} --vehicle-id {item.get('deviceId')}",
+            },
+        }
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0
+
+
+def _reset_runtime(args: argparse.Namespace) -> int:
+    client = SimClient(base_url=args.base_url)
+    contract = client.get_contract()
+
+    selected_track_id = args.track_id or _first_track_id(contract)
+    selected_vehicle_id = args.vehicle_id or _first_vehicle_id(contract)
+
+    if selected_track_id:
+        _find_track(contract, selected_track_id)
+    if selected_vehicle_id:
+        _find_vehicle(contract, selected_vehicle_id)
+
+    payload = {
+        "seed": int(args.seed),
+        "timeScale": float(args.time_scale),
+        "selectedTrackId": selected_track_id,
+        "selectedVehicleId": selected_vehicle_id,
+        "trackParams": [],
+        "vehicleParams": [],
+        "flags": [],
+    }
+    response = client.reset(payload)
+    result = {
+        "baseUrl": args.base_url,
+        "selectedTrackId": selected_track_id,
+        "selectedVehicleId": selected_vehicle_id,
+        "done": response.get("done"),
+        "hasFrame": bool(response.get("frame")),
+        "resetPayload": payload,
+    }
+    print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0
 
 
@@ -539,6 +705,80 @@ def _resolve_runtime_executable(runtime_app: Path) -> Path:
     if len(candidates) == 1:
         return candidates[0]
     raise FileNotFoundError(f"Runtime executable not found in app bundle: {runtime_app}")
+
+
+def _path_contains(path_entry: str, path_env: str) -> bool:
+    parts = [part for part in path_env.split(os.pathsep) if part]
+    return path_entry in parts
+
+
+def _rc_contains_line(rc_file: Path, line: str) -> bool:
+    if not rc_file.exists():
+        return False
+    return line in rc_file.read_text(encoding="utf-8")
+
+
+def _first_track_id(contract: Dict[str, Any]) -> str:
+    for item in contract.get("availableTracks") or []:
+        if isinstance(item, dict):
+            candidate = str(item.get("trackId") or "")
+            if candidate:
+                return candidate
+    return ""
+
+
+def _first_vehicle_id(contract: Dict[str, Any]) -> str:
+    for item in contract.get("availableVehicles") or []:
+        if isinstance(item, dict):
+            candidate = str(item.get("deviceId") or "")
+            if candidate:
+                return candidate
+    return ""
+
+
+def _find_track(contract: Dict[str, Any], track_id: str) -> Dict[str, Any]:
+    for item in contract.get("availableTracks") or []:
+        if isinstance(item, dict) and str(item.get("trackId") or "") == track_id:
+            return item
+    raise KeyError(f"Unknown track id: '{track_id}'.")
+
+
+def _find_vehicle(contract: Dict[str, Any], vehicle_id: str) -> Dict[str, Any]:
+    for item in contract.get("availableVehicles") or []:
+        if isinstance(item, dict) and str(item.get("deviceId") or "") == vehicle_id:
+            return item
+    raise KeyError(f"Unknown vehicle id: '{vehicle_id}'.")
+
+
+def _normalize_track_descriptor(item: Any) -> Dict[str, Any]:
+    descriptor = dict(item) if isinstance(item, dict) else {}
+    track_id = str(descriptor.get("trackId") or "")
+    display_name = str(descriptor.get("displayName") or track_id)
+    return {
+        "id": track_id,
+        "displayName": display_name,
+        "parametersSchemaJson": descriptor.get("parametersSchemaJson"),
+    }
+
+
+def _normalize_vehicle_descriptor(item: Any, include_contract: bool = False) -> Dict[str, Any]:
+    descriptor = dict(item) if isinstance(item, dict) else {}
+    sensors = descriptor.get("sensors") or []
+    actuators = descriptor.get("actuators") or []
+    result = {
+        "id": str(descriptor.get("deviceId") or ""),
+        "deviceType": str(descriptor.get("deviceType") or ""),
+        "sensorCount": len(sensors),
+        "actuatorCount": len(actuators),
+        "sensorIds": [str(sensor.get("id") or "") for sensor in sensors if isinstance(sensor, dict)],
+        "actuatorIds": [str(actuator.get("id") or "") for actuator in actuators if isinstance(actuator, dict)],
+    }
+    if include_contract:
+        result["sensors"] = sensors
+        result["actuators"] = actuators
+        result["observationSchemaJson"] = descriptor.get("observationSchemaJson")
+        result["actionSchemaJson"] = descriptor.get("actionSchemaJson")
+    return result
 
 
 if __name__ == "__main__":

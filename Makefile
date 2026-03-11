@@ -117,14 +117,7 @@ sim-contract:
 	PYTHONPATH=python $(PYTHON) -m sim_client.cli contract --base-url "$(BASE_URL)"
 
 sim-install-cli:
-	@mkdir -p "$$HOME/.local/bin"
-	@chmod +x "$(PROJECT_ROOT)/rusim"
-	@ln -sf "$(PROJECT_ROOT)/rusim" "$$HOME/.local/bin/rusim"
-	@echo "Installed: $$HOME/.local/bin/rusim"
-	@case ":$$PATH:" in \
-		*":$$HOME/.local/bin:"*) echo "PATH ok";; \
-		*) echo 'Add to ~/.zshrc: export PATH="$$HOME/.local/bin:$$PATH"';; \
-	esac
+	@"$(PROJECT_ROOT)/rusim" install --write-shell-config
 
 sim-runtime-build:
 	PYTHONPATH=python $(PYTHON) -m sim_client.cli runtime build --project-path "$(UNITY_PROJECT)" --output "$(RUNTIME_APP)"
