@@ -534,6 +534,12 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
         var url = $"http://{targetHost}:{targetPort}{path}";
 
         var request = new HttpRequestMessage(method, url);
+        var hostHeader = GetHostHeaderOverride(targetHost, targetPort);
+        if (hostHeader is not null)
+        {
+            request.Headers.Host = hostHeader;
+        }
+
         if (payload is not null)
         {
             request.Content = JsonContent.Create(payload, options: JsonOptions);
@@ -769,5 +775,20 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
         }
 
         return File.Exists("/.dockerenv");
+    }
+
+    private static string? GetHostHeaderOverride(string host, int port)
+    {
+        if (!IsRunningInContainer())
+        {
+            return null;
+        }
+
+        if (!string.Equals(host, "host.docker.internal", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        return $"127.0.0.1:{port}";
     }
 }
