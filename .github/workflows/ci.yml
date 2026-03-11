@@ -31,9 +31,8 @@ jobs:
           dotnet-version: "8.0.x"
       - name: Restore and build backend
         run: |
-          dotnet restore
-          dotnet build --no-restore
-        working-directory: src/ks0223-web-mac/backend
+          dotnet restore src/ks0223-web-mac/backend/backend.csproj
+          dotnet build src/ks0223-web-mac/backend/backend.csproj --no-restore
 
   frontend-build:
     name: Frontend build (Vite)
