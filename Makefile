@@ -31,7 +31,7 @@ ROS2_VNC_PORT ?= 5901
 
 ROS_BRIDGE_RESET_FLAG := $(if $(filter 1 true TRUE yes YES,$(UAVSIM_ROS_RESET_ON_START)),--reset-on-start,)
 
-.PHONY: help quickstart venv sim sim-public sim-health sim-step sim-reset sim-doctor sim-contract sim-runtime-build sim-server-start sim-server-start-runtime sim-server-status sim-server-stop sim-scenario-validate sim-scenario-print sim-scenario-reset \
+.PHONY: help quickstart venv sim sim-public sim-health sim-step sim-reset sim-doctor sim-contract sim-install-cli sim-runtime-build sim-server-start sim-server-start-runtime sim-server-status sim-server-stop sim-scenario-validate sim-scenario-print sim-scenario-reset \
 	demo-up demo-control demo-reset demo-status demo-proof demo-proof-ci demo-down demo-restart ros-demo-reset \
 	ros-mock ros-bridge ros-demo ros-up ros-down ros-shell ros-bridge-container \
 	ros-ui-container ros-control-ui-container ros-topics ros-install-image-plugins \
@@ -45,6 +45,7 @@ help:
 	@echo "  make sim-public  - start Unity (API accessible for Docker bridge)"
 	@echo "  make sim-doctor"
 	@echo "  make sim-contract"
+	@echo "  make sim-install-cli"
 	@echo "  make sim-runtime-build"
 	@echo "  make sim-server-start MODE=headless PORT=8011"
 	@echo "  make sim-server-start-runtime MODE=headless PORT=8011"
@@ -114,6 +115,16 @@ sim-doctor:
 
 sim-contract:
 	PYTHONPATH=python $(PYTHON) -m sim_client.cli contract --base-url "$(BASE_URL)"
+
+sim-install-cli:
+	@mkdir -p "$$HOME/.local/bin"
+	@chmod +x "$(PROJECT_ROOT)/rusim"
+	@ln -sf "$(PROJECT_ROOT)/rusim" "$$HOME/.local/bin/rusim"
+	@echo "Installed: $$HOME/.local/bin/rusim"
+	@case ":$$PATH:" in \
+		*":$$HOME/.local/bin:"*) echo "PATH ok";; \
+		*) echo 'Add to ~/.zshrc: export PATH="$$HOME/.local/bin:$$PATH"';; \
+	esac
 
 sim-runtime-build:
 	PYTHONPATH=python $(PYTHON) -m sim_client.cli runtime build --project-path "$(UNITY_PROJECT)" --output "$(RUNTIME_APP)"

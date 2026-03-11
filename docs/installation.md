@@ -28,6 +28,38 @@
 - Python `3.11+`
 - зависимости из `python/requirements.txt`
 
+## Установка CLI `rusim` в macOS zsh
+Сейчас `rusim` не добавляется в глобальный `PATH` автоматически.
+
+Практические варианты:
+
+### Вариант 1. Запуск из репозитория
+
+```bash
+chmod +x ./rusim
+./rusim --help
+```
+
+### Вариант 2. Установка в пользовательский PATH
+Рекомендуемый способ для macOS:
+
+```bash
+make sim-install-cli
+```
+
+Если `~/.local/bin` ещё не в `PATH`, добавить один раз:
+
+```bash
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
+```
+
+После этого команда должна быть доступна из обычного `zsh`:
+
+```bash
+rusim --help
+```
+
 ## Быстрый локальный старт
 ### 1. Симулятор
 Открыть Unity-проект:
@@ -91,6 +123,7 @@ rusim web open
 Минимальный практический smoke-check:
 
 ```bash
+./rusim --help
 dotnet build src/ks0223-web-mac/backend/backend.csproj
 cd src/ks0223-web-mac/frontend && npm run build
 python -c "from sim_client.http_client import SimClient; print(SimClient)"
