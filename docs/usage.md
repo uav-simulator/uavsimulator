@@ -60,7 +60,8 @@ sequenceDiagram
 Если `rusim` не найден в `zsh`, сначала выполнить:
 
 ```bash
-make sim-install-cli
+./rusim install --write-shell-config
+source ~/.zshrc
 ```
 
 или запускать из корня репозитория:
@@ -71,8 +72,16 @@ make sim-install-cli
 
 Поддерживаемые команды:
 
+- `install`
 - `doctor`
 - `contract`
+- `list tracks`
+- `list scenes`
+- `list vehicles`
+- `inspect track`
+- `inspect scene`
+- `inspect vehicle`
+- `reset`
 - `scenario validate`
 - `scenario print-reset`
 - `scenario reset`
@@ -81,12 +90,22 @@ make sim-install-cli
 Примеры:
 
 ```bash
+rusim install --write-shell-config
 rusim doctor --base-url http://127.0.0.1:8000
 rusim contract --base-url http://127.0.0.1:8000
+rusim list tracks --base-url http://127.0.0.1:8000
+rusim list vehicles --base-url http://127.0.0.1:8000
+rusim inspect vehicle vehicle.ks0223.v1 --base-url http://127.0.0.1:8000
+rusim reset --base-url http://127.0.0.1:8000 --track-id track.basic_arena.v1 --vehicle-id vehicle.ks0223.v1
 rusim scenario validate configs/scenarios/ks0223-demo.yaml
 rusim scenario reset configs/scenarios/ks0223-demo.yaml --base-url http://127.0.0.1:8000
 rusim step --base-url http://127.0.0.1:8000 --throttle 0.2 --steer 0.1
 ```
+
+Важно:
+- `scene` в CLI является alias для track plugin;
+- к отдельной машинке в Unity не подключаются через отдельный порт;
+- подключение идёт к общему runtime, а выбор активной машинки/сцены делается через `rusim reset`.
 
 Ограничение текущего среза:
 - CLI пока управляет уже поднятым runtime;

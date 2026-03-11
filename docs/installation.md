@@ -29,7 +29,13 @@
 - зависимости из `python/requirements.txt`
 
 ## Установка CLI `rusim` в macOS zsh
-Сейчас `rusim` не добавляется в глобальный `PATH` автоматически.
+Сейчас канонический bootstrap-путь для CLI:
+
+```bash
+./rusim install --write-shell-config
+source ~/.zshrc
+rusim --help
+```
 
 Практические варианты:
 
@@ -44,10 +50,20 @@ chmod +x ./rusim
 Рекомендуемый способ для macOS:
 
 ```bash
+./rusim install --write-shell-config
+```
+
+Команда:
+- ставит symlink `~/.local/bin/rusim`;
+- при флаге `--write-shell-config` добавляет `~/.local/bin` в `~/.zshrc`, если записи там ещё нет.
+
+Альтернативный alias через `Makefile`:
+
+```bash
 make sim-install-cli
 ```
 
-Если `~/.local/bin` ещё не в `PATH`, добавить один раз:
+Если `PATH` нужно прописать вручную:
 
 ```bash
 echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
@@ -108,7 +124,7 @@ make docker-up
 4. Возможность подключаться к симуляции с другой машины.
 
 ## Целевой CLI-поток
-Планируемый UX:
+Текущий целевой UX уже частично реализован:
 
 ```bash
 rusim install
@@ -117,7 +133,7 @@ rusim server start --profile ks0223-demo
 rusim web open
 ```
 
-Это еще не реализовано полностью, но именно такой поток считается целевым.
+Полностью не реализован пока только пользовательский поток `rusim web open`.
 
 ## Проверка окружения
 Минимальный практический smoke-check:
@@ -134,6 +150,9 @@ python -c "from sim_client.http_client import SimClient; print(SimClient)"
 
 ```bash
 rusim doctor --base-url http://127.0.0.1:8000
+rusim list tracks --base-url http://127.0.0.1:8000
+rusim list vehicles --base-url http://127.0.0.1:8000
+rusim reset --base-url http://127.0.0.1:8000 --track-id track.basic_arena.v1 --vehicle-id vehicle.ks0223.v1
 rusim scenario validate configs/scenarios/ks0223-demo.yaml
 rusim scenario reset configs/scenarios/ks0223-demo.yaml --base-url http://127.0.0.1:8000
 ```
