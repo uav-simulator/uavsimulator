@@ -79,10 +79,10 @@ make docker-up
 Планируемый UX:
 
 ```bash
-uav-sim install
-uav-sim doctor
-uav-sim server start --profile ks0223-demo
-uav-sim web open
+rusim install
+rusim doctor
+rusim server start --profile ks0223-demo
+rusim web open
 ```
 
 Это еще не реализовано полностью, но именно такой поток считается целевым.
@@ -100,9 +100,9 @@ python -c "from sim_client.http_client import SimClient; print(SimClient)"
 Минимальный продуктовый CLI-слой уже поддерживает:
 
 ```bash
-PYTHONPATH=python python3 -m sim_client.cli doctor --base-url http://127.0.0.1:8000
-PYTHONPATH=python python3 -m sim_client.cli scenario validate configs/scenarios/ks0223-demo.yaml
-PYTHONPATH=python python3 -m sim_client.cli scenario reset configs/scenarios/ks0223-demo.yaml --base-url http://127.0.0.1:8000
+rusim doctor --base-url http://127.0.0.1:8000
+rusim scenario validate configs/scenarios/ks0223-demo.yaml
+rusim scenario reset configs/scenarios/ks0223-demo.yaml --base-url http://127.0.0.1:8000
 ```
 
 Через `Makefile` это же доступно короче:

@@ -69,11 +69,11 @@ sequenceDiagram
 Примеры:
 
 ```bash
-PYTHONPATH=python python3 -m sim_client.cli doctor --base-url http://127.0.0.1:8000
-PYTHONPATH=python python3 -m sim_client.cli contract --base-url http://127.0.0.1:8000
-PYTHONPATH=python python3 -m sim_client.cli scenario validate configs/scenarios/ks0223-demo.yaml
-PYTHONPATH=python python3 -m sim_client.cli scenario reset configs/scenarios/ks0223-demo.yaml --base-url http://127.0.0.1:8000
-PYTHONPATH=python python3 -m sim_client.cli step --base-url http://127.0.0.1:8000 --throttle 0.2 --steer 0.1
+rusim doctor --base-url http://127.0.0.1:8000
+rusim contract --base-url http://127.0.0.1:8000
+rusim scenario validate configs/scenarios/ks0223-demo.yaml
+rusim scenario reset configs/scenarios/ks0223-demo.yaml --base-url http://127.0.0.1:8000
+rusim step --base-url http://127.0.0.1:8000 --throttle 0.2 --steer 0.1
 ```
 
 Ограничение текущего среза:
