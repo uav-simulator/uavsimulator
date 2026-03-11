@@ -113,6 +113,20 @@ make sim-scenario-print
 make sim-scenario-reset
 ```
 
+## Launcher runtime
+CLI также поддерживает первый launcher Unity runtime:
+
+```bash
+rusim server start --mode windowed
+rusim server start --mode headless --port 8011
+rusim server status --port 8011
+rusim server stop
+```
+
+Ограничение Unity:
+- новый Unity instance не сможет открыть тот же проект, если он уже открыт в другом Editor instance;
+- в этом случае `rusim` возвращает явную диагностическую ошибку, а не молчаливый таймаут.
+
 ## Связанные документы
 - [Использование](usage.md)
 - [CI/CD](ci.md)

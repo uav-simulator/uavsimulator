@@ -80,6 +80,22 @@ rusim step --base-url http://127.0.0.1:8000 --throttle 0.2 --steer 0.1
 - CLI пока управляет уже поднятым runtime;
 - полноценный lifecycle запуска Unity в server/headless режиме остаётся следующим продуктовым шагом.
 
+Частично это уже закрыто:
+- добавлен `rusim server start/status/stop` для запуска отдельного Unity runtime instance;
+- но launcher всё ещё ограничен стандартным Unity project lock.
+
+Примеры:
+
+```bash
+rusim server start --mode windowed
+rusim server start --mode headless --port 8011
+rusim server status --port 8011
+rusim server stop
+```
+
+Практическое ограничение:
+- если проект уже открыт в другом Unity Editor instance, headless/windowed launcher второго instance не сможет занять тот же project path.
+
 ## Python SDK и notebooks
 Python tooling используется для:
 
