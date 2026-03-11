@@ -174,7 +174,7 @@ namespace UavSimulator.Plugins
                         sensorType = "sensor.camera.rgb",
                         format = "jpeg",
                         unit = "pixel",
-                        shape = new[] { 120, 160, 3 },
+                        shape = new[] { 480, 640, 3 },
                         rateHz = 15f,
                     },
                     new SensorDescriptor
