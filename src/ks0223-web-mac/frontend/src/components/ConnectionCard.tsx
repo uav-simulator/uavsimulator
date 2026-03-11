@@ -51,6 +51,7 @@ export function ConnectionCard({
   const disconnectedLabel = isUnityMode ? 'Unity API отключен' : 'TCP отключен'
   const hostLabel = isUnityMode ? 'IP или host Unity runtime' : 'IP или host Raspberry Pi'
   const defaultPort = isUnityMode ? 8000 : 5051
+  const runtimeLabel = status?.runtimeLabel ?? (isUnityMode ? 'Keyestudio KS0223 (Unity Simulator)' : 'Keyestudio KS0223 (Real Robot)')
 
   return (
     <Card sx={{ minHeight: 260 }}>
@@ -67,6 +68,7 @@ export function ConnectionCard({
               color={tcpConnected ? 'success' : 'default'}
               label={tcpConnected ? connectionLabel : disconnectedLabel}
             />
+            <Chip label={runtimeLabel} variant="outlined" />
             <Chip label={`UI-клиенты: ${status?.uiConnectedClients ?? 0}`} variant="outlined" />
             <Chip label={`Задержка: ${formatLatency(status?.latencyMs ?? null)}`} variant="outlined" />
           </Stack>
