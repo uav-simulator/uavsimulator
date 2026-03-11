@@ -28,6 +28,7 @@ function statusChip(value: SensorItem['networkStatus']) {
 }
 
 export function SensorInventoryPanel({ status, camera, sensorStatus, sensorTelemetry }: Props) {
+  const isUnityMode = status?.runtimeMode === 'unity-sim'
   const cameraVideoStatus: SensorItem['networkStatus'] = camera?.hasFrame ? 'available' : 'partial'
   const flat = sensorTelemetry?.flat ?? {}
   const hasUltrasonic = sensorStatus?.hasTelemetry && Boolean(flat['ultrasonic.distance_cm'])
@@ -39,39 +40,55 @@ export function SensorInventoryPanel({ status, camera, sensorStatus, sensorTelem
   const sensors: SensorItem[] = [
     {
       key: 'Камера RGB (video)',
-      source: 'FramesSend.py / FramesSend_test.py',
+      source: isUnityMode ? 'Unity HttpJsonApiHost / frame.dataBase64' : 'FramesSend.py / FramesSend_test.py',
       networkStatus: cameraVideoStatus,
-      notes: camera?.hasFrame ? 'Поток получен через UDP 5051.' : 'Поток не обнаружен (проверь запуск FramesSend.py на Pi).',
+      notes: camera?.hasFrame
+        ? isUnityMode
+          ? 'Кадры получены из Unity runtime и отданы через unified camera endpoint.'
+          : 'Поток получен через UDP 5051.'
+        : isUnityMode
+          ? 'Кадры из Unity пока не получены. Проверь Play Mode и HttpJsonApiHost.'
+          : 'Поток не обнаружен (проверь запуск FramesSend.py на Pi).',
     },
     {
       key: 'Пан/тилт камеры (2 сервопривода)',
-      source: 'MainControl.py (CamUp/CamDown/CamLeft/CamRight/CamStop)',
+      source: isUnityMode
+        ? 'UnityKs0223RuntimeProvider -> camera.pan_norm / camera.tilt_norm'
+        : 'MainControl.py (CamUp/CamDown/CamLeft/CamRight/CamStop)',
       networkStatus: status?.tcpConnected ? 'available' : 'partial',
-      notes: 'Управление доступно через TCP команды Cam*.',
+      notes: isUnityMode
+        ? 'Управление доступно через единые команды Cam* и транслируется в Unity extensions.'
+        : 'Управление доступно через TCP команды Cam*.',
     },
     {
       key: 'Ультразвуковой датчик расстояния',
-      source: 'basic_project/bp3_ultrasonic.py',
+      source: isUnityMode ? 'Unity KS0223 telemetry adapter' : 'basic_project/bp3_ultrasonic.py',
       networkStatus: hasUltrasonic ? 'available' : sensorStatus?.enabled ? 'partial' : 'unavailable',
       notes: hasUltrasonic
         ? `distance_cm=${flat['ultrasonic.distance_cm'] ?? 'n/a'}, left/center/right=${flat['ultrasonic.scan.left_cm'] ?? '-'} / ${flat['ultrasonic.scan.center_cm'] ?? '-'} / ${flat['ultrasonic.scan.right_cm'] ?? '-'}`
-        : 'Через MainControl.py недоступно, но доступно через pi-telemetry-addon.',
+        : isUnityMode
+          ? 'Эмулируется через unified telemetry слой, но кадры/шаги ещё не дали значения.'
+          : 'Через MainControl.py недоступно, но доступно через pi-telemetry-addon.',
     },
     {
       key: 'Датчики линии (tracking)',
-      source: 'basic_project/bp2_tracking.py / bp10_tracking_car.py',
+      source: isUnityMode ? 'Unity KS0223 telemetry adapter' : 'basic_project/bp2_tracking.py / bp10_tracking_car.py',
       networkStatus: hasTracking ? 'available' : sensorStatus?.enabled ? 'partial' : 'unavailable',
       notes: hasTracking
         ? `left/center/right=${flat['tracking.left'] ?? '-'} / ${flat['tracking.center'] ?? '-'} / ${flat['tracking.right'] ?? '-'}`
-        : 'Через MainControl.py недоступно, но доступно через pi-telemetry-addon.',
+        : isUnityMode
+          ? 'Значения появятся после шага симуляции и обработки telemetry adapter.'
+          : 'Через MainControl.py недоступно, но доступно через pi-telemetry-addon.',
     },
     {
       key: 'IR receiver / пульт',
-      source: 'basic_project/bp8_ir_remote.py / bp9_ir_car.py',
+      source: isUnityMode ? 'Не эмулируется в v1' : 'basic_project/bp8_ir_remote.py / bp9_ir_car.py',
       networkStatus: hasIr ? 'available' : sensorStatus?.enabled ? 'partial' : 'unavailable',
       notes: hasIr
         ? `last=${flat['ir.last_code_hex'] ?? 'n/a'} (seen ${flat['ir.last_seen_at'] ?? 'n/a'})`
-        : 'IR код появится после нажатия кнопки на пульте.',
+        : isUnityMode
+          ? 'IR-пульт не входит в обязательный parity-слой для unity-sim.'
+          : 'IR код появится после нажатия кнопки на пульте.',
     },
     {
       key: 'OLED / LED matrix / buzzer',
@@ -88,8 +105,9 @@ export function SensorInventoryPanel({ status, camera, sensorStatus, sensorTelem
           <Typography variant="h6">Сенсоры KS0223 и доступность данных</Typography>
 
           <Alert severity="info">
-            Ниже показан реальный статус доступности. Для всех GPIO-сенсоров используется отдельный pi-telemetry-addon
-            (HTTP JSON endpoint на Pi).
+            {isUnityMode
+              ? 'Ниже показан статус parity-слоя между реальным KS0223 и Unity-симулятором. Для unity-sim источником служит HttpJsonApiHost и backend runtime adapter.'
+              : 'Ниже показан реальный статус доступности. Для всех GPIO-сенсоров используется отдельный pi-telemetry-addon (HTTP JSON endpoint на Pi).'}
           </Alert>
 
           <Table size="small">

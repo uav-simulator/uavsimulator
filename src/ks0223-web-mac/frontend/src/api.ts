@@ -28,11 +28,11 @@ export async function fetchStatus(): Promise<StatusDto> {
   return handleJson<StatusDto>(response)
 }
 
-export async function connectPi(host: string, port?: number): Promise<StatusDto> {
+export async function connectPi(host: string, port?: number, runtimeMode?: string): Promise<StatusDto> {
   const response = await fetch(withBase('/api/connection/connect'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ host, port }),
+    body: JSON.stringify({ host, port, runtimeMode }),
   })
   return handleJson<StatusDto>(response)
 }

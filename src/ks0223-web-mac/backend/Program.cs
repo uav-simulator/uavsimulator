@@ -49,11 +49,11 @@ if (hasStaticFiles)
 }
 
 app.MapGet("/api/status", (RuntimeControlService runtimeControlService) => Results.Ok(runtimeControlService.GetStatus()));
-app.MapGet("/api/health", (RuntimeControlService runtimeControlService, CameraStreamService cameraService, SensorBridgeService sensorBridgeService) =>
+app.MapGet("/api/health", (RuntimeControlService runtimeControlService, CameraStreamService cameraService, SensorBridgeService sensorBridgeService, UnityKs0223RuntimeProvider unityRuntimeProvider) =>
 {
     var control = runtimeControlService.GetStatus();
-    var camera = cameraService.GetStatus();
-    var sensors = sensorBridgeService.GetStatus();
+    var camera = control.RuntimeMode == RuntimeModes.UnitySim ? unityRuntimeProvider.GetCameraStatus() : cameraService.GetStatus();
+    var sensors = control.RuntimeMode == RuntimeModes.UnitySim ? unityRuntimeProvider.GetSensorStatus() : sensorBridgeService.GetStatus();
     var controlDegraded = control.DesiredConnection && !control.TcpConnected;
     var sensorDegraded = sensors.Enabled && sensors.ConsecutiveFailures >= 3;
     var status = controlDegraded || sensorDegraded ? "degraded" : "ok";
@@ -85,14 +85,23 @@ app.MapPost("/api/connection/disconnect", async (RuntimeControlService runtimeCo
 });
 
 app.MapGet("/api/connection/target", (RuntimeControlService runtimeControlService) => Results.Ok(runtimeControlService.GetConnectionTarget()));
-app.MapGet("/api/camera/status", (CameraStreamService service) => Results.Ok(service.GetStatus()));
-app.MapGet("/api/sensors/status", (SensorBridgeService service) => Results.Ok(service.GetStatus()));
-app.MapGet("/api/sensors/latest", (SensorBridgeService service) =>
+app.MapGet("/api/camera/status", (RuntimeControlService runtimeControlService, CameraStreamService service, UnityKs0223RuntimeProvider unityRuntimeProvider) =>
 {
-    var latest = service.GetLatestTelemetry();
+    var mode = runtimeControlService.GetCurrentMode();
+    return Results.Ok(mode == RuntimeModes.UnitySim ? unityRuntimeProvider.GetCameraStatus() : service.GetStatus());
+});
+app.MapGet("/api/sensors/status", (RuntimeControlService runtimeControlService, SensorBridgeService service, UnityKs0223RuntimeProvider unityRuntimeProvider) =>
+{
+    var mode = runtimeControlService.GetCurrentMode();
+    return Results.Ok(mode == RuntimeModes.UnitySim ? unityRuntimeProvider.GetSensorStatus() : service.GetStatus());
+});
+app.MapGet("/api/sensors/latest", (RuntimeControlService runtimeControlService, SensorBridgeService service, UnityKs0223RuntimeProvider unityRuntimeProvider) =>
+{
+    var mode = runtimeControlService.GetCurrentMode();
+    var latest = mode == RuntimeModes.UnitySim ? unityRuntimeProvider.GetLatestSensorTelemetry() : service.GetLatestTelemetry();
     return latest is null ? Results.NotFound(new { error = "Sensor telemetry is not available yet" }) : Results.Ok(latest);
 });
-app.MapPost("/api/sensors/config", async (HttpRequest http, SensorBridgeService service, CancellationToken cancellationToken) =>
+app.MapPost("/api/sensors/config", async (HttpRequest http, RuntimeControlService runtimeControlService, SensorBridgeService service, UnityKs0223RuntimeProvider unityRuntimeProvider, CancellationToken cancellationToken) =>
 {
     var request = await ReadBodyAsync(http, cancellationToken);
     var autoScanEnabled = ReadBoolQuery(http, "autoScanEnabled", "auto_scan_enabled") ?? ReadBool(request, "autoScanEnabled", "auto_scan_enabled");
@@ -104,22 +113,32 @@ app.MapPost("/api/sensors/config", async (HttpRequest http, SensorBridgeService 
     var ultrasonicServoPin =
         ReadIntQuery(http, "ultrasonicServoPin", "ultrasonic_servo_pin") ?? ReadInt(request, "ultrasonicServoPin", "ultrasonic_servo_pin");
 
-    var response = await service.SendBridgeCommandAsync(
-        "/api/config",
-        new
-        {
-            auto_scan_enabled = autoScanEnabled,
-            sample_interval_ms = sampleIntervalMs,
-            scan_interval_sec = scanIntervalSec,
-            scan_settle_ms = scanSettleMs,
-            drive_speed_percent = driveSpeedPercent,
-            camera_speed_percent = cameraSpeedPercent,
-            ultrasonic_servo_pin = ultrasonicServoPin,
-        },
-        cancellationToken);
+    var response = runtimeControlService.GetCurrentMode() == RuntimeModes.UnitySim
+        ? await unityRuntimeProvider.UpdateConfigAsync(
+            autoScanEnabled,
+            sampleIntervalMs,
+            scanIntervalSec,
+            scanSettleMs,
+            driveSpeedPercent,
+            cameraSpeedPercent,
+            ultrasonicServoPin,
+            cancellationToken)
+        : await service.SendBridgeCommandAsync(
+            "/api/config",
+            new
+            {
+                auto_scan_enabled = autoScanEnabled,
+                sample_interval_ms = sampleIntervalMs,
+                scan_interval_sec = scanIntervalSec,
+                scan_settle_ms = scanSettleMs,
+                drive_speed_percent = driveSpeedPercent,
+                camera_speed_percent = cameraSpeedPercent,
+                ultrasonic_servo_pin = ultrasonicServoPin,
+            },
+            cancellationToken);
     return response.Sent ? Results.Ok(response) : Results.BadRequest(response);
 });
-app.MapPost("/api/sensors/ultrasonic/position", async (HttpRequest http, SensorBridgeService service, CancellationToken cancellationToken) =>
+app.MapPost("/api/sensors/ultrasonic/position", async (HttpRequest http, RuntimeControlService runtimeControlService, SensorBridgeService service, UnityKs0223RuntimeProvider unityRuntimeProvider, CancellationToken cancellationToken) =>
 {
     var request = await ReadBodyAsync(http, cancellationToken);
     var angleDeg = ReadIntQuery(http, "angleDeg", "angle_deg") ?? ReadInt(request, "angleDeg", "angle_deg") ?? 90;
@@ -128,28 +147,32 @@ app.MapPost("/api/sensors/ultrasonic/position", async (HttpRequest http, SensorB
     var servoPin = ReadIntQuery(http, "servoPin", "servo_pin", "ultrasonicServoPin", "ultrasonic_servo_pin")
         ?? ReadInt(request, "servoPin", "servo_pin", "ultrasonicServoPin", "ultrasonic_servo_pin");
 
-    var response = await service.SendBridgeCommandAsync(
-        "/api/ultrasonic/position",
-        new
-        {
-            angle_deg = angleDeg,
-            disable_auto_scan = disableAutoScan,
-            servo_pin = servoPin,
-        },
-        cancellationToken);
+    var response = runtimeControlService.GetCurrentMode() == RuntimeModes.UnitySim
+        ? await unityRuntimeProvider.SetUltrasonicPositionAsync(angleDeg, disableAutoScan, servoPin, cancellationToken)
+        : await service.SendBridgeCommandAsync(
+            "/api/ultrasonic/position",
+            new
+            {
+                angle_deg = angleDeg,
+                disable_auto_scan = disableAutoScan,
+                servo_pin = servoPin,
+            },
+            cancellationToken);
     return response.Sent ? Results.Ok(response) : Results.BadRequest(response);
 });
-app.MapPost("/api/sensors/ultrasonic/auto-scan", async (HttpRequest http, SensorBridgeService service, CancellationToken cancellationToken) =>
+app.MapPost("/api/sensors/ultrasonic/auto-scan", async (HttpRequest http, RuntimeControlService runtimeControlService, SensorBridgeService service, UnityKs0223RuntimeProvider unityRuntimeProvider, CancellationToken cancellationToken) =>
 {
     var request = await ReadBodyAsync(http, cancellationToken);
     var enabled = ReadBoolQuery(http, "enabled") ?? ReadBool(request, "enabled") ?? true;
-    var response = await service.SendBridgeCommandAsync(
-        "/api/ultrasonic/auto-scan",
-        new
-        {
-            enabled,
-        },
-        cancellationToken);
+    var response = runtimeControlService.GetCurrentMode() == RuntimeModes.UnitySim
+        ? await unityRuntimeProvider.SetUltrasonicAutoScanAsync(enabled, cancellationToken)
+        : await service.SendBridgeCommandAsync(
+            "/api/ultrasonic/auto-scan",
+            new
+            {
+                enabled,
+            },
+            cancellationToken);
     return response.Sent ? Results.Ok(response) : Results.BadRequest(response);
 });
 app.MapPost("/api/led/pattern", async (HttpRequest http, SensorBridgeService service, CancellationToken cancellationToken) =>
@@ -183,9 +206,14 @@ app.MapPost("/api/led/clear", async (SensorBridgeService service, CancellationTo
     var response = await service.SendBridgeCommandAsync("/api/led/clear", new { }, cancellationToken);
     return response.Sent ? Results.Ok(response) : Results.BadRequest(response);
 });
-app.MapGet("/api/camera/snapshot", async (HttpContext context, CameraStreamService service) =>
+app.MapGet("/api/camera/snapshot", async (HttpContext context, RuntimeControlService runtimeControlService, CameraStreamService service, UnityKs0223RuntimeProvider unityRuntimeProvider) =>
 {
-    if (!service.TryGetLatestFrame(out var frame, out var contentType, out _, out var timestamp))
+    var mode = runtimeControlService.GetCurrentMode();
+    var hasFrame = mode == RuntimeModes.UnitySim
+        ? unityRuntimeProvider.TryGetLatestFrame(out var frame, out var contentType, out _, out var timestamp)
+        : service.TryGetLatestFrame(out frame, out contentType, out _, out timestamp);
+
+    if (!hasFrame)
     {
         context.Response.StatusCode = StatusCodes.Status404NotFound;
         await context.Response.WriteAsJsonAsync(new { error = "Camera frame is not available yet" });
@@ -204,7 +232,7 @@ app.MapGet("/api/camera/snapshot", async (HttpContext context, CameraStreamServi
 
     await context.Response.Body.WriteAsync(frame, context.RequestAborted);
 });
-app.MapGet("/api/camera/mjpeg", async (HttpContext context, CameraStreamService service) =>
+app.MapGet("/api/camera/mjpeg", async (HttpContext context, RuntimeControlService runtimeControlService, CameraStreamService service, UnityKs0223RuntimeProvider unityRuntimeProvider) =>
 {
     const string boundary = "frame";
     context.Response.StatusCode = StatusCodes.Status200OK;
@@ -220,7 +248,11 @@ app.MapGet("/api/camera/mjpeg", async (HttpContext context, CameraStreamService 
 
     while (!token.IsCancellationRequested)
     {
-        if (service.TryGetLatestFrame(out var frame, out _, out var version, out _) && version != sentVersion)
+        var hasFrame = runtimeControlService.GetCurrentMode() == RuntimeModes.UnitySim
+            ? unityRuntimeProvider.TryGetLatestFrame(out var frame, out _, out var version, out _)
+            : service.TryGetLatestFrame(out frame, out _, out version, out _);
+
+        if (hasFrame && version != sentVersion)
         {
             sentVersion = version;
             var header = $"--{boundary}\r\nContent-Type: image/jpeg\r\nContent-Length: {frame.Length}\r\n\r\n";

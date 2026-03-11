@@ -39,8 +39,12 @@ import type {
 } from './types'
 
 type TabKey = 'dashboard' | 'sensors' | 'led' | 'logs'
-const TARGET_HOST_STORAGE_KEY = 'ks0223_target_host'
+type RuntimeMode = 'real-robot' | 'unity-sim'
+
+const RUNTIME_MODE_STORAGE_KEY = 'ks0223_runtime_mode'
+const TARGET_HOST_STORAGE_KEY_PREFIX = 'ks0223_target_host_'
 const DEFAULT_TARGET_HOST = '192.168.1.121'
+const DEFAULT_UNITY_TARGET_HOST = '127.0.0.1'
 const DRIVE_SPEED_STORAGE_KEY = 'ks0223_drive_speed_percent'
 const CAMERA_SPEED_STORAGE_KEY = 'ks0223_camera_speed_percent'
 const ULTRASONIC_ANGLE_STORAGE_KEY = 'ks0223_ultrasonic_angle_deg'
@@ -143,6 +147,27 @@ function readStoredBool(key: string, fallback: boolean): boolean {
   return raw === 'true'
 }
 
+function normalizeRuntimeMode(value: string | null | undefined): RuntimeMode {
+  return value === 'unity-sim' ? 'unity-sim' : 'real-robot'
+}
+
+function defaultHostForMode(mode: RuntimeMode): string {
+  return mode === 'unity-sim' ? DEFAULT_UNITY_TARGET_HOST : DEFAULT_TARGET_HOST
+}
+
+function targetHostStorageKey(mode: RuntimeMode): string {
+  return `${TARGET_HOST_STORAGE_KEY_PREFIX}${mode}`
+}
+
+function readStoredTargetHost(mode: RuntimeMode): string {
+  if (typeof window === 'undefined') {
+    return defaultHostForMode(mode)
+  }
+
+  const cached = window.localStorage.getItem(targetHostStorageKey(mode))
+  return cached?.trim() || defaultHostForMode(mode)
+}
+
 function App() {
   const [status, setStatus] = useState<StatusDto | null>(null)
   const [incoming, setIncoming] = useState<IncomingMessageDto[]>([])
@@ -153,14 +178,14 @@ function App() {
   const [sensorTelemetry, setSensorTelemetry] = useState<SensorTelemetryDto | null>(null)
   const [busy, setBusy] = useState(false)
   const [tab, setTab] = useState<TabKey>('dashboard')
-  const [targetHost, setTargetHost] = useState(() => {
+  const [runtimeMode, setRuntimeMode] = useState<RuntimeMode>(() => {
     if (typeof window === 'undefined') {
-      return DEFAULT_TARGET_HOST
+      return 'real-robot'
     }
 
-    const cached = window.localStorage.getItem(TARGET_HOST_STORAGE_KEY)
-    return cached?.trim() || DEFAULT_TARGET_HOST
+    return normalizeRuntimeMode(window.localStorage.getItem(RUNTIME_MODE_STORAGE_KEY))
   })
+  const [targetHost, setTargetHost] = useState(() => readStoredTargetHost(runtimeMode))
 
   const [driveSpeedPercent, setDriveSpeedPercent] = useState(() => readStoredNumber(DRIVE_SPEED_STORAGE_KEY, 80, 0, 100))
   const [cameraSpeedPercent, setCameraSpeedPercent] = useState(() => readStoredNumber(CAMERA_SPEED_STORAGE_KEY, 70, 0, 100))
@@ -180,6 +205,8 @@ function App() {
   const syncStatus = useCallback(async () => {
     const next = await fetchStatus()
     setStatus(next)
+    setRuntimeMode(normalizeRuntimeMode(next.runtimeMode))
+    setTargetHost(next.targetHost)
   }, [])
 
   const syncFiles = useCallback(async () => {
@@ -213,6 +240,8 @@ function App() {
 
     hub.on('status', (payload: StatusDto) => {
       setStatus(payload)
+      setRuntimeMode(normalizeRuntimeMode(payload.runtimeMode))
+      setTargetHost(payload.targetHost)
     })
 
     hub.on('incoming', (message: IncomingMessageDto) => {
@@ -247,13 +276,17 @@ function App() {
   }, [syncDiagnostics])
 
   useEffect(() => {
+    window.localStorage.setItem(RUNTIME_MODE_STORAGE_KEY, runtimeMode)
+  }, [runtimeMode])
+
+  useEffect(() => {
     const normalized = targetHost.trim()
     if (!normalized) {
       return
     }
 
-    window.localStorage.setItem(TARGET_HOST_STORAGE_KEY, normalized)
-  }, [targetHost])
+    window.localStorage.setItem(targetHostStorageKey(runtimeMode), normalized)
+  }, [runtimeMode, targetHost])
 
   useEffect(() => {
     window.localStorage.setItem(DRIVE_SPEED_STORAGE_KEY, String(driveSpeedPercent))
@@ -340,19 +373,27 @@ function App() {
         return
       }
 
-      const next = await connectPi(normalizedHost)
+      const next = await connectPi(normalizedHost, undefined, runtimeMode)
       setStatus(next)
+      setRuntimeMode(normalizeRuntimeMode(next.runtimeMode))
       setTargetHost(next.targetHost)
-      window.localStorage.setItem(TARGET_HOST_STORAGE_KEY, next.targetHost)
+      window.localStorage.setItem(targetHostStorageKey(normalizeRuntimeMode(next.runtimeMode)), next.targetHost)
     })
-  }, [guarded, targetHost])
+  }, [guarded, runtimeMode, targetHost])
 
   const handleDisconnect = useCallback(async () => {
     await guarded(async () => {
       const next = await disconnectPi()
       setStatus(next)
+      setRuntimeMode(normalizeRuntimeMode(next.runtimeMode))
     })
   }, [guarded])
+
+  const handleRuntimeModeChange = useCallback((value: string) => {
+    const nextMode = normalizeRuntimeMode(value)
+    setRuntimeMode(nextMode)
+    setTargetHost(readStoredTargetHost(nextMode))
+  }, [])
 
   const handleCommand = useCallback(
     async (command: string) => {
@@ -490,6 +531,7 @@ function App() {
     if (tab === 'led') {
       return (
         <LedPage
+          runtimeMode={runtimeMode}
           sensorTelemetry={sensorTelemetry}
           onSetPattern={handleLedSetPattern}
           onSetCustomFrame={handleLedSetCustomFrame}
@@ -507,6 +549,8 @@ function App() {
         sensorStatus={sensorStatus}
         sensorTelemetry={sensorTelemetry}
         busy={busy}
+        runtimeMode={runtimeMode}
+        onRuntimeModeChange={handleRuntimeModeChange}
         targetHost={targetHost}
         onTargetHostChange={setTargetHost}
         onConnect={handleConnect}
@@ -545,7 +589,9 @@ function App() {
     handleOpenFolder,
     syncFiles,
     busy,
+    runtimeMode,
     targetHost,
+    handleRuntimeModeChange,
     handleConnect,
     handleDisconnect,
     handleCommand,
@@ -582,7 +628,7 @@ function App() {
               KS0223 Control Center
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600 }}>
-              Pi {status?.targetHost ?? targetHost}:{status?.targetPort ?? 5051}
+              {runtimeMode === 'unity-sim' ? 'Unity' : 'Pi'} {status?.targetHost ?? targetHost}:{status?.targetPort ?? (runtimeMode === 'unity-sim' ? 8000 : 5051)}
             </Typography>
           </Toolbar>
         </AppBar>

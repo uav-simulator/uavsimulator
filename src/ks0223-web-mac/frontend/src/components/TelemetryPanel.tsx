@@ -23,6 +23,17 @@ export function TelemetryPanel({ status, incoming, sensorStatus, sensorTelemetry
     .reverse()
     .find((item) => item.parsedTelemetry && Object.keys(item.parsedTelemetry).length > 0)
   const flat = sensorTelemetry?.flat ?? {}
+  const isUnityMode = status?.runtimeMode === 'unity-sim'
+  const runtimeTelemetryLabel = isUnityMode ? 'Unity telemetry bridge: активен' : 'Pi sensor bridge: включен'
+  const runtimeTelemetryDisabledLabel = isUnityMode ? 'Unity telemetry bridge: выключен' : 'Pi sensor bridge: выключен'
+  const runtimeDescription = isUnityMode
+    ? 'В режиме unity-sim телеметрия приходит из HTTP API симулятора и нормализуется backend-адаптером в те же поля, что и для физического KS0223.'
+    : 'Что означает каждый сенсор: HC-SR04 измеряет расстояние до препятствия в сантиметрах; Scan L/C/R показывает замеры слева/по центру/справа при повороте ультразвукового модуля; Tracking (L/C/R) это три датчика линии (0/1) для следования по линии; IR показывает последний код с ИК-пульта; CPU temp и uptime нужны для контроля состояния Raspberry Pi.'
+  const tcpTelemetryUnavailableText = isUnityMode
+    ? 'Низкоуровневые TCP-сообщения MainControl.py в режиме unity-sim отсутствуют. Ниже отображается унифицированная телеметрия симулятора.'
+    : 'TCP-телеметрия от MainControl.py недоступна в текущем протоколе.'
+  const sensorValuesTitle = isUnityMode ? 'Последние значения из unified telemetry' : 'Последние значения из sensor bridge'
+  const incomingTitle = isUnityMode ? 'Последние сообщения runtime' : 'Входящие TCP сообщения'
 
   return (
     <Card>
@@ -31,15 +42,12 @@ export function TelemetryPanel({ status, incoming, sensorStatus, sensorTelemetry
           <Typography variant="h6">Телеметрия и данные сенсоров</Typography>
 
           <Typography variant="body2" color="text.secondary">
-            Что означает каждый сенсор: HC-SR04 измеряет расстояние до препятствия в сантиметрах; Scan L/C/R
-            показывает замеры слева/по центру/справа при повороте ультразвукового модуля; Tracking (L/C/R) это три
-            датчика линии (0/1) для следования по линии; IR показывает последний код с ИК-пульта; CPU temp и uptime
-            нужны для контроля состояния Raspberry Pi.
+            {runtimeDescription}
           </Typography>
 
           <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
             <Chip
-              label={sensorStatus?.enabled ? 'Pi sensor bridge: включен' : 'Pi sensor bridge: выключен'}
+              label={sensorStatus?.enabled ? runtimeTelemetryLabel : runtimeTelemetryDisabledLabel}
               color={sensorStatus?.enabled ? 'success' : 'default'}
               variant={sensorStatus?.enabled ? 'filled' : 'outlined'}
             />
@@ -59,7 +67,7 @@ export function TelemetryPanel({ status, incoming, sensorStatus, sensorTelemetry
 
           {!status?.hasParsedTelemetry || !latestTelemetry?.parsedTelemetry ? (
             <Typography variant="body1" color="text.secondary">
-              TCP-телеметрия от MainControl.py недоступна в текущем протоколе.
+              {tcpTelemetryUnavailableText}
             </Typography>
           ) : (
             <List dense>
@@ -73,7 +81,7 @@ export function TelemetryPanel({ status, incoming, sensorStatus, sensorTelemetry
 
           <Divider />
           <Typography variant="subtitle2" color="text.secondary">
-            Последние значения из sensor bridge
+            {sensorValuesTitle}
           </Typography>
           {!sensorTelemetry ? (
             <Typography variant="body2" color="text.secondary">
@@ -94,7 +102,7 @@ export function TelemetryPanel({ status, incoming, sensorStatus, sensorTelemetry
           <Divider />
 
           <Typography variant="subtitle2" color="text.secondary">
-            Входящие TCP сообщения
+            {incomingTitle}
           </Typography>
           <List dense>
             {[...incoming].reverse().slice(0, 12).map((item, index) => (

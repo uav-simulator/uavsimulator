@@ -20,6 +20,8 @@ type Props = {
   sensorStatus: SensorBridgeStatusDto | null
   sensorTelemetry: SensorTelemetryDto | null
   busy: boolean
+  runtimeMode: string
+  onRuntimeModeChange: (value: string) => void
   targetHost: string
   onTargetHostChange: (value: string) => void
   onConnect: () => Promise<void>
@@ -49,6 +51,8 @@ export function ControlPage({
   sensorStatus,
   sensorTelemetry,
   busy,
+  runtimeMode,
+  onRuntimeModeChange,
   targetHost,
   onTargetHostChange,
   onConnect,
@@ -75,6 +79,8 @@ export function ControlPage({
         <ConnectionCard
           status={status}
           busy={busy}
+          runtimeMode={runtimeMode}
+          onRuntimeModeChange={onRuntimeModeChange}
           targetHost={targetHost}
           onTargetHostChange={onTargetHostChange}
           onConnect={onConnect}

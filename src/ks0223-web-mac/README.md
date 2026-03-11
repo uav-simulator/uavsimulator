@@ -119,7 +119,8 @@ Backend слушает: `http://localhost:5058`
 - `GET /api/status`
 - `GET /api/health`
 - `POST /api/connection/connect`
-  - body: `{ "host": "192.168.1.121", "port": 5051 }` (`port` опционален)
+  - body: `{ "host": "192.168.1.121", "port": 5051, "runtimeMode": "real-robot" }`
+  - для Unity: `{ "host": "127.0.0.1", "port": 8000, "runtimeMode": "unity-sim" }`
 - `POST /api/connection/disconnect`
 - `POST /api/command` body: `{ "command": "DirStop" }`
 - `POST /api/logs/start` body: `{ "tag": "test" }`
@@ -170,12 +171,28 @@ npm run dev
 
 Открыть: `http://localhost:5173`
 
+## Runtime modes
+
+Operator UI поддерживает два режима работы без отдельного frontend:
+
+- `Real robot`
+  - target host: Raspberry Pi;
+  - backend подключается к `MainControl.py` по TCP `5051`;
+  - камера и сенсоры идут через реальные Pi-каналы.
+- `Unity simulator`
+  - target host: Unity runtime с `HttpJsonApiHost` (по умолчанию `127.0.0.1:8000`);
+  - backend работает как live-адаптер поверх Unity HTTP API (`/health`, `/contract`, `/reset`, `/step`);
+  - камера, телеметрия и управление отдаются в тех же UI-панелях.
+
+Последний host кэшируется в браузере отдельно для каждого режима.
+
 ## Функции UI
 
 - Вкладка «Пульт и телеметрия» (единый экран):
-  - поле выбора IP/host Raspberry Pi (кэш последнего значения в localStorage браузера);
-  - Connect/Disconnect к Pi через backend;
-  - индикаторы TCP/UI/latency/last error;
+  - выбор runtime mode: `Real robot` / `Unity simulator`;
+  - поле выбора target host (кэш последнего значения по каждому режиму в localStorage браузера);
+  - Connect/Disconnect к выбранному runtime через backend;
+  - индикаторы runtime/UI/latency/last error;
   - большая кнопка STOP;
   - `Space = STOP`;
   - `WASD` и стрелки;
