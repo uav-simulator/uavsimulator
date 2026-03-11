@@ -168,6 +168,18 @@ function readStoredTargetHost(mode: RuntimeMode): string {
   return cached?.trim() || defaultHostForMode(mode)
 }
 
+function getActiveRuntimeMode(status: StatusDto | null, selectedRuntimeMode: RuntimeMode): RuntimeMode {
+  if (!status) {
+    return selectedRuntimeMode
+  }
+
+  if (status.desiredConnection || status.tcpConnected) {
+    return normalizeRuntimeMode(status.runtimeMode)
+  }
+
+  return selectedRuntimeMode
+}
+
 function App() {
   const [status, setStatus] = useState<StatusDto | null>(null)
   const [incoming, setIncoming] = useState<IncomingMessageDto[]>([])
@@ -178,14 +190,14 @@ function App() {
   const [sensorTelemetry, setSensorTelemetry] = useState<SensorTelemetryDto | null>(null)
   const [busy, setBusy] = useState(false)
   const [tab, setTab] = useState<TabKey>('dashboard')
-  const [runtimeMode, setRuntimeMode] = useState<RuntimeMode>(() => {
+  const [selectedRuntimeMode, setSelectedRuntimeMode] = useState<RuntimeMode>(() => {
     if (typeof window === 'undefined') {
       return 'real-robot'
     }
 
     return normalizeRuntimeMode(window.localStorage.getItem(RUNTIME_MODE_STORAGE_KEY))
   })
-  const [targetHost, setTargetHost] = useState(() => readStoredTargetHost(runtimeMode))
+  const [targetHost, setTargetHost] = useState(() => readStoredTargetHost(selectedRuntimeMode))
 
   const [driveSpeedPercent, setDriveSpeedPercent] = useState(() => readStoredNumber(DRIVE_SPEED_STORAGE_KEY, 80, 0, 100))
   const [cameraSpeedPercent, setCameraSpeedPercent] = useState(() => readStoredNumber(CAMERA_SPEED_STORAGE_KEY, 70, 0, 100))
@@ -202,11 +214,11 @@ function App() {
     ultrasonicUiOverrideUntilRef.current = Date.now() + Math.max(300, durationMs)
   }, [])
 
+  const activeRuntimeMode = getActiveRuntimeMode(status, selectedRuntimeMode)
+
   const syncStatus = useCallback(async () => {
     const next = await fetchStatus()
     setStatus(next)
-    setRuntimeMode(normalizeRuntimeMode(next.runtimeMode))
-    setTargetHost(next.targetHost)
   }, [])
 
   const syncFiles = useCallback(async () => {
@@ -240,8 +252,6 @@ function App() {
 
     hub.on('status', (payload: StatusDto) => {
       setStatus(payload)
-      setRuntimeMode(normalizeRuntimeMode(payload.runtimeMode))
-      setTargetHost(payload.targetHost)
     })
 
     hub.on('incoming', (message: IncomingMessageDto) => {
@@ -276,8 +286,8 @@ function App() {
   }, [syncDiagnostics])
 
   useEffect(() => {
-    window.localStorage.setItem(RUNTIME_MODE_STORAGE_KEY, runtimeMode)
-  }, [runtimeMode])
+    window.localStorage.setItem(RUNTIME_MODE_STORAGE_KEY, selectedRuntimeMode)
+  }, [selectedRuntimeMode])
 
   useEffect(() => {
     const normalized = targetHost.trim()
@@ -285,8 +295,8 @@ function App() {
       return
     }
 
-    window.localStorage.setItem(targetHostStorageKey(runtimeMode), normalized)
-  }, [runtimeMode, targetHost])
+    window.localStorage.setItem(targetHostStorageKey(selectedRuntimeMode), normalized)
+  }, [selectedRuntimeMode, targetHost])
 
   useEffect(() => {
     window.localStorage.setItem(DRIVE_SPEED_STORAGE_KEY, String(driveSpeedPercent))
@@ -373,25 +383,24 @@ function App() {
         return
       }
 
-      const next = await connectPi(normalizedHost, undefined, runtimeMode)
+      const next = await connectPi(normalizedHost, undefined, selectedRuntimeMode)
       setStatus(next)
-      setRuntimeMode(normalizeRuntimeMode(next.runtimeMode))
+      setSelectedRuntimeMode(normalizeRuntimeMode(next.runtimeMode))
       setTargetHost(next.targetHost)
       window.localStorage.setItem(targetHostStorageKey(normalizeRuntimeMode(next.runtimeMode)), next.targetHost)
     })
-  }, [guarded, runtimeMode, targetHost])
+  }, [guarded, selectedRuntimeMode, targetHost])
 
   const handleDisconnect = useCallback(async () => {
     await guarded(async () => {
       const next = await disconnectPi()
       setStatus(next)
-      setRuntimeMode(normalizeRuntimeMode(next.runtimeMode))
     })
   }, [guarded])
 
   const handleRuntimeModeChange = useCallback((value: string) => {
     const nextMode = normalizeRuntimeMode(value)
-    setRuntimeMode(nextMode)
+    setSelectedRuntimeMode(nextMode)
     setTargetHost(readStoredTargetHost(nextMode))
   }, [])
 
@@ -531,7 +540,7 @@ function App() {
     if (tab === 'led') {
       return (
         <LedPage
-          runtimeMode={runtimeMode}
+          runtimeMode={activeRuntimeMode}
           sensorTelemetry={sensorTelemetry}
           onSetPattern={handleLedSetPattern}
           onSetCustomFrame={handleLedSetCustomFrame}
@@ -549,7 +558,7 @@ function App() {
         sensorStatus={sensorStatus}
         sensorTelemetry={sensorTelemetry}
         busy={busy}
-        runtimeMode={runtimeMode}
+        runtimeMode={selectedRuntimeMode}
         onRuntimeModeChange={handleRuntimeModeChange}
         targetHost={targetHost}
         onTargetHostChange={setTargetHost}
@@ -589,7 +598,8 @@ function App() {
     handleOpenFolder,
     syncFiles,
     busy,
-    runtimeMode,
+    selectedRuntimeMode,
+    activeRuntimeMode,
     targetHost,
     handleRuntimeModeChange,
     handleConnect,
@@ -628,7 +638,7 @@ function App() {
               KS0223 Control Center
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600 }}>
-              {runtimeMode === 'unity-sim' ? 'Unity' : 'Pi'} {status?.targetHost ?? targetHost}:{status?.targetPort ?? (runtimeMode === 'unity-sim' ? 8000 : 5051)}
+              {activeRuntimeMode === 'unity-sim' ? 'Unity' : 'Pi'} {(status?.desiredConnection || status?.tcpConnected) ? (status?.targetHost ?? targetHost) : targetHost}:{(status?.desiredConnection || status?.tcpConnected) ? (status?.targetPort ?? (activeRuntimeMode === 'unity-sim' ? 8000 : 5051)) : (activeRuntimeMode === 'unity-sim' ? 8000 : 5051)}
             </Typography>
           </Toolbar>
         </AppBar>
