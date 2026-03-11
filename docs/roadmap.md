@@ -46,11 +46,11 @@
 - понятные страницы docs и GitHub Pages.
 
 ### Этап 3. Product usability
-Статус: `частично сделано`
+Статус: `в работе`
 
 Нужно довести:
 - installer/bootstrap;
-- CLI;
+- CLI и scenario entrypoint;
 - server/headless режим;
 - сценарную конфигурацию;
 - понятную quickstart-инструкцию.

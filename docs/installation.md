@@ -96,6 +96,23 @@ cd src/ks0223-web-mac/frontend && npm run build
 python -c "from sim_client.http_client import SimClient; print(SimClient)"
 ```
 
+## Сценарный CLI-поток
+Минимальный продуктовый CLI-слой уже поддерживает:
+
+```bash
+PYTHONPATH=python python3 -m sim_client.cli doctor --base-url http://127.0.0.1:8000
+PYTHONPATH=python python3 -m sim_client.cli scenario validate configs/scenarios/ks0223-demo.yaml
+PYTHONPATH=python python3 -m sim_client.cli scenario reset configs/scenarios/ks0223-demo.yaml --base-url http://127.0.0.1:8000
+```
+
+Через `Makefile` это же доступно короче:
+
+```bash
+make sim-scenario-validate
+make sim-scenario-print
+make sim-scenario-reset
+```
+
 ## Связанные документы
 - [Использование](usage.md)
 - [CI/CD](ci.md)

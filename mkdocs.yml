@@ -50,6 +50,7 @@ extra_javascript:
 nav:
   - Старт: README.md
   - О симуляторе: about-simulator.md
+  - Технологии: stack.md
   - Установка: installation.md
   - Использование: usage.md
   - Контракты:

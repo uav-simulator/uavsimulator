@@ -15,6 +15,18 @@
 - `make venv`
 - `python -m pip install ./python`
 
+## CLI
+- `python -m sim_client.cli doctor --base-url http://127.0.0.1:8000`
+- `python -m sim_client.cli contract --base-url http://127.0.0.1:8000`
+- `python -m sim_client.cli scenario validate configs/scenarios/ks0223-demo.yaml`
+- `python -m sim_client.cli scenario reset configs/scenarios/ks0223-demo.yaml --base-url http://127.0.0.1:8000`
+- `python -m sim_client.cli step --base-url http://127.0.0.1:8000 --throttle 0.2 --steer 0.1`
+
+CLI нужен как минимальный продуктовый entrypoint для:
+- preflight/doctor проверки;
+- scenario-driven reset;
+- smoke управления без ручного `curl`.
+
 ## Быстрый старт
 - `python examples/random_agent.py --base-url http://127.0.0.1:8000`
 - `python examples/ks0223_random_pwm.py --base-url http://127.0.0.1:8000`
