@@ -1,50 +1,56 @@
 # Документация
 
-## Purpose
-Единая точка входа в техническую документацию: как запустить симулятор, как подключить ROS2, как устроена архитектура и где смотреть прогресс разработки.
+## Назначение
+Единая точка входа в документацию продукта, архитектуры и research-layer.
 
-## Assumptions
-- Репозиторий используется как инженерная база разработки и как демонстрационный проект.
-- Документы отражают фактическое состояние кода на текущем коммите.
+С этого документа должен начинаться заход в проект:
 
-## Decisions
-- Основные runbook-команды сведены в `Makefile`.
-- Архитектурный документ содержит не только текст, но и диаграммы компонентов/последовательностей.
+1. понять, что именно мы строим;
+2. понять, как это установить и запустить;
+3. понять, как этим пользоваться;
+4. понять, какие контракты считаются каноническими;
+5. понять, где проект находится относительно MVP.
 
-## Next steps
-- Добавить отдельный ops-runbook для CI smoke и nightly regression.
+## Канонические страницы
+### 1. О симуляторе
+- [about-simulator.md](about-simulator.md)
 
-## Канонические точки входа
-- Продуктовая рамка: [product-definition-v1.md](<repo>/docs/product-definition-v1.md)
-- Unified runtime contract: [unified-runtime-contract-v1.md](<repo>/docs/unified-runtime-contract-v1.md)
-- Definition of Done MVP: [definition-of-done-mvp.md](<repo>/docs/definition-of-done-mvp.md)
-- Master-document по магистерской и продукту: [2026-03-11-sim-to-real-platform-master-document.md](<repo>/docs/research/2026-03-11-sim-to-real-platform-master-document.md)
-- Архитектура: [architecture.md](<repo>/docs/architecture.md)
-- API: [api.md](<repo>/docs/api.md)
-- Прогресс и история решений: [tasks.md](<repo>/docs/tasks.md)
+### 2. Установка
+- [installation.md](installation.md)
 
-## Разделы
-- Обзор проекта: [overview.md](<repo>/docs/overview.md)
-- Архитектура и sequence-диаграммы: [architecture.md](<repo>/docs/architecture.md)
-- Стек: [stack.md](<repo>/docs/stack.md)
-- Сборка/запуск (`Makefile`, Unity, ROS): [build.md](<repo>/docs/build.md)
-- API: [api.md](<repo>/docs/api.md)
-- ROS2 bridge: [ros2.md](<repo>/docs/ros2.md)
-- Плагины: [plugins.md](<repo>/docs/plugins.md)
-- Транспорт и роботы: [vehicles.md](<repo>/docs/vehicles.md), [ks0223.md](<repo>/docs/robots/ks0223.md)
-- Drone plugin: [simple-drone.md](<repo>/docs/robots/simple-drone.md)
-- Интеграция ML и обучение: [mlagents.md](<repo>/docs/mlagents.md), [training.md](<repo>/docs/training.md), [experiments.md](<repo>/docs/experiments.md)
-- Demo-ноутбуки: `output/jupyter-notebook/uavsim-quickstart-demo.ipynb`, `output/jupyter-notebook/ks0223-presentation-demo.ipynb`, `output/jupyter-notebook/ks0223-ros2-training-demo.ipynb`
-- Магистерская: [master-thesis README](<repo>/docs/master-thesis/README.md)
-- План уборки документации: [documentation-cleanup-plan.md](<repo>/docs/documentation-cleanup-plan.md)
-- Отчёты и учебные материалы: `docs/reports/`, `docs/report/`
+### 3. Использование
+- [usage.md](usage.md)
 
-## Задачи (архив)
-- Каталог задач: `docs/tasks/`
-- Кратко по выполненному:
-  - `task-01`…`task-03`: гигиена репозитория, аудит сцены, базовая структура симулятора.
-  - `task-04`…`task-08`: контракт управления, физическая модель, сенсоры, reset-логика, reward/termination.
-  - `task-09`…`task-11`: структура экспериментов и каркас training pipeline.
-  - `task-12`: контракт и профиль реального робота Keyestudio KS0223.
-  - `task-13`: pre-demo proof команды и preflight проверки ROS image transport.
-  - `task-14`: CI smoke для `demo-proof` и параметр порога `odom hz`.
+### 4. Контракты
+- [contracts.md](contracts.md)
+
+### 5. Roadmap и текущая стадия
+- [roadmap.md](roadmap.md)
+
+## Канонические артефакты продукта
+- [product-definition-v1.md](product-definition-v1.md)
+- [unified-runtime-contract-v1.md](unified-runtime-contract-v1.md)
+- [autopilot-integration-contract-v1.md](autopilot-integration-contract-v1.md)
+- [simulator-scenario-config-contract-v1.md](simulator-scenario-config-contract-v1.md)
+- [definition-of-done-mvp.md](definition-of-done-mvp.md)
+
+## Архитектура и API
+- [architecture.md](architecture.md)
+- [api.md](api.md)
+- [ci.md](ci.md)
+
+## Research и магистерская
+- [2026-03-11-sim-to-real-platform-master-document.md](research/2026-03-11-sim-to-real-platform-master-document.md)
+- [master-thesis/README.md](master-thesis/README.md)
+
+## Вспомогательные разделы
+- [build.md](build.md)
+- [plugins.md](plugins.md)
+- [vehicles.md](vehicles.md)
+- [ros2.md](ros2.md)
+- [training.md](training.md)
+- [documentation-cleanup-plan.md](documentation-cleanup-plan.md)
+
+## Инженерный журнал
+- [tasks.md](tasks.md)
+- каталог задач: `docs/tasks/`

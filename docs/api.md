@@ -3,7 +3,7 @@
 
 ## Canonical Link
 Для operator-core и unified runtime как источника правды использовать:
-- [unified-runtime-contract-v1.md](<repo>/docs/unified-runtime-contract-v1.md)
+- [unified-runtime-contract-v1.md](unified-runtime-contract-v1.md)
 
 ## Assumptions
 - API используется как стабильный контракт между симулятором и внешними системами (обучение, эксперименты, тесты).
