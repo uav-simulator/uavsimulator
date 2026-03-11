@@ -40,8 +40,8 @@ namespace UavSimulator.Plugins
         {
             var vehicle = CreateVehicleDescriptor(
                 Ks0223VehicleId,
-                "Keyestudio KS0223 (PROMETEO Visual)",
-                "Built-in KS0223 vehicle with PROMETEO car body (fallback visuals if asset is unavailable).");
+                "Keyestudio KS0223 (Unity Simulator)",
+                "Built-in KS0223 simulator profile with PROMETEO car body (fallback visuals if asset is unavailable).");
             var arcadeBlueVehicle = CreateVehicleDescriptor(
                 Ks0223ArcadeBlueVehicleId,
                 "Keyestudio KS0223 (Arcade Blue)",

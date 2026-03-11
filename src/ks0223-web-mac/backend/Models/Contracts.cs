@@ -31,7 +31,8 @@ public sealed record StatusDto(
     bool IsLogging,
     string? CurrentLogFile,
     bool HasParsedTelemetry,
-    string RuntimeMode = "real-robot");
+    string RuntimeMode = "real-robot",
+    string? RuntimeLabel = null);
 
 public sealed record CameraStatusDto(
     bool UdpListenerEnabled,

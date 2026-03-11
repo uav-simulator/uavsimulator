@@ -24,6 +24,7 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
     private bool desiredConnection;
     private bool unityConnected;
     private int uiConnectedClients;
+    private string runtimeLabel = "Keyestudio KS0223 (Unity Simulator)";
     private string targetHost = "127.0.0.1";
     private int targetPort = 8000;
     private double? latencyMs;
@@ -85,7 +86,8 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
                 IsLogging: logState.IsLogging,
                 CurrentLogFile: logState.CurrentFile,
                 HasParsedTelemetry: hasTelemetry,
-                RuntimeMode: Mode);
+                RuntimeMode: Mode,
+                RuntimeLabel: runtimeLabel);
         }
     }
 
@@ -457,6 +459,15 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
                 if (vehicle.TryGetProperty("deviceId", out var deviceId) &&
                     string.Equals(deviceId.GetString(), "vehicle.ks0223.v1", StringComparison.Ordinal))
                 {
+                    if (vehicle.TryGetProperty("displayName", out var displayNameElement))
+                    {
+                        var displayName = displayNameElement.GetString();
+                        if (!string.IsNullOrWhiteSpace(displayName))
+                        {
+                            runtimeLabel = displayName!;
+                        }
+                    }
+
                     hasKs0223 = true;
                     break;
                 }
@@ -672,13 +683,13 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
                     brakeNorm = 0f;
                     break;
                 case "DirLeft":
-                    leftPwmNorm = -driveNorm;
-                    rightPwmNorm = driveNorm;
+                    leftPwmNorm = driveNorm;
+                    rightPwmNorm = -driveNorm;
                     brakeNorm = 0f;
                     break;
                 case "DirRight":
-                    leftPwmNorm = driveNorm;
-                    rightPwmNorm = -driveNorm;
+                    leftPwmNorm = -driveNorm;
+                    rightPwmNorm = driveNorm;
                     brakeNorm = 0f;
                     break;
                 case "DirStop":
