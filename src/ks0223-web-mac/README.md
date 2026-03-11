@@ -183,8 +183,10 @@ Operator UI поддерживает два режима работы без о�
   - target host: Unity runtime с `HttpJsonApiHost` (по умолчанию `127.0.0.1:8000`);
   - backend работает как live-адаптер поверх Unity HTTP API (`/health`, `/contract`, `/reset`, `/step`);
   - камера, телеметрия и управление отдаются в тех же UI-панелях.
+  - если backend запущен в Docker, loopback-host автоматически нормализуется для доступа к Unity на macOS host.
 
 Последний host кэшируется в браузере отдельно для каждого режима.
+После изменений в Unity `HttpJsonApiHost`/`HttpJsonSimulatorApiServer` перезапустите Play Mode, чтобы Editor поднял API с новой конфигурацией.
 
 ## Функции UI
 

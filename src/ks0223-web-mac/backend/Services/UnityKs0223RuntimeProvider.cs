@@ -320,7 +320,7 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
         {
             if (!string.IsNullOrWhiteSpace(host))
             {
-                targetHost = host.Trim();
+                targetHost = NormalizeTargetHost(host.Trim());
             }
 
             if (port is >= 1 and <= 65535)
@@ -744,4 +744,30 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
     }
 
     private static float NormalizeServo(int angleDeg) => Math.Clamp((angleDeg - 90f) / 90f, -1f, 1f);
+
+    private static string NormalizeTargetHost(string host)
+    {
+        if (!IsRunningInContainer())
+        {
+            return host;
+        }
+
+        return host switch
+        {
+            "127.0.0.1" or "localhost" or "::1" => "host.docker.internal",
+            _ => host,
+        };
+    }
+
+    private static bool IsRunningInContainer()
+    {
+        var env = Environment.GetEnvironmentVariable("DOTNET_RUNNING_IN_CONTAINER");
+        if (string.Equals(env, "true", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(env, "1", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return File.Exists("/.dockerenv");
+    }
 }

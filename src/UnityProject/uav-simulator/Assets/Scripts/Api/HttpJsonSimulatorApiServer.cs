@@ -37,7 +37,10 @@ namespace UavSimulator.Api
 
             cts = new CancellationTokenSource();
             listener = new HttpListener();
-            listener.Prefixes.Add($"http://{host}:{port}/");
+            foreach (var prefix in GetPrefixes(host, port))
+            {
+                listener.Prefixes.Add(prefix);
+            }
             listener.Start();
 
             loopTask = Task.Run(() => AcceptLoopAsync(cts.Token), cts.Token);
@@ -169,5 +172,21 @@ namespace UavSimulator.Api
 
         private static string EscapeJson(string value) =>
             (value ?? string.Empty).Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\r", "\\r");
+
+        private static string[] GetPrefixes(string configuredHost, int port)
+        {
+            var normalizedHost = string.IsNullOrWhiteSpace(configuredHost) ? "127.0.0.1" : configuredHost.Trim();
+            if (normalizedHost == "127.0.0.1" || normalizedHost.Equals("localhost", StringComparison.OrdinalIgnoreCase))
+            {
+                return new[]
+                {
+                    $"http://127.0.0.1:{port}/",
+                    $"http://localhost:{port}/",
+                    $"http://*:{port}/",
+                };
+            }
+
+            return new[] { $"http://{normalizedHost}:{port}/" };
+        }
     }
 }
