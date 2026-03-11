@@ -28,8 +28,10 @@ builder.Services.AddCors(options =>
 builder.Services.AddSingleton<SessionLogger>();
 builder.Services.AddSingleton<TelemetryParser>();
 builder.Services.AddSingleton<PiTcpClientService>();
-builder.Services.AddSingleton<IKs0223RuntimeProvider, RealKs0223RuntimeProvider>();
-builder.Services.AddSingleton<IKs0223RuntimeProvider, UnityKs0223RuntimeProvider>();
+builder.Services.AddSingleton<RealKs0223RuntimeProvider>();
+builder.Services.AddSingleton<UnityKs0223RuntimeProvider>();
+builder.Services.AddSingleton<IKs0223RuntimeProvider>(serviceProvider => serviceProvider.GetRequiredService<RealKs0223RuntimeProvider>());
+builder.Services.AddSingleton<IKs0223RuntimeProvider>(serviceProvider => serviceProvider.GetRequiredService<UnityKs0223RuntimeProvider>());
 builder.Services.AddSingleton<RuntimeControlService>();
 builder.Services.AddSingleton<CameraStreamService>();
 builder.Services.AddSingleton<SensorBridgeService>();
