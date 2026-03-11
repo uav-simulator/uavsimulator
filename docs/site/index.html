@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>UAV Simulator Docs</title>
+    <style>
+      :root {
+        --bg: #0b1220;
+        --bg-soft: #121b2d;
+        --card: #182338;
+        --text: #edf2fb;
+        --muted: #9fb0c9;
+        --accent: #79c0ff;
+        --accent-2: #8fe3c0;
+        --border: rgba(159, 176, 201, 0.18);
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: "SF Pro Display", "Segoe UI", sans-serif;
+        background: radial-gradient(circle at top, #16233c 0%, var(--bg) 55%);
+        color: var(--text);
+      }
+      main {
+        max-width: 1080px;
+        margin: 0 auto;
+        padding: 48px 20px 72px;
+      }
+      h1, h2 { margin: 0 0 16px; line-height: 1.1; }
+      h1 { font-size: clamp(2.2rem, 5vw, 4rem); }
+      h2 { font-size: 1.4rem; }
+      p, li { color: var(--muted); line-height: 1.65; }
+      .hero {
+        padding: 28px;
+        border: 1px solid var(--border);
+        border-radius: 24px;
+        background: linear-gradient(180deg, rgba(24,35,56,0.95), rgba(11,18,32,0.92));
+        box-shadow: 0 24px 64px rgba(0,0,0,0.28);
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 16px;
+        margin-top: 24px;
+      }
+      .card {
+        padding: 20px;
+        border-radius: 18px;
+        border: 1px solid var(--border);
+        background: var(--card);
+      }
+      .pill {
+        display: inline-block;
+        padding: 6px 12px;
+        border-radius: 999px;
+        background: rgba(121,192,255,0.14);
+        color: var(--accent);
+        font-size: 0.9rem;
+        margin-bottom: 16px;
+      }
+      ul { padding-left: 20px; }
+      code {
+        font-family: "JetBrains Mono", monospace;
+        color: var(--accent-2);
+      }
+      footer {
+        margin-top: 40px;
+        color: var(--muted);
+        font-size: 0.95rem;
+      }
+      a { color: var(--accent); }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="hero">
+        <div class="pill">GitHub Pages / Docs Entry</div>
+        <h1>Sim-to-real платформа для роботизированной платформы</h1>
+        <p>
+          Это стартовая документационная точка проекта. Платформа объединяет Unity-симулятор,
+          физический стенд, единый backend, единый операторский Web UI и исследовательский слой
+          для sim-to-real экспериментов.
+        </p>
+        <p>
+          Канонический состав документации сейчас хранится в репозитории в каталоге <code>docs/</code>.
+          Этот сайт пока служит лёгкой публичной entrypoint-страницей и будет расширяться по мере
+          стабилизации структуры документации.
+        </p>
+      </section>
+
+      <section class="grid">
+        <article class="card">
+          <h2>Что является ядром</h2>
+          <ul>
+            <li>Unity runtime как виртуальный контур платформы</li>
+            <li>Physical runtime как реальный контур платформы</li>
+            <li>Единый operator backend</li>
+            <li>Единый operator UI</li>
+            <li>Unified runtime contract</li>
+          </ul>
+        </article>
+        <article class="card">
+          <h2>Что входит в исследовательский слой</h2>
+          <ul>
+            <li>Python SDK и automation</li>
+            <li>Jupyter notebooks</li>
+            <li>ROS2 bridge</li>
+            <li>Training / inference сценарии</li>
+          </ul>
+        </article>
+        <article class="card">
+          <h2>Ближайшие цели MVP</h2>
+          <ul>
+            <li>Formalized unified contract</li>
+            <li>CLI и server/headless запуск</li>
+            <li>Production-ready plugin path</li>
+            <li>GitHub Pages, CI/CD и docs hygiene</li>
+          </ul>
+        </article>
+      </section>
+
+      <footer>
+        Актуальные исходные markdown-документы находятся в репозитории проекта. Следующий этап —
+        вынести сюда канонические разделы: архитектуру, API, operator flow, Unity runtime и research tooling.
+      </footer>
+    </main>
+  </body>
+</html>

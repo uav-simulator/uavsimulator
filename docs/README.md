@@ -14,21 +14,30 @@
 ## Next steps
 - Добавить отдельный ops-runbook для CI smoke и nightly regression.
 
+## Канонические точки входа
+- Продуктовая рамка: [product-definition-v1.md](<repo>/docs/product-definition-v1.md)
+- Unified runtime contract: [unified-runtime-contract-v1.md](<repo>/docs/unified-runtime-contract-v1.md)
+- Definition of Done MVP: [definition-of-done-mvp.md](<repo>/docs/definition-of-done-mvp.md)
+- Master-document по магистерской и продукту: [2026-03-11-sim-to-real-platform-master-document.md](<repo>/docs/research/2026-03-11-sim-to-real-platform-master-document.md)
+- Архитектура: [architecture.md](<repo>/docs/architecture.md)
+- API: [api.md](<repo>/docs/api.md)
+- Прогресс и история решений: [tasks.md](<repo>/docs/tasks.md)
+
 ## Разделы
-- Обзор проекта: `docs/overview.md`
-- Архитектура и sequence-диаграммы: `docs/architecture.md`
-- Стек: `docs/stack.md`
-- Сборка/запуск (`Makefile`, Unity, ROS): `docs/build.md`
-- API: `docs/api.md`
-- ROS2 bridge: `docs/ros2.md`
-- Плагины: `docs/plugins.md`
-- Транспорт и роботы: `docs/vehicles.md`, `docs/robots/ks0223.md`
-- Drone plugin: `docs/robots/simple-drone.md`
-- Интеграция ML и обучение: `docs/mlagents.md`, `docs/training.md`, `docs/experiments.md`
+- Обзор проекта: [overview.md](<repo>/docs/overview.md)
+- Архитектура и sequence-диаграммы: [architecture.md](<repo>/docs/architecture.md)
+- Стек: [stack.md](<repo>/docs/stack.md)
+- Сборка/запуск (`Makefile`, Unity, ROS): [build.md](<repo>/docs/build.md)
+- API: [api.md](<repo>/docs/api.md)
+- ROS2 bridge: [ros2.md](<repo>/docs/ros2.md)
+- Плагины: [plugins.md](<repo>/docs/plugins.md)
+- Транспорт и роботы: [vehicles.md](<repo>/docs/vehicles.md), [ks0223.md](<repo>/docs/robots/ks0223.md)
+- Drone plugin: [simple-drone.md](<repo>/docs/robots/simple-drone.md)
+- Интеграция ML и обучение: [mlagents.md](<repo>/docs/mlagents.md), [training.md](<repo>/docs/training.md), [experiments.md](<repo>/docs/experiments.md)
 - Demo-ноутбуки: `output/jupyter-notebook/uavsim-quickstart-demo.ipynb`, `output/jupyter-notebook/ks0223-presentation-demo.ipynb`, `output/jupyter-notebook/ks0223-ros2-training-demo.ipynb`
-- Прогресс/задачи: `docs/tasks.md`
-- Отчёты: `docs/reports/`
-- Магистерская: `docs/master-thesis/README.md`
+- Магистерская: [master-thesis README](<repo>/docs/master-thesis/README.md)
+- План уборки документации: [documentation-cleanup-plan.md](<repo>/docs/documentation-cleanup-plan.md)
+- Отчёты и учебные материалы: `docs/reports/`, `docs/report/`
 
 ## Задачи (архив)
 - Каталог задач: `docs/tasks/`
