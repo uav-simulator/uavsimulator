@@ -21,9 +21,9 @@ namespace UavSimulator.Vehicles
         [SerializeField] private float lineSensorForwardOffsetM = 0.19f;
         [SerializeField] private float lineSensorHalfSpanM = 0.08f;
         [SerializeField] private float lineSensorDetectionWidthM = 0.12f;
-        [SerializeField] private int cameraImageWidth = 160;
-        [SerializeField] private int cameraImageHeight = 120;
-        [SerializeField] [Range(20, 95)] private int cameraJpegQuality = 60;
+        [SerializeField] private int cameraImageWidth = 640;
+        [SerializeField] private int cameraImageHeight = 480;
+        [SerializeField] [Range(20, 95)] private int cameraJpegQuality = 80;
         [SerializeField] private Vector3 cameraLocalPosition = new Vector3(0f, 0.11f, 0.20f);
         [SerializeField] private Vector3 cameraLocalEuler = new Vector3(6f, 0f, 0f);
 
