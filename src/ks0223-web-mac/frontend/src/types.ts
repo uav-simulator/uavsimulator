@@ -10,6 +10,7 @@ export type StatusDto = {
   isLogging: boolean
   currentLogFile: string | null
   hasParsedTelemetry: boolean
+  runtimeMode: string
 }
 
 export type CommandResponse = {

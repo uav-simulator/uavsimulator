@@ -9,6 +9,7 @@ import {
   CardContent,
   Chip,
   CircularProgress,
+  MenuItem,
   Stack,
   TextField,
   Typography,
@@ -18,6 +19,8 @@ import type { StatusDto } from '../types'
 type Props = {
   status: StatusDto | null
   busy: boolean
+  runtimeMode: string
+  onRuntimeModeChange: (value: string) => void
   targetHost: string
   onTargetHostChange: (value: string) => void
   onConnect: () => Promise<void>
@@ -35,12 +38,19 @@ function formatLatency(value: number | null): string {
 export function ConnectionCard({
   status,
   busy,
+  runtimeMode,
+  onRuntimeModeChange,
   targetHost,
   onTargetHostChange,
   onConnect,
   onDisconnect,
 }: Props) {
   const tcpConnected = status?.tcpConnected ?? false
+  const isUnityMode = runtimeMode === 'unity-sim'
+  const connectionLabel = isUnityMode ? 'Unity API подключен' : 'TCP подключен'
+  const disconnectedLabel = isUnityMode ? 'Unity API отключен' : 'TCP отключен'
+  const hostLabel = isUnityMode ? 'IP или host Unity runtime' : 'IP или host Raspberry Pi'
+  const defaultPort = isUnityMode ? 8000 : 5051
 
   return (
     <Card sx={{ minHeight: 260 }}>
@@ -55,7 +65,7 @@ export function ConnectionCard({
             <Chip
               icon={tcpConnected ? <SensorsIcon /> : <PortableWifiOffIcon />}
               color={tcpConnected ? 'success' : 'default'}
-              label={tcpConnected ? 'TCP подключен' : 'TCP отключен'}
+              label={tcpConnected ? connectionLabel : disconnectedLabel}
             />
             <Chip label={`UI-клиенты: ${status?.uiConnectedClients ?? 0}`} variant="outlined" />
             <Chip label={`Задержка: ${formatLatency(status?.latencyMs ?? null)}`} variant="outlined" />
@@ -67,12 +77,24 @@ export function ConnectionCard({
 
           <TextField
             size="small"
-            label="IP или host Raspberry Pi"
+            select
+            label="Режим runtime"
+            value={runtimeMode}
+            onChange={(event) => onRuntimeModeChange(event.target.value)}
+            disabled={busy || tcpConnected}
+          >
+            <MenuItem value="real-robot">Real robot</MenuItem>
+            <MenuItem value="unity-sim">Unity simulator</MenuItem>
+          </TextField>
+
+          <TextField
+            size="small"
+            label={hostLabel}
             value={targetHost}
             onChange={(event) => onTargetHostChange(event.target.value)}
             disabled={busy}
-            placeholder="192.168.1.121"
-            helperText={`Порт: ${status?.targetPort ?? 5051}`}
+            placeholder={isUnityMode ? '127.0.0.1' : '192.168.1.121'}
+            helperText={`Порт: ${status?.targetPort ?? defaultPort}`}
           />
 
           <Stack direction="row" spacing={1}>
