@@ -11,12 +11,13 @@
   - Python import-check для SDK/bridge;
   - запуск Unity Test Framework в batchmode, если задан `UNITY_LICENSE`;
   - smoke-проверка `make demo-proof-ci` с graceful skip, если Unity не в Play / ROS не запущен;
-  - публикация стартовой документационной страницы через GitHub Pages отдельным workflow.
+  - публикация документации через `MkDocs Material` и GitHub Pages отдельным workflow.
 
 ## Next steps
 - CI платформа: GitHub Actions.
-- Pages: публикация `docs/site` через GitHub Pages.
+- Pages: сборка `mkdocs build` из `docs/` с конфигурацией `mkdocs.yml`.
 - Unity тесты: через GameCI `unity-test-runner`, требует `UNITY_LICENSE` secret (job пропускается, если secret не задан).
 - Python: минимальная проверка импорта клиента из `python/`.
+- Для workflows используются Node 24-compatible major-версии `actions/*`.
 - Добавить notebook-smoke в CI (без Unity — graceful skip, с Unity — полный прогон).
 - Следующий шаг: добавить docs validation и smoke-check для операторского backend API.

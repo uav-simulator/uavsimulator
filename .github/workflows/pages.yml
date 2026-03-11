@@ -24,12 +24,25 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install docs toolchain
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r docs/requirements-pages.txt
+
+      - name: Build docs site
+        run: mkdocs build --strict
 
       - name: Upload pages artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v4
         with:
-          path: docs/site
+          path: .mkdocs-site
 
   deploy:
     runs-on: ubuntu-latest

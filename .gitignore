@@ -94,6 +94,7 @@ __pycache__/
 tmp/
 output/*.png
 output/*.jpg
+.mkdocs-site/
 output/*.xwd
 output/*.log
 output/debug_turns/

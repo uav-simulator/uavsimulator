@@ -1,0 +1,69 @@
+site_name: UAV Simulator Docs
+site_description: Документация sim-to-real платформы для симуляции и реального стенда
+site_url: https://nmgorovenko.github.io/uav-simulator/
+repo_url: https://github.com/NMGorovenko/uav-simulator
+repo_name: NMGorovenko/uav-simulator
+edit_uri: blob/develop/docs/
+docs_dir: docs
+site_dir: .mkdocs-site
+strict: false
+
+theme:
+  name: material
+  language: ru
+  features:
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - content.code.copy
+    - search.highlight
+    - search.suggest
+  palette:
+    - scheme: slate
+      primary: blue grey
+      accent: light blue
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+
+extra_javascript:
+  - https://unpkg.com/mermaid@11/dist/mermaid.min.js
+  - javascripts/mermaid-init.js
+
+nav:
+  - Старт: README.md
+  - О симуляторе: about-simulator.md
+  - Установка: installation.md
+  - Использование: usage.md
+  - Контракты:
+      - Обзор контрактов: contracts.md
+      - Product Definition v1: product-definition-v1.md
+      - Unified Runtime Contract v1: unified-runtime-contract-v1.md
+      - Autopilot Integration Contract v1: autopilot-integration-contract-v1.md
+      - Simulator Scenario Config Contract v1: simulator-scenario-config-contract-v1.md
+      - Definition of Done MVP: definition-of-done-mvp.md
+      - API: api.md
+  - Архитектура: architecture.md
+  - Roadmap: roadmap.md
+  - CI/CD: ci.md
+  - Research:
+      - Master Document: research/2026-03-11-sim-to-real-platform-master-document.md
+      - Unity <> KS0223: research/2026-03-10-ks0223-ui-unity-sim2real.md
+      - Product Gap Analysis: research/2026-03-10-ks0223-product-readiness-gap-analysis.md
