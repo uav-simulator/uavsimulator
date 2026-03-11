@@ -5,6 +5,37 @@ on:
   pull_request:
 
 jobs:
+  backend-build:
+    name: Backend build (.NET)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - name: Restore and build backend
+        run: |
+          dotnet restore
+          dotnet build --no-restore
+        working-directory: src/ks0223-web-mac/backend
+
+  frontend-build:
+    name: Frontend build (Vite)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: src/ks0223-web-mac/frontend/package-lock.json
+      - name: Install
+        run: npm ci
+        working-directory: src/ks0223-web-mac/frontend
+      - name: Build
+        run: npm run build
+        working-directory: src/ks0223-web-mac/frontend
+
   unity-tests:
     name: Unity Tests (GameCI)
     if: ${{ secrets.UNITY_LICENSE != '' }}

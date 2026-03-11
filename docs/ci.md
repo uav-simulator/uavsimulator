@@ -6,13 +6,17 @@
 
 ## Decisions
 - Минимальный набор проверок:
-  - проверка форматирования/стиля для `.cs` и `.md` (на уровне репозитория);
-  - проверка целостности структуры (наличие ключевых документов, задач, индексов);
-  - (после появления тестов) запуск Unity Test Framework в batchmode.
-  - smoke-проверка `make demo-proof-ci` с graceful skip, если Unity не в Play / ROS не запущен.
+  - сборка backend (`.NET`);
+  - сборка frontend (`Vite/TypeScript`);
+  - Python import-check для SDK/bridge;
+  - запуск Unity Test Framework в batchmode, если задан `UNITY_LICENSE`;
+  - smoke-проверка `make demo-proof-ci` с graceful skip, если Unity не в Play / ROS не запущен;
+  - публикация стартовой документационной страницы через GitHub Pages отдельным workflow.
 
 ## Next steps
 - CI платформа: GitHub Actions.
+- Pages: публикация `docs/site` через GitHub Pages.
 - Unity тесты: через GameCI `unity-test-runner`, требует `UNITY_LICENSE` secret (job пропускается, если secret не задан).
 - Python: минимальная проверка импорта клиента из `python/`.
 - Добавить notebook-smoke в CI (без Unity — graceful skip, с Unity — полный прогон).
+- Следующий шаг: добавить docs validation и smoke-check для операторского backend API.
