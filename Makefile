@@ -31,15 +31,21 @@ ROS2_VNC_PORT ?= 5901
 
 ROS_BRIDGE_RESET_FLAG := $(if $(filter 1 true TRUE yes YES,$(UAVSIM_ROS_RESET_ON_START)),--reset-on-start,)
 
-.PHONY: help quickstart venv sim sim-public sim-health sim-step sim-reset \
+.PHONY: help quickstart venv sim sim-public sim-health sim-step sim-reset sim-doctor sim-contract sim-scenario-validate sim-scenario-print sim-scenario-reset \
 	demo-up demo-control demo-reset demo-status demo-proof demo-proof-ci demo-down demo-restart ros-demo-reset \
 	ros-mock ros-bridge ros-demo ros-up ros-down ros-shell ros-bridge-container \
 	ros-ui-container ros-control-ui-container ros-topics ros-install-image-plugins \
 	ros-install-control-ui ros-cmd-vel ros-stop clean-pyc
 
+SCENARIO ?= $(PROJECT_ROOT)/configs/scenarios/ks0223-demo.yaml
+
 help:
 	@echo "Main (daily):"
 	@echo "  make sim-public  - start Unity (API accessible for Docker bridge)"
+	@echo "  make sim-doctor"
+	@echo "  make sim-contract"
+	@echo "  make sim-scenario-validate SCENARIO=configs/scenarios/ks0223-demo.yaml"
+	@echo "  make sim-scenario-reset SCENARIO=configs/scenarios/ks0223-demo.yaml"
 	@echo "  make demo-up     - start ROS desktop + bridge + RViz/rqt windows"
 	@echo "  make demo-reset  - reset simulator to baseline robot/track"
 	@echo "  make demo-status - quick health check (API + ROS topics + bridge log)"
@@ -57,6 +63,7 @@ help:
 	@echo ""
 	@echo "Advanced:"
 	@echo "  make sim, sim-health, sim-step, sim-reset"
+	@echo "  make sim-scenario-print"
 	@echo "  make ros-up, ros-down, ros-shell, ros-ui-container, ros-bridge-container, ros-topics"
 	@echo "  make ros-install-image-plugins (for compressed image transport)"
 	@echo "  make ros-install-control-ui (rqt_robot_steering)"
@@ -95,6 +102,21 @@ sim-reset:
 	curl -m 10 -sS -X POST "$(BASE_URL)/reset" \
 		-H 'Content-Type: application/json' \
 		-d '{"seed":1,"timeScale":1.0,"selectedTrackId":"$(UAVSIM_TRACK_ID)","selectedVehicleId":"$(UAVSIM_VEHICLE_ID)","trackParams":[],"vehicleParams":[],"flags":[]}' | head -c 500; echo
+
+sim-doctor:
+	PYTHONPATH=python $(PYTHON) -m sim_client.cli doctor --base-url "$(BASE_URL)"
+
+sim-contract:
+	PYTHONPATH=python $(PYTHON) -m sim_client.cli contract --base-url "$(BASE_URL)"
+
+sim-scenario-validate:
+	PYTHONPATH=python $(PYTHON) -m sim_client.cli scenario validate "$(SCENARIO)"
+
+sim-scenario-print:
+	PYTHONPATH=python $(PYTHON) -m sim_client.cli scenario print-reset "$(SCENARIO)"
+
+sim-scenario-reset:
+	PYTHONPATH=python $(PYTHON) -m sim_client.cli scenario reset "$(SCENARIO)" --base-url "$(BASE_URL)"
 
 demo-up: ros-up ros-bridge-container ros-ui-container demo-reset
 	@echo "ROS UI ready: http://127.0.0.1:$(ROS2_HTTP_PORT)"

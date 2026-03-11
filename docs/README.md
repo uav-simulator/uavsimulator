@@ -15,16 +15,19 @@
 ### 1. О симуляторе
 - [about-simulator.md](about-simulator.md)
 
-### 2. Установка
+### 2. Технологии
+- [stack.md](stack.md)
+
+### 3. Установка
 - [installation.md](installation.md)
 
-### 3. Использование
+### 4. Использование
 - [usage.md](usage.md)
 
-### 4. Контракты
+### 5. Контракты
 - [contracts.md](contracts.md)
 
-### 5. Roadmap и текущая стадия
+### 6. Roadmap и текущая стадия
 - [roadmap.md](roadmap.md)
 
 ## Канонические артефакты продукта

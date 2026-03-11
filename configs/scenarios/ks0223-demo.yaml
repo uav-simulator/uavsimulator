@@ -1,0 +1,47 @@
+scenarioId: ks0223-demo-track
+displayName: KS0223 Demo Track
+description: Базовый демонстрационный сценарий для Unity runtime.
+version: 1
+
+runtime:
+  runtimeMode: unity-sim
+  headless: false
+  timeScale: 1.0
+  seed: 42
+
+world:
+  trackId: track.basic_arena.v1
+
+vehicle:
+  vehicleId: vehicle.ks0223.v1
+  params:
+    camera.profile: balanced
+
+sensors:
+  camera:
+    enabled: true
+    profile: balanced
+  telemetry:
+    profile: default
+  lineTracker:
+    enabled: true
+  ultrasonic:
+    enabled: true
+
+route:
+  waypoints:
+    - [-6.0, -8.0]
+    - [-6.0, -1.0]
+    - [4.0, 2.0]
+    - [6.0, 8.0]
+  loop: false
+  reachDistanceM: 1.2
+
+agents:
+  count: 1
+  isolated: true
+  seeEachOther: false
+
+logging:
+  enabled: true
+  tag: demo
