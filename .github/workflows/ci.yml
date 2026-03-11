@@ -5,6 +5,22 @@ on:
   pull_request:
 
 jobs:
+  unity-license-gate:
+    name: Unity license gate
+    runs-on: ubuntu-latest
+    outputs:
+      has_license: ${{ steps.gate.outputs.has_license }}
+    steps:
+      - id: gate
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+        run: |
+          if [ -n "$UNITY_LICENSE" ]; then
+            echo "has_license=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_license=false" >> "$GITHUB_OUTPUT"
+          fi
+
   backend-build:
     name: Backend build (.NET)
     runs-on: ubuntu-latest
@@ -38,7 +54,8 @@ jobs:
 
   unity-tests:
     name: Unity Tests (GameCI)
-    if: ${{ secrets.UNITY_LICENSE != '' }}
+    needs: unity-license-gate
+    if: ${{ needs.unity-license-gate.outputs.has_license == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
