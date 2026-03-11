@@ -14,7 +14,7 @@ dependencies = [
 ]
 
 [project.scripts]
-uavsim = "sim_client.cli:main"
+rusim = "sim_client.cli:main"
 
 [tool.setuptools]
 packages = ["sim_client"]

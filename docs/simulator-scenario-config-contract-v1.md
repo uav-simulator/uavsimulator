@@ -125,9 +125,9 @@
 
 ## Планируемый CLI UX
 ```bash
-uav-sim scenario validate configs/ks0223-demo.yaml
-uav-sim server start --scenario configs/ks0223-demo.yaml
-uav-sim run --scenario configs/ks0223-demo.yaml
+rusim scenario validate configs/ks0223-demo.yaml
+rusim server start --scenario configs/ks0223-demo.yaml
+rusim run --scenario configs/ks0223-demo.yaml
 ```
 
 ## Требования к реализации
