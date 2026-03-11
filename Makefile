@@ -31,19 +31,25 @@ ROS2_VNC_PORT ?= 5901
 
 ROS_BRIDGE_RESET_FLAG := $(if $(filter 1 true TRUE yes YES,$(UAVSIM_ROS_RESET_ON_START)),--reset-on-start,)
 
-.PHONY: help quickstart venv sim sim-public sim-health sim-step sim-reset sim-doctor sim-contract sim-scenario-validate sim-scenario-print sim-scenario-reset \
+.PHONY: help quickstart venv sim sim-public sim-health sim-step sim-reset sim-doctor sim-contract sim-runtime-build sim-server-start sim-server-start-runtime sim-server-status sim-server-stop sim-scenario-validate sim-scenario-print sim-scenario-reset \
 	demo-up demo-control demo-reset demo-status demo-proof demo-proof-ci demo-down demo-restart ros-demo-reset \
 	ros-mock ros-bridge ros-demo ros-up ros-down ros-shell ros-bridge-container \
 	ros-ui-container ros-control-ui-container ros-topics ros-install-image-plugins \
 	ros-install-control-ui ros-cmd-vel ros-stop clean-pyc
 
 SCENARIO ?= $(PROJECT_ROOT)/configs/scenarios/ks0223-demo.yaml
+RUNTIME_APP ?= $(PROJECT_ROOT)/build/runtime/macos/uav-simulator.app
 
 help:
 	@echo "Main (daily):"
 	@echo "  make sim-public  - start Unity (API accessible for Docker bridge)"
 	@echo "  make sim-doctor"
 	@echo "  make sim-contract"
+	@echo "  make sim-runtime-build"
+	@echo "  make sim-server-start MODE=headless PORT=8011"
+	@echo "  make sim-server-start-runtime MODE=headless PORT=8011"
+	@echo "  make sim-server-status PORT=8011"
+	@echo "  make sim-server-stop"
 	@echo "  make sim-scenario-validate SCENARIO=configs/scenarios/ks0223-demo.yaml"
 	@echo "  make sim-scenario-reset SCENARIO=configs/scenarios/ks0223-demo.yaml"
 	@echo "  make demo-up     - start ROS desktop + bridge + RViz/rqt windows"
@@ -108,6 +114,21 @@ sim-doctor:
 
 sim-contract:
 	PYTHONPATH=python $(PYTHON) -m sim_client.cli contract --base-url "$(BASE_URL)"
+
+sim-runtime-build:
+	PYTHONPATH=python $(PYTHON) -m sim_client.cli runtime build --project-path "$(UNITY_PROJECT)" --output "$(RUNTIME_APP)"
+
+sim-server-start:
+	PYTHONPATH=python $(PYTHON) -m sim_client.cli server start --project-path "$(UNITY_PROJECT)" --mode "$(MODE)" --port "$(UAVSIM_API_PORT)"
+
+sim-server-start-runtime:
+	PYTHONPATH=python $(PYTHON) -m sim_client.cli server start --runtime-app "$(RUNTIME_APP)" --mode "$(MODE)" --port "$(UAVSIM_API_PORT)"
+
+sim-server-status:
+	PYTHONPATH=python $(PYTHON) -m sim_client.cli server status --port "$(UAVSIM_API_PORT)"
+
+sim-server-stop:
+	PYTHONPATH=python $(PYTHON) -m sim_client.cli server stop
 
 sim-scenario-validate:
 	PYTHONPATH=python $(PYTHON) -m sim_client.cli scenario validate "$(SCENARIO)"

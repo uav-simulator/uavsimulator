@@ -127,6 +127,25 @@ rusim server stop
 - новый Unity instance не сможет открыть тот же проект, если он уже открыт в другом Editor instance;
 - в этом случае `rusim` возвращает явную диагностическую ошибку, а не молчаливый таймаут.
 
+## Standalone runtime build
+Теперь есть и build pipeline для standalone runtime:
+
+```bash
+rusim runtime build --project-path src/UnityProject/uav-simulator --output build/runtime/macos/uav-simulator.app
+```
+
+После сборки standalone app можно запускать без Unity Editor:
+
+```bash
+rusim server start --runtime-app build/runtime/macos/uav-simulator.app --mode windowed --port 8011
+rusim server start --runtime-app build/runtime/macos/uav-simulator.app --mode headless --port 8011
+make sim-server-start-runtime MODE=headless UAVSIM_API_PORT=8011
+```
+
+Практическое ограничение текущей проверки:
+- если Unity project уже открыт в другом Editor instance, batch build через CLI будет заблокирован project lock;
+- в этом случае сначала нужно закрыть текущий Unity Editor.
+
 ## Связанные документы
 - [Использование](usage.md)
 - [CI/CD](ci.md)

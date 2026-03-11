@@ -19,6 +19,7 @@ DEFAULT_UNITY_VERSION = "6000.1.8f1"
 DEFAULT_UNITY_BIN = f"/Applications/Unity/Hub/Editor/{DEFAULT_UNITY_VERSION}/Unity.app/Contents/MacOS/Unity"
 DEFAULT_PROJECT_PATH = "src/UnityProject/uav-simulator"
 DEFAULT_SCENE_PATH = "Assets/Scenes/TrackScence.unity"
+DEFAULT_RUNTIME_APP = "build/runtime/macos/uav-simulator.app"
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -30,6 +31,16 @@ def build_parser() -> argparse.ArgumentParser:
 
     contract = subparsers.add_parser("contract", help="Print simulator contract.")
     contract.add_argument("--base-url", default="http://127.0.0.1:8000")
+
+    runtime = subparsers.add_parser("runtime", help="Build and inspect standalone runtime.")
+    runtime_sub = runtime.add_subparsers(dest="runtime_command", required=True)
+
+    build = runtime_sub.add_parser("build", help="Build standalone macOS runtime app.")
+    build.add_argument("--unity-bin", default=os.environ.get("UNITY_BIN", DEFAULT_UNITY_BIN))
+    build.add_argument("--project-path", default=DEFAULT_PROJECT_PATH)
+    build.add_argument("--scene", default=DEFAULT_SCENE_PATH)
+    build.add_argument("--output", default=DEFAULT_RUNTIME_APP)
+    build.add_argument("--wait-seconds", type=float, default=900.0)
 
     server = subparsers.add_parser("server", help="Manage Unity runtime process.")
     server_sub = server.add_subparsers(dest="server_command", required=True)
@@ -43,6 +54,7 @@ def build_parser() -> argparse.ArgumentParser:
     start.add_argument("--port", type=int, default=8000)
     start.add_argument("--scenario")
     start.add_argument("--wait-seconds", type=float, default=45.0)
+    start.add_argument("--runtime-app", default="")
 
     status = server_sub.add_parser("status", help="Show Unity runtime server status.")
     status.add_argument("--host", default="127.0.0.1")
@@ -82,6 +94,8 @@ def main(argv: list[str] | None = None) -> int:
             return _doctor(args.base_url)
         if args.command == "contract":
             return _contract(args.base_url)
+        if args.command == "runtime":
+            return _runtime(args)
         if args.command == "server":
             return _server(args)
         if args.command == "scenario":
@@ -120,6 +134,12 @@ def _contract(base_url: str) -> int:
     client = SimClient(base_url=base_url)
     print(json.dumps(client.get_contract(), ensure_ascii=False, indent=2))
     return 0
+
+
+def _runtime(args: argparse.Namespace) -> int:
+    if args.runtime_command == "build":
+        return _runtime_build(args)
+    raise ValueError(f"Unknown runtime command: {args.runtime_command}")
 
 
 def _server(args: argparse.Namespace) -> int:
@@ -206,14 +226,7 @@ def _step(base_url: str, throttle: float, steer: float, brake: float) -> int:
 
 
 def _server_start(args: argparse.Namespace) -> int:
-    unity_bin = Path(args.unity_bin).expanduser()
-    project_path = Path(args.project_path).expanduser().resolve()
     state_path = _state_file()
-
-    if not unity_bin.exists():
-        raise FileNotFoundError(f"Unity binary not found: {unity_bin}")
-    if not project_path.exists():
-        raise FileNotFoundError(f"Unity project path not found: {project_path}")
 
     existing = _load_state()
     if existing and _pid_alive(int(existing.get("pid", 0))):
@@ -222,34 +235,47 @@ def _server_start(args: argparse.Namespace) -> int:
     runtime_dir = _runtime_dir()
     runtime_dir.mkdir(parents=True, exist_ok=True)
     log_file = runtime_dir / f"unity-{args.mode}.log"
-
-    cmd = [
-        str(unity_bin),
-        "-projectPath",
-        str(project_path),
-        "-executeMethod",
-        "UavSimulator.EditorTools.RuntimeServerLauncher.StartRuntimeServer",
-        "-logFile",
-        str(log_file),
-    ]
-
-    if args.mode == "headless":
-        cmd.extend(["-batchmode", "-nographics"])
-
     env = os.environ.copy()
     env["UAVSIM_API_HOST"] = args.host
     env["UAVSIM_API_PORT"] = str(args.port)
     env["RUSIM_START_SCENE"] = args.scene
 
-    with open(log_file, "ab") as log_handle:
-        process = subprocess.Popen(
-            cmd,
-            cwd=str(project_path),
+    if args.runtime_app:
+        runtime_app = Path(args.runtime_app).expanduser().resolve()
+        if not runtime_app.exists():
+            raise FileNotFoundError(f"Runtime app not found: {runtime_app}")
+        executable = _resolve_runtime_executable(runtime_app)
+        process = _spawn_process(
+            cmd=_runtime_launch_command(executable, mode=args.mode, log_file=log_file),
+            cwd=runtime_app.parent,
             env=env,
-            stdout=log_handle,
-            stderr=subprocess.STDOUT,
-            start_new_session=True,
+            log_file=log_file,
         )
+        launch_kind = "standalone-runtime"
+        launch_meta: Dict[str, Any] = {
+            "runtimeApp": str(runtime_app),
+            "runtimeExecutable": str(executable),
+        }
+    else:
+        unity_bin = Path(args.unity_bin).expanduser()
+        project_path = Path(args.project_path).expanduser().resolve()
+
+        if not unity_bin.exists():
+            raise FileNotFoundError(f"Unity binary not found: {unity_bin}")
+        if not project_path.exists():
+            raise FileNotFoundError(f"Unity project path not found: {project_path}")
+
+        process = _spawn_process(
+            cmd=_editor_launch_command(unity_bin, project_path, args.scene, log_file, mode=args.mode),
+            cwd=project_path,
+            env=env,
+            log_file=log_file,
+        )
+        launch_kind = "unity-editor"
+        launch_meta = {
+            "unityBin": str(unity_bin),
+            "projectPath": str(project_path),
+        }
 
     base_url = f"http://{args.host}:{args.port}"
     if not _wait_for_health_or_exit(process, base_url=base_url, timeout_s=args.wait_seconds):
@@ -279,16 +305,16 @@ def _server_start(args: argparse.Namespace) -> int:
     state = {
         "pid": process.pid,
         "mode": args.mode,
+        "launchKind": launch_kind,
         "host": args.host,
         "port": args.port,
         "baseUrl": base_url,
-        "unityBin": str(unity_bin),
-        "projectPath": str(project_path),
         "scene": args.scene,
         "logFile": str(log_file),
         "scenarioId": scenario_id,
         "startedAt": int(time.time()),
     }
+    state.update(launch_meta)
     state_path.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
     print(json.dumps(state, ensure_ascii=False, indent=2))
     return 0
@@ -312,8 +338,10 @@ def _server_status(host: str, port: int) -> int:
         "baseUrl": base_url,
         "healthy": healthy,
         "mode": state.get("mode"),
+        "launchKind": state.get("launchKind"),
         "scene": state.get("scene"),
         "logFile": state.get("logFile"),
+        "runtimeApp": state.get("runtimeApp"),
         "error": error,
     }
     print(json.dumps(result, ensure_ascii=False, indent=2))
@@ -404,6 +432,113 @@ def _read_log_tail(path: Path, max_lines: int = 20) -> str:
     except OSError:
         return ""
     return "\n".join(lines[-max_lines:])
+
+
+def _runtime_build(args: argparse.Namespace) -> int:
+    unity_bin = Path(args.unity_bin).expanduser()
+    project_path = Path(args.project_path).expanduser().resolve()
+    output = Path(args.output).expanduser().resolve()
+
+    if not unity_bin.exists():
+        raise FileNotFoundError(f"Unity binary not found: {unity_bin}")
+    if not project_path.exists():
+        raise FileNotFoundError(f"Unity project path not found: {project_path}")
+
+    runtime_dir = _runtime_dir()
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    log_file = runtime_dir / "runtime-build.log"
+
+    env = os.environ.copy()
+    env["RUSIM_BUILD_OUTPUT"] = str(output)
+    env["RUSIM_BUILD_SCENE"] = args.scene
+
+    process = _spawn_process(
+        cmd=[
+            str(unity_bin),
+            "-projectPath",
+            str(project_path),
+            "-batchmode",
+            "-nographics",
+            "-executeMethod",
+            "UavSimulator.EditorTools.RuntimeBuildPipeline.BuildMacOsRuntime",
+            "-quit",
+            "-logFile",
+            str(log_file),
+        ],
+        cwd=project_path,
+        env=env,
+        log_file=log_file,
+    )
+    try:
+        return_code = process.wait(timeout=args.wait_seconds)
+    except subprocess.TimeoutExpired:
+        _terminate_pid(process.pid, grace_seconds=3.0)
+        raise RuntimeError(f"Runtime build timed out after {args.wait_seconds:.1f}s. Log: {log_file}")
+
+    if return_code != 0:
+        log_tail = _read_log_tail(log_file, max_lines=40)
+        if "another Unity instance is running with this project open" in log_tail:
+            raise RuntimeError(
+                "Cannot build runtime while the Unity project is already open in another instance. "
+                "Close the current Unity Editor and rerun `rusim runtime build`."
+            )
+        raise RuntimeError(f"Runtime build failed with exit code {return_code}. Log: {log_file}\n{log_tail}")
+
+    executable = _resolve_runtime_executable(output)
+    result = {
+        "output": str(output),
+        "executable": str(executable),
+        "logFile": str(log_file),
+    }
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0
+
+
+def _editor_launch_command(unity_bin: Path, project_path: Path, scene: str, log_file: Path, mode: str) -> list[str]:
+    cmd = [
+        str(unity_bin),
+        "-projectPath",
+        str(project_path),
+        "-executeMethod",
+        "UavSimulator.EditorTools.RuntimeServerLauncher.StartRuntimeServer",
+        "-logFile",
+        str(log_file),
+    ]
+    if mode == "headless":
+        cmd.extend(["-batchmode", "-nographics"])
+    return cmd
+
+
+def _runtime_launch_command(executable: Path, mode: str, log_file: Path) -> list[str]:
+    cmd = [str(executable), "-logFile", str(log_file)]
+    if mode == "headless":
+        cmd.extend(["-batchmode", "-nographics"])
+    return cmd
+
+
+def _spawn_process(cmd: list[str], cwd: Path, env: Dict[str, str], log_file: Path) -> subprocess.Popen[Any]:
+    with open(log_file, "ab") as log_handle:
+        return subprocess.Popen(
+            cmd,
+            cwd=str(cwd),
+            env=env,
+            stdout=log_handle,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+
+
+def _resolve_runtime_executable(runtime_app: Path) -> Path:
+    if runtime_app.suffix != ".app":
+        raise ValueError(f"Expected macOS app bundle (.app), got: {runtime_app}")
+    binary_name = runtime_app.stem
+    executable = runtime_app / "Contents" / "MacOS" / binary_name
+    if executable.exists():
+        return executable
+    candidates = list((runtime_app / "Contents" / "MacOS").glob("*"))
+    if len(candidates) == 1:
+        return candidates[0]
+    raise FileNotFoundError(f"Runtime executable not found in app bundle: {runtime_app}")
 
 
 if __name__ == "__main__":

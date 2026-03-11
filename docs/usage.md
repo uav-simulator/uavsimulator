@@ -96,6 +96,18 @@ rusim server stop
 Практическое ограничение:
 - если проект уже открыт в другом Unity Editor instance, headless/windowed launcher второго instance не сможет занять тот же project path.
 
+## Standalone runtime
+Для продуктового сценария без Unity Editor используется standalone runtime build:
+
+```bash
+rusim runtime build --project-path src/UnityProject/uav-simulator --output build/runtime/macos/uav-simulator.app
+rusim server start --runtime-app build/runtime/macos/uav-simulator.app --mode windowed --port 8011
+rusim server start --runtime-app build/runtime/macos/uav-simulator.app --mode headless --port 8011
+make sim-server-start-runtime MODE=headless UAVSIM_API_PORT=8011
+```
+
+Именно этот путь должен стать основным для конечного пользователя.
+
 ## Python SDK и notebooks
 Python tooling используется для:
 

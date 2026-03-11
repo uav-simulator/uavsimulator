@@ -51,7 +51,7 @@
 Нужно довести:
 - installer/bootstrap;
 - CLI и scenario entrypoint;
-- полноценный server/headless режим без зависимости от единственного project path;
+- полноценный standalone server/headless режим как основной пользовательский путь;
 - сценарную конфигурацию;
 - понятную quickstart-инструкцию.
 
