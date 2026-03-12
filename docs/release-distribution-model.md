@@ -54,7 +54,7 @@ flowchart LR
 Минусы:
 - бинарные asset-ы завязаны на процесс публикации release;
 - checksum нужно публиковать явно;
-- cloud-сборка runtime зависит от доступности и валидности Unity license в GitHub Secrets.
+- пока есть ручной шаг локальной сборки runtime перед публикацией.
 
 ## Что считается release manifest
 Канонический формат описан в:
@@ -70,34 +70,28 @@ flowchart LR
 На текущем этапе реализовано:
 - schema и documentation для manifest;
 - локальный генератор manifest (`scripts/generate_release_manifest.py`);
-- GitHub Actions release pipeline на `push tag` (`v*`):
-  - Unity build (GameCI, `StandaloneOSX`);
-  - упаковка runtime в `uav-simulator-macos-vX.Y.Z.zip` + `sha256`;
-  - публикация GitHub Release;
-  - генерация и публикация `rusim-release-manifest.json`;
+- GitHub Actions workflow `Release Manifest` (manual), который публикует `rusim-release-manifest.json` для уже созданного Release;
 - команда `rusim upgrade`:
   - `--check-only` для проверки доступности обновления;
   - установка runtime из release manifest в локальный registry.
 
 На текущем этапе ещё не реализовано:
+- cloud-сборка runtime по тегу в GitHub Actions;
 - мультиплатформенная cloud-сборка (`linux/windows`);
 - отдельная команда `rusim release` для управления публикацией релизов из CLI.
 
 ## Практический workflow сейчас
-1. Создать и отправить tag:
+1. Локально собрать runtime:
 
 ```bash
-git tag v0.1.1
-git push origin v0.1.1
+rusim runtime build --project-path src/UnityProject/uav-simulator
 ```
 
-2. GitHub Actions workflow `Release Runtime` автоматически:
-- собирает runtime;
-- публикует release assets;
-- прикрепляет `rusim-release-manifest.json`.
+2. Упаковать `.app` в архив `uav-simulator-macos-vX.Y.Z.zip` и подготовить `.sha256`.
 
-Fallback:
-- если tag-run упал из-за инфраструктуры, тот же workflow можно запустить вручную через `workflow_dispatch` с параметром `tag`.
+3. Создать GitHub Release `vX.Y.Z` и прикрепить runtime zip + checksum.
+
+4. Запустить manual workflow `Release Manifest` с нужным `tag`.
 
 ```text
 rusim-release-manifest.json

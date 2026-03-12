@@ -31,7 +31,7 @@ ROS2_VNC_PORT ?= 5901
 
 ROS_BRIDGE_RESET_FLAG := $(if $(filter 1 true TRUE yes YES,$(UAVSIM_ROS_RESET_ON_START)),--reset-on-start,)
 
-.PHONY: help quickstart venv sim sim-public sim-health sim-step sim-reset sim-doctor sim-contract sim-install-cli sim-version sim-upgrade-check sim-upgrade sim-runtime-build sim-runtime-list sim-runtime-inspect sim-runtime-run sim-runtime-remove sim-runtime-favorite-show sim-runtime-favorite-set sim-server-start sim-server-start-runtime sim-server-status sim-server-stop sim-scenario-validate sim-scenario-print sim-scenario-reset \
+.PHONY: help quickstart venv sim sim-public sim-health sim-step sim-reset sim-doctor sim-contract sim-install-cli sim-version sim-upgrade-check sim-upgrade sim-runtime-upgrade-check sim-runtime-upgrade sim-runtime-build sim-runtime-list sim-runtime-inspect sim-runtime-run sim-runtime-remove sim-runtime-favorite-show sim-runtime-favorite-set sim-server-start sim-server-start-runtime sim-server-status sim-server-stop sim-scenario-validate sim-scenario-print sim-scenario-reset \
 	demo-up demo-control demo-reset demo-status demo-proof demo-proof-ci demo-down demo-restart ros-demo-reset \
 	ros-mock ros-bridge ros-demo ros-up ros-down ros-shell ros-bridge-container \
 	ros-ui-container ros-control-ui-container ros-topics ros-install-image-plugins \
@@ -52,6 +52,8 @@ help:
 	@echo "  make sim-version"
 	@echo "  make sim-upgrade-check RUSIM_RELEASE_REPO=NMGorovenko/uav-simulator RUSIM_RELEASE_TAG=latest"
 	@echo "  make sim-upgrade RUSIM_RELEASE_REPO=NMGorovenko/uav-simulator RUSIM_RELEASE_TAG=latest"
+	@echo "  make sim-runtime-upgrade-check RUSIM_RELEASE_REPO=NMGorovenko/uav-simulator RUSIM_RELEASE_TAG=latest"
+	@echo "  make sim-runtime-upgrade RUSIM_RELEASE_REPO=NMGorovenko/uav-simulator RUSIM_RELEASE_TAG=latest"
 	@echo "  make sim-runtime-build"
 	@echo "  make sim-runtime-list"
 	@echo "  make sim-runtime-inspect BUILD=latest"
@@ -139,6 +141,12 @@ sim-upgrade-check:
 
 sim-upgrade:
 	@"$(PROJECT_ROOT)/rusim" upgrade --repo "$(RUSIM_RELEASE_REPO)" --tag "$(RUSIM_RELEASE_TAG)" $(if $(RUSIM_MANIFEST_URL),--manifest-url "$(RUSIM_MANIFEST_URL)",)
+
+sim-runtime-upgrade-check:
+	@"$(PROJECT_ROOT)/rusim" runtime upgrade --repo "$(RUSIM_RELEASE_REPO)" --tag "$(RUSIM_RELEASE_TAG)" $(if $(RUSIM_MANIFEST_URL),--manifest-url "$(RUSIM_MANIFEST_URL)",) --check-only
+
+sim-runtime-upgrade:
+	@"$(PROJECT_ROOT)/rusim" runtime upgrade --repo "$(RUSIM_RELEASE_REPO)" --tag "$(RUSIM_RELEASE_TAG)" $(if $(RUSIM_MANIFEST_URL),--manifest-url "$(RUSIM_MANIFEST_URL)",)
 
 sim-runtime-build:
 	PYTHONPATH=python $(PYTHON) -m sim_client.cli runtime build --project-path "$(UNITY_PROJECT)" $(if $(RUNTIME_APP),--output "$(RUNTIME_APP)",)

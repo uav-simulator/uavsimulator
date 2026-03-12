@@ -38,6 +38,18 @@ DEFAULT_RELEASE_CHANNEL = "stable"
 RELEASE_MANIFEST_ASSET_NAME = "rusim-release-manifest.json"
 
 
+def _add_upgrade_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--repo", default=DEFAULT_GITHUB_REPO)
+    parser.add_argument("--tag", default="latest", help="Release tag or 'latest'.")
+    parser.add_argument("--manifest-url", default="", help="Optional direct URL to release manifest JSON.")
+    parser.add_argument("--platform", default=_detect_runtime_platform())
+    parser.add_argument("--channel", default=DEFAULT_RELEASE_CHANNEL)
+    parser.add_argument("--check-only", action="store_true")
+    parser.add_argument("--force", action="store_true", help="Reinstall even if same release build is already present.")
+    parser.add_argument("--no-set-favorite", action="store_true")
+    parser.add_argument("--github-token", default=os.environ.get("GITHUB_TOKEN", ""))
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="CLI for uav-simulator operator/runtime flows.")
     parser.set_defaults(_parser=parser)
@@ -62,15 +74,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     upgrade = subparsers.add_parser("upgrade", help="Download and install runtime from GitHub Release manifest.")
     upgrade.set_defaults(_parser=upgrade)
-    upgrade.add_argument("--repo", default=DEFAULT_GITHUB_REPO)
-    upgrade.add_argument("--tag", default="latest", help="Release tag or 'latest'.")
-    upgrade.add_argument("--manifest-url", default="", help="Optional direct URL to release manifest JSON.")
-    upgrade.add_argument("--platform", default=_detect_runtime_platform())
-    upgrade.add_argument("--channel", default=DEFAULT_RELEASE_CHANNEL)
-    upgrade.add_argument("--check-only", action="store_true")
-    upgrade.add_argument("--force", action="store_true", help="Reinstall even if same release build is already present.")
-    upgrade.add_argument("--no-set-favorite", action="store_true")
-    upgrade.add_argument("--github-token", default=os.environ.get("GITHUB_TOKEN", ""))
+    _add_upgrade_arguments(upgrade)
 
     list_cmd = subparsers.add_parser("list", help="List available runtime entities from simulator contract.")
     list_cmd.set_defaults(_parser=list_cmd)
@@ -141,6 +145,13 @@ def build_parser() -> argparse.ArgumentParser:
     remove_build.add_argument("build")
     remove_build.add_argument("--keep-files", action="store_true")
     remove_build.add_argument("--grace-seconds", type=float, default=8.0)
+
+    runtime_upgrade = runtime_sub.add_parser(
+        "upgrade",
+        help="Download and install runtime from GitHub Release manifest (alias for top-level upgrade).",
+    )
+    runtime_upgrade.set_defaults(_parser=runtime_upgrade)
+    _add_upgrade_arguments(runtime_upgrade)
 
     server = subparsers.add_parser("server", help="Manage Unity runtime process.")
     server.set_defaults(_parser=server)
@@ -552,6 +563,8 @@ def _runtime(args: argparse.Namespace) -> int:
         return _runtime_favorite(args)
     if args.runtime_command == "remove":
         return _runtime_remove(args)
+    if args.runtime_command == "upgrade":
+        return _upgrade(args)
     raise ValueError(f"Unknown runtime command: {args.runtime_command}")
 
 
