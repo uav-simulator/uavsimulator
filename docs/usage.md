@@ -140,9 +140,16 @@ rusim runtime build --project-path src/UnityProject/uav-simulator
 rusim runtime list
 rusim runtime favorite set latest
 rusim runtime run --build favorite --mode headless --port 8011
+rusim runtime remove latest
 ```
 
 Именно этот путь должен стать основным для конечного пользователя.
+
+Registry build-артефактов хранится в:
+- `.rusim/runtime-builds.json`
+
+Runtime state и logs:
+- `.rusim/runtime/`
 
 ## Python SDK и notebooks
 Python tooling используется для:

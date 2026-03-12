@@ -23,6 +23,7 @@
 - `rusim runtime inspect latest`
 - `rusim runtime favorite show`
 - `rusim runtime run --build latest --mode headless --port 8011`
+- `rusim runtime remove latest`
 - `rusim scenario validate configs/scenarios/ks0223-demo.yaml`
 - `rusim scenario reset configs/scenarios/ks0223-demo.yaml --base-url http://127.0.0.1:8000`
 - `rusim step --base-url http://127.0.0.1:8000 --throttle 0.2 --steer 0.1`
@@ -31,6 +32,10 @@ CLI нужен как минимальный продуктовый entrypoint �
 - preflight/doctor проверки;
 - scenario-driven reset;
 - smoke управления без ручного `curl`.
+
+Registry build-артефактов и runtime state:
+- `RUSIM_HOME/runtime-builds.json`
+- `RUSIM_HOME/runtime/`
 
 ## Быстрый старт
 - `python examples/random_agent.py --base-url http://127.0.0.1:8000`
