@@ -28,6 +28,7 @@ rusim --help
 ```
 
 Доступные команды:
+- `version`
 - `install`
 - `doctor`
 - `contract`
@@ -61,7 +62,19 @@ source ~/.zshrc
 - `--rc-file`
 - `--write-shell-config`
 
-## 2. Диагностика runtime
+## 2. Версия и metadata
+
+```bash
+rusim version
+```
+
+Назначение:
+- показать версию CLI;
+- показать git sha;
+- показать `rusim home`;
+- показать `latest` и `favorite` build, если они уже есть.
+
+## 3. Диагностика runtime
 
 ### Проверка health и contract
 
@@ -79,7 +92,7 @@ rusim doctor --base-url http://127.0.0.1:8000
 rusim contract --base-url http://127.0.0.1:8000
 ```
 
-## 3. Discovery команд для tracks/scenes и vehicles
+## 4. Discovery команд для tracks/scenes и vehicles
 
 ### Список tracks
 
@@ -101,7 +114,7 @@ rusim list scenes --base-url http://127.0.0.1:8000
 rusim list vehicles --base-url http://127.0.0.1:8000
 ```
 
-## 4. Inspect команд
+## 5. Inspect команд
 
 ### Inspect track
 
@@ -133,7 +146,7 @@ rusim inspect vehicle vehicle.ks0223.v1 --base-url http://127.0.0.1:8000
 - подключение идёт к общему runtime;
 - выбор активной машинки делается через `rusim reset`.
 
-## 5. Прямой выбор track и vehicle
+## 6. Прямой выбор track и vehicle
 
 ```bash
 rusim reset --base-url http://127.0.0.1:8000 --track-id track.basic_arena.v1 --vehicle-id vehicle.ks0223.v1
@@ -150,19 +163,47 @@ rusim reset --base-url http://127.0.0.1:8000 --track-id track.basic_arena.v1 --v
 - переключить активную машинку;
 - отправить нормализованный `reset` payload в runtime.
 
-## 6. Standalone runtime build
+## 7. Standalone runtime build
 
 ```bash
-rusim runtime build --project-path src/UnityProject/uav-simulator --output build/runtime/macos/uav-simulator.app
+rusim runtime build --project-path src/UnityProject/uav-simulator
 ```
 
 Назначение:
 - собрать standalone macOS runtime без необходимости вручную открывать Unity Editor для пользователя.
 
+По умолчанию build получает versioned name вида:
+
+```text
+uav-simulator-2026.03.12-153000+abc123.app
+```
+
+Можно задать свой label:
+
+```bash
+rusim runtime build --label demo
+```
+
+После сборки build автоматически попадает в registry.
+
+### Список и inspect build-артефактов
+
+```bash
+rusim runtime list
+rusim runtime inspect latest
+```
+
+### Favorite build
+
+```bash
+rusim runtime favorite show
+rusim runtime favorite set latest
+```
+
 Ограничение:
 - если проект уже открыт в Unity Editor, batch build может быть заблокирован стандартным Unity project lock.
 
-## 7. Управление runtime process
+## 8. Управление runtime process
 
 ### Запуск через Unity project path
 
@@ -178,6 +219,13 @@ rusim server start --runtime-app build/runtime/macos/uav-simulator.app --mode wi
 rusim server start --runtime-app build/runtime/macos/uav-simulator.app --mode headless --port 8011
 ```
 
+### Запуск по registry id
+
+```bash
+rusim runtime run --build latest --mode headless --port 8011
+rusim runtime run --build favorite --mode windowed --port 8011
+```
+
 ### Статус и остановка
 
 ```bash
@@ -185,7 +233,7 @@ rusim server status --port 8011
 rusim server stop
 ```
 
-## 8. Scenario-команды
+## 9. Scenario-команды
 
 ### Проверка scenario-файла
 
@@ -205,7 +253,7 @@ rusim scenario print-reset configs/scenarios/ks0223-demo.yaml
 rusim scenario reset configs/scenarios/ks0223-demo.yaml --base-url http://127.0.0.1:8000
 ```
 
-## 9. Одиночный step
+## 10. Одиночный step
 
 ```bash
 rusim step --base-url http://127.0.0.1:8000 --throttle 0.2 --steer 0.1 --brake 0.0
@@ -215,7 +263,7 @@ rusim step --base-url http://127.0.0.1:8000 --throttle 0.2 --steer 0.1 --brake 0
 - отправить один control step в runtime;
 - получить краткий ответ по state/reward/frame.
 
-## 10. Рекомендуемый smoke-test
+## 11. Рекомендуемый smoke-test
 
 Если Unity runtime уже запущен:
 
@@ -225,4 +273,14 @@ rusim list tracks --base-url http://127.0.0.1:8000
 rusim list vehicles --base-url http://127.0.0.1:8000
 rusim inspect vehicle vehicle.ks0223.v1 --base-url http://127.0.0.1:8000
 rusim reset --base-url http://127.0.0.1:8000 --track-id track.basic_arena.v1 --vehicle-id vehicle.ks0223.v1
+```
+
+Если проверяется build registry:
+
+```bash
+rusim version
+rusim runtime list
+rusim runtime inspect latest
+rusim runtime favorite set latest
+rusim runtime favorite show
 ```

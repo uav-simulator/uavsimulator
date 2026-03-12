@@ -127,9 +127,11 @@ make docker-up
 Текущий целевой UX уже частично реализован:
 
 ```bash
+rusim version
 rusim install
 rusim doctor
-rusim server start --profile ks0223-demo
+rusim runtime build
+rusim runtime run --build latest
 rusim web open
 ```
 
@@ -183,15 +185,15 @@ rusim server stop
 Теперь есть и build pipeline для standalone runtime:
 
 ```bash
-rusim runtime build --project-path src/UnityProject/uav-simulator --output build/runtime/macos/uav-simulator.app
+rusim runtime build --project-path src/UnityProject/uav-simulator
 ```
 
-После сборки standalone app можно запускать без Unity Editor:
+После сборки build регистрируется в `rusim` registry, и его можно запускать без ручного указания пути:
 
 ```bash
-rusim server start --runtime-app build/runtime/macos/uav-simulator.app --mode windowed --port 8011
-rusim server start --runtime-app build/runtime/macos/uav-simulator.app --mode headless --port 8011
-make sim-server-start-runtime MODE=headless UAVSIM_API_PORT=8011
+rusim runtime list
+rusim runtime favorite set latest
+rusim runtime run --build favorite --mode headless --port 8011
 ```
 
 Практическое ограничение текущей проверки:

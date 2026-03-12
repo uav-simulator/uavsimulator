@@ -7,22 +7,26 @@ import signal
 import subprocess
 import sys
 import time
+from datetime import datetime
+from importlib.metadata import PackageNotFoundError, version as package_version
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 from .contract import validate_contract
 from .http_client import SimClient
 from .scenario import load_scenario_file, scenario_to_reset_config, validate_scenario
 
 
+CLI_PACKAGE_NAME = "uav-sim-client"
 DEFAULT_UNITY_VERSION = "6000.1.8f1"
 DEFAULT_UNITY_BIN = f"/Applications/Unity/Hub/Editor/{DEFAULT_UNITY_VERSION}/Unity.app/Contents/MacOS/Unity"
 DEFAULT_PROJECT_PATH = "src/UnityProject/uav-simulator"
 DEFAULT_SCENE_PATH = "Assets/Scenes/TrackScence.unity"
-DEFAULT_RUNTIME_APP = "build/runtime/macos/uav-simulator.app"
 REPO_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_RUNTIME_OUTPUT_DIR = REPO_ROOT / "build" / "runtime" / "macos"
 DEFAULT_BIN_DIR = Path.home() / ".local" / "bin"
 DEFAULT_ZSHRC = Path.home() / ".zshrc"
+DEFAULT_RUSIM_HOME = REPO_ROOT / ".rusim"
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -31,6 +35,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     doctor = subparsers.add_parser("doctor", help="Check simulator health and contract.")
     doctor.add_argument("--base-url", default="http://127.0.0.1:8000")
+
+    subparsers.add_parser("version", help="Show rusim CLI and runtime metadata.")
 
     contract = subparsers.add_parser("contract", help="Print simulator contract.")
     contract.add_argument("--base-url", default="http://127.0.0.1:8000")
@@ -67,8 +73,29 @@ def build_parser() -> argparse.ArgumentParser:
     build.add_argument("--unity-bin", default=os.environ.get("UNITY_BIN", DEFAULT_UNITY_BIN))
     build.add_argument("--project-path", default=DEFAULT_PROJECT_PATH)
     build.add_argument("--scene", default=DEFAULT_SCENE_PATH)
-    build.add_argument("--output", default=DEFAULT_RUNTIME_APP)
+    build.add_argument("--output", default="")
     build.add_argument("--wait-seconds", type=float, default=900.0)
+    build.add_argument("--label", default="")
+
+    list_builds = runtime_sub.add_parser("list", help="List registered standalone runtime builds.")
+    list_builds.add_argument("--json", action="store_true")
+
+    inspect_build = runtime_sub.add_parser("inspect", help="Inspect runtime build metadata.")
+    inspect_build.add_argument("build")
+
+    run_build = runtime_sub.add_parser("run", help="Run standalone runtime by build id, latest or favorite.")
+    run_build.add_argument("--build", default="latest")
+    run_build.add_argument("--mode", choices=["windowed", "headless"], default="windowed")
+    run_build.add_argument("--host", default="127.0.0.1")
+    run_build.add_argument("--port", type=int, default=8000)
+    run_build.add_argument("--scenario")
+    run_build.add_argument("--wait-seconds", type=float, default=45.0)
+
+    favorite = runtime_sub.add_parser("favorite", help="Manage favorite standalone runtime build.")
+    favorite_sub = favorite.add_subparsers(dest="runtime_favorite_command", required=True)
+    favorite_set = favorite_sub.add_parser("set", help="Mark build as favorite.")
+    favorite_set.add_argument("build")
+    favorite_sub.add_parser("show", help="Show favorite build.")
 
     server = subparsers.add_parser("server", help="Manage Unity runtime process.")
     server_sub = server.add_subparsers(dest="server_command", required=True)
@@ -120,6 +147,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.command == "doctor":
             return _doctor(args.base_url)
+        if args.command == "version":
+            return _version()
         if args.command == "contract":
             return _contract(args.base_url)
         if args.command == "install":
@@ -164,6 +193,25 @@ def _doctor(base_url: str) -> int:
     }
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0 if ok else 1
+
+
+def _version() -> int:
+    result = {
+        "cliVersion": _cli_version(),
+        "gitSha": _git_short_sha(),
+        "repoRoot": str(REPO_ROOT),
+        "rusimHome": str(_rusim_home()),
+    }
+    registry = _load_runtime_registry()
+    builds = registry.get("builds") or []
+    if builds:
+        latest = _latest_build_entry(builds)
+        result["latestBuildId"] = latest.get("buildId")
+    favorite_id = registry.get("favoriteBuildId")
+    if favorite_id:
+        result["favoriteBuildId"] = favorite_id
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0
 
 
 def _contract(base_url: str) -> int:
@@ -305,6 +353,14 @@ def _reset_runtime(args: argparse.Namespace) -> int:
 def _runtime(args: argparse.Namespace) -> int:
     if args.runtime_command == "build":
         return _runtime_build(args)
+    if args.runtime_command == "list":
+        return _runtime_list(args)
+    if args.runtime_command == "inspect":
+        return _runtime_inspect(args)
+    if args.runtime_command == "run":
+        return _runtime_run(args)
+    if args.runtime_command == "favorite":
+        return _runtime_favorite(args)
     raise ValueError(f"Unknown runtime command: {args.runtime_command}")
 
 
@@ -603,7 +659,8 @@ def _read_log_tail(path: Path, max_lines: int = 20) -> str:
 def _runtime_build(args: argparse.Namespace) -> int:
     unity_bin = Path(args.unity_bin).expanduser()
     project_path = Path(args.project_path).expanduser().resolve()
-    output = Path(args.output).expanduser().resolve()
+    build_id = _build_id(args.label)
+    output = _resolve_runtime_output(args.output, build_id)
 
     if not unity_bin.exists():
         raise FileNotFoundError(f"Unity binary not found: {unity_bin}")
@@ -651,12 +708,114 @@ def _runtime_build(args: argparse.Namespace) -> int:
         raise RuntimeError(f"Runtime build failed with exit code {return_code}. Log: {log_file}\n{log_tail}")
 
     executable = _resolve_runtime_executable(output)
+    entry = _register_runtime_build(
+        build_id=build_id,
+        output=output,
+        executable=executable,
+        scene=args.scene,
+        unity_version=_unity_version_from_path(unity_bin),
+        source_project_path=project_path,
+    )
     result = {
+        "buildId": entry["buildId"],
+        "versionLabel": entry["versionLabel"],
         "output": str(output),
         "executable": str(executable),
         "logFile": str(log_file),
     }
     print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0
+
+
+def _runtime_list(args: argparse.Namespace) -> int:
+    registry = _load_runtime_registry()
+    builds = registry.get("builds") or []
+    favorite_id = registry.get("favoriteBuildId")
+    latest_id = _latest_build_entry(builds).get("buildId") if builds else None
+    items = []
+    for entry in _sorted_builds(builds):
+        item = {
+            "buildId": entry.get("buildId"),
+            "versionLabel": entry.get("versionLabel"),
+            "createdAt": entry.get("createdAt"),
+            "gitSha": entry.get("gitSha"),
+            "unityVersion": entry.get("unityVersion"),
+            "appPath": entry.get("appPath"),
+            "favorite": entry.get("buildId") == favorite_id,
+            "latest": entry.get("buildId") == latest_id,
+        }
+        items.append(item)
+
+    if args.json:
+        print(json.dumps({"favoriteBuildId": favorite_id, "items": items}, ensure_ascii=False, indent=2))
+        return 0
+
+    lines = []
+    if not items:
+        lines.append("No runtime builds registered.")
+    else:
+        for item in items:
+            badges = []
+            if item["latest"]:
+                badges.append("latest")
+            if item["favorite"]:
+                badges.append("favorite")
+            badge_text = f" [{', '.join(badges)}]" if badges else ""
+            lines.append(f"{item['buildId']}{badge_text}")
+            lines.append(f"  version: {item['versionLabel']}")
+            lines.append(f"  app: {item['appPath']}")
+            lines.append(f"  unity: {item['unityVersion']}")
+    print("\n".join(lines))
+    return 0
+
+
+def _runtime_inspect(args: argparse.Namespace) -> int:
+    entry = _resolve_build_selector(args.build)
+    print(json.dumps(entry, ensure_ascii=False, indent=2))
+    return 0
+
+
+def _runtime_run(args: argparse.Namespace) -> int:
+    entry = _resolve_build_selector(args.build)
+    run_args = argparse.Namespace(
+        mode=args.mode,
+        unity_bin=DEFAULT_UNITY_BIN,
+        project_path=DEFAULT_PROJECT_PATH,
+        scene=entry.get("scene") or DEFAULT_SCENE_PATH,
+        host=args.host,
+        port=args.port,
+        scenario=args.scenario,
+        wait_seconds=args.wait_seconds,
+        runtime_app=entry["appPath"],
+    )
+    return _server_start(run_args)
+
+
+def _runtime_favorite(args: argparse.Namespace) -> int:
+    if args.runtime_favorite_command == "set":
+        return _runtime_favorite_set(args.build)
+    if args.runtime_favorite_command == "show":
+        return _runtime_favorite_show()
+    raise ValueError(f"Unknown runtime favorite command: {args.runtime_favorite_command}")
+
+
+def _runtime_favorite_set(build_selector: str) -> int:
+    registry = _load_runtime_registry()
+    entry = _resolve_build_selector(build_selector, registry=registry)
+    registry["favoriteBuildId"] = entry["buildId"]
+    _save_runtime_registry(registry)
+    print(json.dumps({"favoriteBuildId": entry["buildId"]}, ensure_ascii=False, indent=2))
+    return 0
+
+
+def _runtime_favorite_show() -> int:
+    registry = _load_runtime_registry()
+    favorite_id = registry.get("favoriteBuildId")
+    if not favorite_id:
+        print(json.dumps({"favoriteBuildId": None}, ensure_ascii=False, indent=2))
+        return 0
+    entry = _resolve_build_selector("favorite", registry=registry)
+    print(json.dumps(entry, ensure_ascii=False, indent=2))
     return 0
 
 
@@ -716,6 +875,138 @@ def _rc_contains_line(rc_file: Path, line: str) -> bool:
     if not rc_file.exists():
         return False
     return line in rc_file.read_text(encoding="utf-8")
+
+
+def _cli_version() -> str:
+    try:
+        return package_version(CLI_PACKAGE_NAME)
+    except PackageNotFoundError:
+        return "0.1.0-dev"
+
+
+def _git_short_sha() -> str:
+    try:
+        output = subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=str(REPO_ROOT),
+            stderr=subprocess.DEVNULL,
+            text=True,
+        ).strip()
+        return output or "nogit"
+    except Exception:
+        return "nogit"
+
+
+def _unity_version_from_path(unity_bin: Path) -> str:
+    try:
+        return unity_bin.parents[3].name
+    except Exception:
+        return DEFAULT_UNITY_VERSION
+
+
+def _build_id(label: str) -> str:
+    if label.strip():
+        return label.strip()
+    timestamp = datetime.now().strftime("%Y.%m.%d-%H%M%S")
+    return f"{timestamp}+{_git_short_sha()}"
+
+
+def _resolve_runtime_output(output_arg: str, build_id: str) -> Path:
+    if output_arg:
+        return Path(output_arg).expanduser().resolve()
+    app_name = f"uav-simulator-{build_id}.app"
+    return (DEFAULT_RUNTIME_OUTPUT_DIR / app_name).resolve()
+
+
+def _rusim_home() -> Path:
+    raw = os.environ.get("RUSIM_HOME")
+    if raw:
+        return Path(raw).expanduser().resolve()
+    return DEFAULT_RUSIM_HOME
+
+
+def _runtime_registry_path() -> Path:
+    return _rusim_home() / "runtime-builds.json"
+
+
+def _load_runtime_registry() -> Dict[str, Any]:
+    path = _runtime_registry_path()
+    if not path.exists():
+        return {"schemaVersion": 1, "favoriteBuildId": None, "builds": []}
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _save_runtime_registry(registry: Dict[str, Any]) -> None:
+    path = _runtime_registry_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(registry, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _register_runtime_build(
+    *,
+    build_id: str,
+    output: Path,
+    executable: Path,
+    scene: str,
+    unity_version: str,
+    source_project_path: Path,
+) -> Dict[str, Any]:
+    registry = _load_runtime_registry()
+    builds = [entry for entry in registry.get("builds") or [] if entry.get("buildId") != build_id]
+    entry = {
+        "buildId": build_id,
+        "versionLabel": build_id,
+        "createdAt": datetime.now().isoformat(timespec="seconds"),
+        "gitSha": _git_short_sha(),
+        "unityVersion": unity_version,
+        "scene": scene,
+        "appPath": str(output),
+        "executablePath": str(executable),
+        "sourceProjectPath": str(source_project_path),
+    }
+    builds.append(entry)
+    registry["builds"] = builds
+    if not registry.get("favoriteBuildId"):
+        registry["favoriteBuildId"] = build_id
+    _save_runtime_registry(registry)
+    return entry
+
+
+def _sorted_builds(builds: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    return sorted(builds, key=lambda item: str(item.get("createdAt") or ""), reverse=True)
+
+
+def _latest_build_entry(builds: List[Dict[str, Any]]) -> Dict[str, Any]:
+    sorted_builds = _sorted_builds(builds)
+    if not sorted_builds:
+        raise RuntimeError("No runtime builds are registered.")
+    return sorted_builds[0]
+
+
+def _resolve_build_selector(build_selector: str, registry: Dict[str, Any] | None = None) -> Dict[str, Any]:
+    active_registry = registry or _load_runtime_registry()
+    builds = active_registry.get("builds") or []
+    if not builds:
+        raise RuntimeError("No runtime builds are registered.")
+
+    if build_selector == "latest":
+        entry = _latest_build_entry(builds)
+    elif build_selector == "favorite":
+        favorite_id = active_registry.get("favoriteBuildId")
+        if not favorite_id:
+            raise RuntimeError("Favorite runtime build is not set.")
+        entry = next((item for item in builds if item.get("buildId") == favorite_id), None)
+        if entry is None:
+            raise RuntimeError(f"Favorite runtime build '{favorite_id}' is missing from registry.")
+    else:
+        entry = next((item for item in builds if item.get("buildId") == build_selector), None)
+        if entry is None:
+            raise RuntimeError(f"Unknown runtime build: '{build_selector}'.")
+
+    app_path = Path(str(entry.get("appPath") or "")).expanduser()
+    if not app_path.exists():
+        raise RuntimeError(f"Registered runtime app does not exist: {app_path}")
+    return entry
 
 
 def _first_track_id(contract: Dict[str, Any]) -> str:

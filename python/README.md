@@ -16,8 +16,13 @@
 - `python -m pip install ./python`
 
 ## CLI
+- `rusim version`
 - `rusim doctor --base-url http://127.0.0.1:8000`
 - `rusim contract --base-url http://127.0.0.1:8000`
+- `rusim runtime list`
+- `rusim runtime inspect latest`
+- `rusim runtime favorite show`
+- `rusim runtime run --build latest --mode headless --port 8011`
 - `rusim scenario validate configs/scenarios/ks0223-demo.yaml`
 - `rusim scenario reset configs/scenarios/ks0223-demo.yaml --base-url http://127.0.0.1:8000`
 - `rusim step --base-url http://127.0.0.1:8000 --throttle 0.2 --steer 0.1`
