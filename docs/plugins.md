@@ -41,3 +41,4 @@
 Примечание:
 - Все перечисленные `vehicleId` используют общую KS0223 физику/сенсоры (`Ks0223Vehicle`), но разные визуальные модели.
 - Встроенный fallback загрузчик визуалов использует `AssetDatabase` (Unity Editor). Для standalone/server build рекомендован `Resources`-реестр плагинов с проставленными prefab references.
+- Для диагностики источника загрузки использовать `GET /health` или `rusim doctor` и поле `pluginRegistrySource`.
