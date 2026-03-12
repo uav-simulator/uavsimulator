@@ -2,6 +2,7 @@ using Barmetler.RoadSystem;
 using Barmetler.RoadSystem.Util;
 using UnityEngine;
 using UnityEngine.Rendering;
+using System;
 #if UNITY_EDITOR
 using UnityEditor;
 #endif
@@ -415,7 +416,7 @@ namespace UavSimulator.Tracks
 #if UNITY_EDITOR
         private void CreateArcadeRoadCopy(Transform parent, GameObject prefab, string name, Vector3 localPosition, Vector3 localScale, Quaternion localRotation)
         {
-            var instance = Object.Instantiate(prefab, parent, false);
+            var instance = UnityEngine.Object.Instantiate(prefab, parent, false);
             instance.name = name;
             instance.transform.localPosition = localPosition;
             instance.transform.localRotation = localRotation;
@@ -660,7 +661,9 @@ namespace UavSimulator.Tracks
             var source = AssetDatabase.LoadAssetAtPath<Material>(path);
             if (source != null)
             {
-                if (source.shader != null && source.shader.isSupported)
+                if (source.shader != null &&
+                    source.shader.isSupported &&
+                    (!IsUrpShader(source.shader) || IsUrpActive()))
                 {
                     return new Material(source);
                 }
@@ -679,10 +682,14 @@ namespace UavSimulator.Tracks
 
         private static Shader ResolveRuntimeLitShader()
         {
-            var shader = Shader.Find("Universal Render Pipeline/Lit");
-            if (shader != null && shader.isSupported)
+            Shader shader;
+            if (IsUrpActive())
             {
-                return shader;
+                shader = Shader.Find("Universal Render Pipeline/Lit");
+                if (shader != null && shader.isSupported)
+                {
+                    return shader;
+                }
             }
 
             shader = Shader.Find("Standard");
@@ -698,6 +705,25 @@ namespace UavSimulator.Tracks
             }
 
             throw new MissingReferenceException("Unable to resolve a supported lit shader for runtime track materials.");
+        }
+
+        private static bool IsUrpActive()
+        {
+            var pipeline = GraphicsSettings.currentRenderPipeline;
+            if (pipeline == null)
+            {
+                return false;
+            }
+
+            var name = pipeline.GetType().Name;
+            return name.Contains("UniversalRenderPipeline", StringComparison.Ordinal) ||
+                   name.Contains("URP", StringComparison.Ordinal);
+        }
+
+        private static bool IsUrpShader(Shader shader)
+        {
+            var name = shader != null ? shader.name : string.Empty;
+            return name.StartsWith("Universal Render Pipeline/", StringComparison.OrdinalIgnoreCase);
         }
     }
 }

@@ -1,5 +1,6 @@
 using UavSimulator.Api;
 using UavSimulator.Tracks;
+using UnityEngine.Rendering;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -75,8 +76,94 @@ namespace UavSimulator.Core
             _ = mode;
 
             var manager = EnsureSimulationManager();
+            EnsureSceneMaterialCompatibility(scene);
             EnsureSceneSpecificTrack(scene);
             BindSceneRoots(manager);
+        }
+
+        private static void EnsureSceneMaterialCompatibility(Scene scene)
+        {
+            if (!scene.IsValid() || !scene.isLoaded || IsUrpActive())
+            {
+                return;
+            }
+
+            var fallbackShader = Shader.Find("Standard") ?? Shader.Find("Legacy Shaders/Diffuse");
+            if (fallbackShader == null)
+            {
+                return;
+            }
+
+            var replacements = new System.Collections.Generic.Dictionary<Material, Material>();
+            var roots = scene.GetRootGameObjects();
+            for (var r = 0; r < roots.Length; r++)
+            {
+                var renderers = roots[r].GetComponentsInChildren<Renderer>(includeInactive: true);
+                for (var i = 0; i < renderers.Length; i++)
+                {
+                    var renderer = renderers[i];
+                    if (renderer == null)
+                    {
+                        continue;
+                    }
+
+                    var sharedMaterials = renderer.sharedMaterials;
+                    var changed = false;
+                    for (var m = 0; m < sharedMaterials.Length; m++)
+                    {
+                        var source = sharedMaterials[m];
+                        if (source == null || !IsUrpShader(source.shader))
+                        {
+                            continue;
+                        }
+
+                        if (!replacements.TryGetValue(source, out var replacement))
+                        {
+                            replacement = new Material(fallbackShader)
+                            {
+                                name = $"{source.name}_BuiltinFallback",
+                                color = source.color,
+                                mainTexture = source.mainTexture,
+                            };
+
+                            if (replacement.HasProperty("_Smoothness"))
+                            {
+                                var smoothness = source.HasProperty("_Smoothness") ? source.GetFloat("_Smoothness") : 0.2f;
+                                replacement.SetFloat("_Smoothness", smoothness);
+                            }
+
+                            replacements[source] = replacement;
+                        }
+
+                        sharedMaterials[m] = replacement;
+                        changed = true;
+                    }
+
+                    if (changed)
+                    {
+                        renderer.sharedMaterials = sharedMaterials;
+                    }
+                }
+            }
+        }
+
+        private static bool IsUrpActive()
+        {
+            var pipeline = GraphicsSettings.currentRenderPipeline;
+            if (pipeline == null)
+            {
+                return false;
+            }
+
+            var name = pipeline.GetType().Name;
+            return name.Contains("UniversalRenderPipeline", System.StringComparison.Ordinal) ||
+                   name.Contains("URP", System.StringComparison.Ordinal);
+        }
+
+        private static bool IsUrpShader(Shader shader)
+        {
+            var name = shader != null ? shader.name : string.Empty;
+            return name.StartsWith("Universal Render Pipeline/", System.StringComparison.OrdinalIgnoreCase);
         }
 
         private static void EnsureSceneSpecificTrack(Scene scene)
