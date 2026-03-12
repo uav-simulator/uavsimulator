@@ -115,7 +115,9 @@ namespace UavSimulator.Plugins
             var hasCustomVisual = TryAttachVisual(root.transform, visualProfile);
             if (!hasCustomVisual)
             {
-                CreateFallbackVisualShell(root.transform);
+                var accentColor = GetFallbackAccentColor(descriptorId);
+                CreateFallbackVisualShell(root.transform, accentColor);
+                SanitizeRendererMaterials(root);
             }
 
             var rb = root.AddComponent<Rigidbody>();
@@ -616,12 +618,21 @@ namespace UavSimulator.Plugins
             var shader = ResolveRuntimeLitShader();
             var fallback = new Material(shader)
             {
-                color = source.color
+                color = ReadSourceColor(source)
             };
 
-            if (source.mainTexture != null)
+            var sourceTexture = ReadSourceTexture(source);
+            if (sourceTexture != null)
             {
-                fallback.mainTexture = source.mainTexture;
+                if (fallback.HasProperty("_MainTex"))
+                {
+                    fallback.SetTexture("_MainTex", sourceTexture);
+                }
+
+                if (fallback.HasProperty("_BaseMap"))
+                {
+                    fallback.SetTexture("_BaseMap", sourceTexture);
+                }
             }
 
             if (fallback.HasProperty("_Smoothness"))
@@ -637,9 +648,71 @@ namespace UavSimulator.Plugins
             return fallback;
         }
 
+        private static Texture ReadSourceTexture(Material source)
+        {
+            if (source == null)
+            {
+                return null;
+            }
+
+            if (source.mainTexture != null)
+            {
+                return source.mainTexture;
+            }
+
+            if (source.HasProperty("_BaseMap"))
+            {
+                return source.GetTexture("_BaseMap");
+            }
+
+            if (source.HasProperty("_MainTex"))
+            {
+                return source.GetTexture("_MainTex");
+            }
+
+            return null;
+        }
+
+        private static Color ReadSourceColor(Material source)
+        {
+            if (source == null)
+            {
+                return Color.white;
+            }
+
+            if (source.HasProperty("_BaseColor"))
+            {
+                return source.GetColor("_BaseColor");
+            }
+
+            if (source.HasProperty("_Color"))
+            {
+                return source.GetColor("_Color");
+            }
+
+            return source.color;
+        }
+
         private static Shader ResolveRuntimeLitShader()
         {
-            Shader shader;
+            var shader = Shader.Find("Unlit/Color");
+            if (shader != null && shader.isSupported)
+            {
+                return shader;
+            }
+
+            shader = Shader.Find("Unlit/Texture");
+            if (shader != null && shader.isSupported)
+            {
+                return shader;
+            }
+
+            shader = Shader.Find("Standard");
+            if (shader != null && shader.isSupported)
+            {
+                return shader;
+            }
+
             if (IsUrpActive())
             {
                 shader = Shader.Find("Universal Render Pipeline/Lit");
@@ -647,12 +720,6 @@ namespace UavSimulator.Plugins
                 {
                     return shader;
                 }
-            }
-
-            shader = Shader.Find("Standard");
-            if (shader != null && shader.isSupported)
-            {
-                return shader;
             }
 
             shader = Shader.Find("Legacy Shaders/Diffuse");
@@ -697,32 +764,32 @@ namespace UavSimulator.Plugins
             return false;
         }
 
-        private static void CreateFallbackVisualShell(Transform parent)
+        private static void CreateFallbackVisualShell(Transform parent, Color accentColor)
         {
+            var visualRoot = new GameObject("VisualModel");
+            visualRoot.transform.SetParent(parent, false);
+            visualRoot.transform.localPosition = Vector3.zero;
+            visualRoot.transform.localRotation = Quaternion.identity;
+            visualRoot.transform.localScale = Vector3.one;
+
             var body = GameObject.CreatePrimitive(PrimitiveType.Cube);
             body.name = "Body";
-            body.transform.SetParent(parent, false);
+            body.transform.SetParent(visualRoot.transform, false);
             body.transform.localScale = new Vector3(0.34f, 0.09f, 0.50f);
             body.transform.localPosition = new Vector3(0f, 0.05f, 0f);
             DisableCollider(body);
+            ApplyPrimitiveMaterial(body, accentColor, 0.24f);
 
-            CreateDecorBlock(parent, "Hood", new Vector3(0.30f, 0.06f, 0.18f), new Vector3(0f, 0.09f, 0.15f));
-            CreateDecorBlock(parent, "Cabin", new Vector3(0.22f, 0.08f, 0.19f), new Vector3(0f, 0.13f, -0.03f));
-            CreateDecorBlock(parent, "RearDeck", new Vector3(0.30f, 0.05f, 0.12f), new Vector3(0f, 0.09f, -0.19f));
-            CreateDecorBlock(parent, "Windshield", new Vector3(0.20f, 0.05f, 0.03f), new Vector3(0f, 0.14f, 0.07f), new Vector3(-22f, 0f, 0f));
-            CreateDecorBlock(parent, "RearWindow", new Vector3(0.20f, 0.05f, 0.03f), new Vector3(0f, 0.14f, -0.11f), new Vector3(22f, 0f, 0f));
+            CreateDecorBlock(visualRoot.transform, "Hood", new Vector3(0.30f, 0.06f, 0.18f), new Vector3(0f, 0.09f, 0.15f));
+            CreateDecorBlock(visualRoot.transform, "Cabin", new Vector3(0.22f, 0.08f, 0.19f), new Vector3(0f, 0.13f, -0.03f));
+            CreateDecorBlock(visualRoot.transform, "RearDeck", new Vector3(0.30f, 0.05f, 0.12f), new Vector3(0f, 0.09f, -0.19f));
+            CreateDecorBlock(visualRoot.transform, "Windshield", new Vector3(0.20f, 0.05f, 0.03f), new Vector3(0f, 0.14f, 0.07f), new Vector3(-22f, 0f, 0f));
+            CreateDecorBlock(visualRoot.transform, "RearWindow", new Vector3(0.20f, 0.05f, 0.03f), new Vector3(0f, 0.14f, -0.11f), new Vector3(22f, 0f, 0f));
 
-            var cameraPod = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-            cameraPod.name = "CameraPod";
-            cameraPod.transform.SetParent(parent, false);
-            cameraPod.transform.localScale = new Vector3(0.02f, 0.03f, 0.02f);
-            cameraPod.transform.localPosition = new Vector3(0f, 0.20f, 0.20f);
-            DisableCollider(cameraPod);
-
-            CreateWheel(parent, "WheelFL", new Vector3(-0.14f, 0.03f, 0.18f));
-            CreateWheel(parent, "WheelFR", new Vector3(0.14f, 0.03f, 0.18f));
-            CreateWheel(parent, "WheelRL", new Vector3(-0.14f, 0.03f, -0.18f));
-            CreateWheel(parent, "WheelRR", new Vector3(0.14f, 0.03f, -0.18f));
+            CreateWheel(visualRoot.transform, "WheelFL", new Vector3(-0.14f, 0.03f, 0.18f));
+            CreateWheel(visualRoot.transform, "WheelFR", new Vector3(0.14f, 0.03f, 0.18f));
+            CreateWheel(visualRoot.transform, "WheelRL", new Vector3(-0.14f, 0.03f, -0.18f));
+            CreateWheel(visualRoot.transform, "WheelRR", new Vector3(0.14f, 0.03f, -0.18f));
         }
 
         private static GameObject LoadVisualPrefab(string assetPath)
@@ -733,7 +800,37 @@ namespace UavSimulator.Plugins
             }
 
 #if UNITY_EDITOR
-            return AssetDatabase.LoadAssetAtPath<GameObject>(assetPath);
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(assetPath);
+            if (prefab != null)
+            {
+                return prefab;
+            }
+
+            var fileName = System.IO.Path.GetFileNameWithoutExtension(assetPath);
+            var guids = AssetDatabase.FindAssets($"t:Prefab {fileName}");
+            for (var i = 0; i < guids.Length; i++)
+            {
+                var candidatePath = AssetDatabase.GUIDToAssetPath(guids[i]);
+                if (string.IsNullOrWhiteSpace(candidatePath))
+                {
+                    continue;
+                }
+
+                if (!candidatePath.Contains("ARCADE - FREE Racing Car", StringComparison.OrdinalIgnoreCase) &&
+                    !candidatePath.Contains("PROMETEO - Car Controller", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                prefab = AssetDatabase.LoadAssetAtPath<GameObject>(candidatePath);
+                if (prefab != null)
+                {
+                    return prefab;
+                }
+            }
+
+            Debug.LogWarning($"[BuiltinPluginFactory] Vehicle visual prefab not found: {assetPath}");
+            return null;
 #else
             return null;
 #endif
@@ -780,6 +877,7 @@ namespace UavSimulator.Plugins
             wheel.transform.localPosition = localPosition;
             wheel.transform.localRotation = Quaternion.Euler(0f, 0f, 90f);
             DisableCollider(wheel);
+            ApplyPrimitiveMaterial(wheel, new Color(0.10f, 0.10f, 0.11f), 0.12f);
         }
 
         private static void CreateDecorBlock(
@@ -796,6 +894,7 @@ namespace UavSimulator.Plugins
             part.transform.localPosition = localPosition;
             part.transform.localRotation = Quaternion.Euler(localEuler);
             DisableCollider(part);
+            ApplyPrimitiveMaterial(part, new Color(0.82f, 0.84f, 0.87f), 0.16f);
         }
 
         private static void DisableCollider(GameObject go)
@@ -807,6 +906,59 @@ namespace UavSimulator.Plugins
             }
 
             UnityEngine.Object.Destroy(collider);
+        }
+
+        private static Color GetFallbackAccentColor(string descriptorId)
+        {
+            if (string.Equals(descriptorId, Ks0223ArcadeRedVehicleId, StringComparison.Ordinal))
+            {
+                return new Color(0.78f, 0.20f, 0.20f);
+            }
+
+            if (string.Equals(descriptorId, Ks0223ArcadeGrayVehicleId, StringComparison.Ordinal))
+            {
+                return new Color(0.56f, 0.58f, 0.60f);
+            }
+
+            if (string.Equals(descriptorId, Ks0223ArcadePurpleVehicleId, StringComparison.Ordinal))
+            {
+                return new Color(0.54f, 0.36f, 0.74f);
+            }
+
+            return new Color(0.19f, 0.44f, 0.79f);
+        }
+
+        private static void ApplyPrimitiveMaterial(GameObject gameObject, Color color, float smoothness)
+        {
+            var renderer = gameObject != null ? gameObject.GetComponent<Renderer>() : null;
+            if (renderer == null)
+            {
+                return;
+            }
+
+            var shader = ResolveRuntimeLitShader();
+            var material = new Material(shader);
+            if (material.HasProperty("_BaseColor"))
+            {
+                material.SetColor("_BaseColor", color);
+            }
+
+            if (material.HasProperty("_Color"))
+            {
+                material.SetColor("_Color", color);
+            }
+
+            if (material.HasProperty("_Smoothness"))
+            {
+                material.SetFloat("_Smoothness", smoothness);
+            }
+
+            if (material.HasProperty("_Glossiness"))
+            {
+                material.SetFloat("_Glossiness", smoothness);
+            }
+
+            renderer.sharedMaterial = material;
         }
 
         private readonly struct VehicleVisualProfile

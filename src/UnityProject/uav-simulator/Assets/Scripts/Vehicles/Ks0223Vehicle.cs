@@ -48,7 +48,7 @@ namespace UavSimulator.Vehicles
         [SerializeField] private float lineSensorDetectionWidthM = 0.12f;
         [SerializeField] private int cameraImageWidth = 640;
         [SerializeField] private int cameraImageHeight = 480;
-        [SerializeField] [Range(20, 95)] private int cameraJpegQuality = 80;
+        [SerializeField] [Range(20, 100)] private int cameraJpegQuality = 100;
         [SerializeField] private Vector3 cameraLocalPosition = new Vector3(0f, 0.11f, 0.20f);
         [SerializeField] private Vector3 cameraLocalEuler = new Vector3(6f, 0f, 0f);
 
@@ -392,10 +392,58 @@ namespace UavSimulator.Vehicles
                 return;
             }
 
-            var material = new Material(Shader.Find("Universal Render Pipeline/Lit"));
-            material.color = color;
-            material.SetFloat("_Smoothness", smoothness);
+            var shader = ResolveRuntimeLitShader();
+            var material = new Material(shader);
+            if (material.HasProperty("_BaseColor"))
+            {
+                material.SetColor("_BaseColor", color);
+            }
+
+            if (material.HasProperty("_Color"))
+            {
+                material.SetColor("_Color", color);
+            }
+
+            if (material.HasProperty("_Smoothness"))
+            {
+                material.SetFloat("_Smoothness", smoothness);
+            }
+
+            if (material.HasProperty("_Glossiness"))
+            {
+                material.SetFloat("_Glossiness", smoothness);
+            }
+
             renderer.sharedMaterial = material;
+        }
+
+        private static Shader ResolveRuntimeLitShader()
+        {
+            var shader = Shader.Find("Unlit/Color");
+            if (shader != null && shader.isSupported)
+            {
+                return shader;
+            }
+
+            shader = Shader.Find("Unlit/Texture");
+            if (shader != null && shader.isSupported)
+            {
+                return shader;
+            }
+
+            shader = Shader.Find("Standard");
+            if (shader != null && shader.isSupported)
+            {
+                return shader;
+            }
+
+            shader = Shader.Find("Legacy Shaders/Diffuse");
+            if (shader != null)
+            {
+                return shader;
+            }
+
+            throw new MissingReferenceException("Unable to resolve runtime shader for KS0223 visuals.");
         }
 
         private float[] ReadLineSensors()

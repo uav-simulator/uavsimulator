@@ -77,13 +77,14 @@ namespace UavSimulator.Core
 
             var manager = EnsureSimulationManager();
             EnsureSceneMaterialCompatibility(scene);
+            DisableLegacySceneGround(scene);
             EnsureSceneSpecificTrack(scene);
             BindSceneRoots(manager);
         }
 
         private static void EnsureSceneMaterialCompatibility(Scene scene)
         {
-            if (!scene.IsValid() || !scene.isLoaded || IsUrpActive())
+            if (!scene.IsValid() || !scene.isLoaded)
             {
                 return;
             }
@@ -130,9 +131,22 @@ namespace UavSimulator.Core
                             replacement = new Material(fallbackShader)
                             {
                                 name = $"{source.name}_BuiltinFallback",
-                                color = source.color,
-                                mainTexture = source.mainTexture,
+                                color = ReadSourceColor(source),
                             };
+
+                            var sourceTexture = ReadSourceTexture(source);
+                            if (sourceTexture != null)
+                            {
+                                if (replacement.HasProperty("_MainTex"))
+                                {
+                                    replacement.SetTexture("_MainTex", sourceTexture);
+                                }
+
+                                if (replacement.HasProperty("_BaseMap"))
+                                {
+                                    replacement.SetTexture("_BaseMap", sourceTexture);
+                                }
+                            }
 
                             if (replacement.HasProperty("_Smoothness"))
                             {
@@ -153,6 +167,51 @@ namespace UavSimulator.Core
                     }
                 }
             }
+        }
+
+        private static Texture ReadSourceTexture(Material source)
+        {
+            if (source == null)
+            {
+                return null;
+            }
+
+            if (source.mainTexture != null)
+            {
+                return source.mainTexture;
+            }
+
+            if (source.HasProperty("_BaseMap"))
+            {
+                return source.GetTexture("_BaseMap");
+            }
+
+            if (source.HasProperty("_MainTex"))
+            {
+                return source.GetTexture("_MainTex");
+            }
+
+            return null;
+        }
+
+        private static Color ReadSourceColor(Material source)
+        {
+            if (source == null)
+            {
+                return Color.white;
+            }
+
+            if (source.HasProperty("_BaseColor"))
+            {
+                return source.GetColor("_BaseColor");
+            }
+
+            if (source.HasProperty("_Color"))
+            {
+                return source.GetColor("_Color");
+            }
+
+            return source.color;
         }
 
         private static bool IsUrpActive()
@@ -192,6 +251,42 @@ namespace UavSimulator.Core
             }
 
             return false;
+        }
+
+        private static void DisableLegacySceneGround(Scene scene)
+        {
+            if (!scene.IsValid() || !scene.isLoaded)
+            {
+                return;
+            }
+
+            var roots = scene.GetRootGameObjects();
+            for (var i = 0; i < roots.Length; i++)
+            {
+                var root = roots[i];
+                if (root == null || !string.Equals(root.name, "TrackScence", System.StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                var ground = root.transform.Find("Ground");
+                if (ground == null)
+                {
+                    continue;
+                }
+
+                var renderer = ground.GetComponent<Renderer>();
+                if (renderer != null)
+                {
+                    renderer.enabled = false;
+                }
+
+                var collider = ground.GetComponent<Collider>();
+                if (collider != null)
+                {
+                    collider.enabled = false;
+                }
+            }
         }
 
         private static void EnsureSceneSpecificTrack(Scene scene)
