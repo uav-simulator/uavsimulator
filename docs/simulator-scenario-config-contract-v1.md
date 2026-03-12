@@ -125,9 +125,9 @@
 
 ## Планируемый CLI UX
 ```bash
-rusim scenario validate configs/ks0223-demo.yaml
-rusim server start --scenario configs/ks0223-demo.yaml
-rusim run --scenario configs/ks0223-demo.yaml
+rusim scenario validate configs/scenarios/demo.yaml
+rusim server start --scenario configs/scenarios/demo.yaml
+rusim run --scenario configs/scenarios/demo.yaml
 ```
 
 ## Требования к реализации

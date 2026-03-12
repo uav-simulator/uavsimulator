@@ -4,7 +4,7 @@
 
 ## Текущее состояние
 - Плагинная архитектура для треков и роботов.
-- Runtime fallback-плагины (`track.basic_arena.v1`, `vehicle.ks0223.v1`).
+- Runtime fallback-плагины (включая `track.roadsystem_arena.v1`, `track.basic_arena.v1`, `vehicle.ks0223.arcade.*`, `vehicle.ks0223.v1`).
 - Ассетные визуалы машин (через plugin `vehicleId`):
   - `vehicle.ks0223.v1` (PROMETEO visual)
   - `vehicle.ks0223.arcade.blue.v1`

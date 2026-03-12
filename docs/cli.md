@@ -128,6 +128,11 @@ rusim doctor --base-url http://127.0.0.1:8000
 - проверить доступность runtime;
 - получить краткую сводку по `health` и `contract`.
 
+Ключевые поля в выводе `doctor`:
+- `pluginRegistrySource`: откуда загружены плагины (`RegistryAsset`, `ResourcesDescriptorsFolder` или fallback из `BuiltinPluginFactory`);
+- `activeTrackId` и `activeVehicleId`: какая сцена/машинка активны после последнего `reset`;
+- `healthAvailableVehicles` и `healthAvailableTracks`: количество плагинов по данным `/health`.
+
 ### Получение полного contract
 
 ```bash
@@ -161,19 +166,19 @@ rusim list vehicles --base-url http://127.0.0.1:8000
 ### Inspect track
 
 ```bash
-rusim inspect track track.basic_arena.v1 --base-url http://127.0.0.1:8000
+rusim inspect track track.roadsystem_arena.v1 --base-url http://127.0.0.1:8000
 ```
 
 ### Inspect scene
 
 ```bash
-rusim inspect scene track.basic_arena.v1 --base-url http://127.0.0.1:8000
+rusim inspect scene track.roadsystem_arena.v1 --base-url http://127.0.0.1:8000
 ```
 
 ### Inspect vehicle
 
 ```bash
-rusim inspect vehicle vehicle.ks0223.v1 --base-url http://127.0.0.1:8000
+rusim inspect vehicle vehicle.ks0223.arcade.blue.v1 --base-url http://127.0.0.1:8000
 ```
 
 Команда возвращает:
@@ -191,7 +196,7 @@ rusim inspect vehicle vehicle.ks0223.v1 --base-url http://127.0.0.1:8000
 ## 7. Прямой выбор track и vehicle
 
 ```bash
-rusim reset --base-url http://127.0.0.1:8000 --track-id track.basic_arena.v1 --vehicle-id vehicle.ks0223.v1
+rusim reset --base-url http://127.0.0.1:8000 --track-id track.roadsystem_arena.v1 --vehicle-id vehicle.ks0223.arcade.blue.v1
 ```
 
 Поддерживаемые аргументы:
@@ -330,19 +335,19 @@ $RUSIM_HOME/runtime/
 ### Проверка scenario-файла
 
 ```bash
-rusim scenario validate configs/scenarios/ks0223-demo.yaml
+rusim scenario validate configs/scenarios/demo.yaml
 ```
 
 ### Печать reset payload
 
 ```bash
-rusim scenario print-reset configs/scenarios/ks0223-demo.yaml
+rusim scenario print-reset configs/scenarios/demo.yaml
 ```
 
 ### Применение scenario
 
 ```bash
-rusim scenario reset configs/scenarios/ks0223-demo.yaml --base-url http://127.0.0.1:8000
+rusim scenario reset configs/scenarios/demo.yaml --base-url http://127.0.0.1:8000
 ```
 
 ## 11. Одиночный step
@@ -363,8 +368,8 @@ rusim step --base-url http://127.0.0.1:8000 --throttle 0.2 --steer 0.1 --brake 0
 rusim doctor --base-url http://127.0.0.1:8000
 rusim list tracks --base-url http://127.0.0.1:8000
 rusim list vehicles --base-url http://127.0.0.1:8000
-rusim inspect vehicle vehicle.ks0223.v1 --base-url http://127.0.0.1:8000
-rusim reset --base-url http://127.0.0.1:8000 --track-id track.basic_arena.v1 --vehicle-id vehicle.ks0223.v1
+rusim inspect vehicle vehicle.ks0223.arcade.blue.v1 --base-url http://127.0.0.1:8000
+rusim reset --base-url http://127.0.0.1:8000 --track-id track.roadsystem_arena.v1 --vehicle-id vehicle.ks0223.arcade.blue.v1
 ```
 
 Если проверяется build registry:

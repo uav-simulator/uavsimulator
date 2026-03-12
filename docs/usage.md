@@ -107,10 +107,10 @@ rusim doctor --base-url http://127.0.0.1:8000
 rusim contract --base-url http://127.0.0.1:8000
 rusim list tracks --base-url http://127.0.0.1:8000
 rusim list vehicles --base-url http://127.0.0.1:8000
-rusim inspect vehicle vehicle.ks0223.v1 --base-url http://127.0.0.1:8000
-rusim reset --base-url http://127.0.0.1:8000 --track-id track.basic_arena.v1 --vehicle-id vehicle.ks0223.v1
-rusim scenario validate configs/scenarios/ks0223-demo.yaml
-rusim scenario reset configs/scenarios/ks0223-demo.yaml --base-url http://127.0.0.1:8000
+rusim inspect vehicle vehicle.ks0223.arcade.blue.v1 --base-url http://127.0.0.1:8000
+rusim reset --base-url http://127.0.0.1:8000 --track-id track.roadsystem_arena.v1 --vehicle-id vehicle.ks0223.arcade.blue.v1
+rusim scenario validate configs/scenarios/demo.yaml
+rusim scenario reset configs/scenarios/demo.yaml --base-url http://127.0.0.1:8000
 rusim step --base-url http://127.0.0.1:8000 --throttle 0.2 --steer 0.1
 ```
 
@@ -118,6 +118,7 @@ rusim step --base-url http://127.0.0.1:8000 --throttle 0.2 --steer 0.1
 - `scene` в CLI является alias для track plugin;
 - к отдельной машинке в Unity не подключаются через отдельный порт;
 - подключение идёт к общему runtime, а выбор активной машинки/сцены делается через `rusim reset`.
+- `rusim doctor` теперь показывает `pluginRegistrySource` и активные `track/vehicle`, чтобы быстро проверить, реально ли используются plugin assets или сработал builtin fallback.
 
 Ограничение текущего среза:
 - CLI поддерживает потребление релиза (`rusim upgrade`), но не управляет публикацией release/tag lifecycle;

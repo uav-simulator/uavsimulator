@@ -72,6 +72,19 @@ Decisions:
   - `POST /step` (body: `ControlCommand`)
 - Реализация: TCP listener + минимальный HTTP парсер, выполнение Unity-операций через main-thread dispatcher.
 
+Пример `GET /health`:
+
+```json
+{
+  "status": "ok",
+  "pluginRegistrySource": "BuiltinFallbackFromEmptyResources",
+  "availableVehicles": 6,
+  "availableTracks": 2,
+  "activeVehicleId": "vehicle.ks0223.arcade.blue.v1",
+  "activeTrackId": "track.roadsystem_arena.v1"
+}
+```
+
 Next steps:
 - Определить схему `dataRef` для кадров (отдельный endpoint/stream).
 
