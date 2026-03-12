@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import signal
 import subprocess
 import sys
@@ -96,6 +97,11 @@ def build_parser() -> argparse.ArgumentParser:
     favorite_set = favorite_sub.add_parser("set", help="Mark build as favorite.")
     favorite_set.add_argument("build")
     favorite_sub.add_parser("show", help="Show favorite build.")
+
+    remove_build = runtime_sub.add_parser("remove", help="Remove runtime build from registry and disk.")
+    remove_build.add_argument("build")
+    remove_build.add_argument("--keep-files", action="store_true")
+    remove_build.add_argument("--grace-seconds", type=float, default=8.0)
 
     server = subparsers.add_parser("server", help="Manage Unity runtime process.")
     server_sub = server.add_subparsers(dest="server_command", required=True)
@@ -361,6 +367,8 @@ def _runtime(args: argparse.Namespace) -> int:
         return _runtime_run(args)
     if args.runtime_command == "favorite":
         return _runtime_favorite(args)
+    if args.runtime_command == "remove":
+        return _runtime_remove(args)
     raise ValueError(f"Unknown runtime command: {args.runtime_command}")
 
 
@@ -589,7 +597,7 @@ def _server_stop(grace_seconds: float) -> int:
 
 
 def _runtime_dir() -> Path:
-    return Path("tmp/rusim-runtime").resolve()
+    return (_rusim_home() / "runtime").resolve()
 
 
 def _state_file() -> Path:
@@ -797,6 +805,51 @@ def _runtime_favorite(args: argparse.Namespace) -> int:
     if args.runtime_favorite_command == "show":
         return _runtime_favorite_show()
     raise ValueError(f"Unknown runtime favorite command: {args.runtime_favorite_command}")
+
+
+def _runtime_remove(args: argparse.Namespace) -> int:
+    registry = _load_runtime_registry()
+    entry = _resolve_build_selector(args.build, registry=registry)
+    build_id = str(entry["buildId"])
+    app_path = Path(str(entry.get("appPath") or "")).expanduser()
+
+    state = _load_state()
+    stopped_running_build = False
+    if state and str(state.get("runtimeApp") or "") == str(app_path):
+        _server_stop(args.grace_seconds)
+        stopped_running_build = True
+
+    builds = [item for item in registry.get("builds") or [] if item.get("buildId") != build_id]
+    registry["builds"] = builds
+
+    favorite_id = registry.get("favoriteBuildId")
+    if favorite_id == build_id:
+        registry["favoriteBuildId"] = _latest_build_entry(builds).get("buildId") if builds else None
+
+    deleted_files = False
+    if not args.keep_files and app_path.exists():
+        if app_path.is_dir():
+            shutil.rmtree(app_path)
+        else:
+            app_path.unlink()
+        deleted_files = True
+
+    _save_runtime_registry(registry)
+    print(
+        json.dumps(
+            {
+                "removedBuildId": build_id,
+                "deletedFiles": deleted_files,
+                "appPath": str(app_path),
+                "stoppedRunningBuild": stopped_running_build,
+                "favoriteBuildId": registry.get("favoriteBuildId"),
+                "remainingBuilds": len(builds),
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
+    return 0
 
 
 def _runtime_favorite_set(build_selector: str) -> int:

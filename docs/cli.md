@@ -200,6 +200,23 @@ rusim runtime favorite show
 rusim runtime favorite set latest
 ```
 
+### Удаление build-артефакта
+
+```bash
+rusim runtime remove latest
+```
+
+По умолчанию команда:
+- удаляет build из registry;
+- удаляет `.app` bundle с диска;
+- если этот build сейчас запущен через `rusim`, сначала останавливает его.
+
+Если нужно оставить файлы на диске и убрать только запись из registry:
+
+```bash
+rusim runtime remove latest --keep-files
+```
+
 Ограничение:
 - если проект уже открыт в Unity Editor, batch build может быть заблокирован стандартным Unity project lock.
 
@@ -231,6 +248,18 @@ rusim runtime run --build favorite --mode windowed --port 8011
 ```bash
 rusim server status --port 8011
 rusim server stop
+```
+
+Runtime state и logs хранятся в:
+
+```text
+$RUSIM_HOME/runtime/
+```
+
+По умолчанию:
+
+```text
+.rusim/runtime/
 ```
 
 ## 9. Scenario-команды

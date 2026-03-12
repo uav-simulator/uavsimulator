@@ -194,6 +194,19 @@ rusim runtime build --project-path src/UnityProject/uav-simulator
 rusim runtime list
 rusim runtime favorite set latest
 rusim runtime run --build favorite --mode headless --port 8011
+rusim runtime remove latest
+```
+
+Служебные данные `rusim` по умолчанию сохраняются в:
+
+```text
+.rusim/
+```
+
+При необходимости можно переопределить корень через переменную окружения:
+
+```bash
+export RUSIM_HOME=/custom/path/to/rusim-home
 ```
 
 Практическое ограничение текущей проверки:
