@@ -25,6 +25,8 @@ namespace UavSimulator.Core
         private const string RouteWaypointsKey = "route.waypoints";
         private const string RouteReachDistanceKey = "route.reach_distance_m";
         private const string RouteLoopKey = "route.loop";
+        private const string SpawnPositionKey = "spawn.position";
+        private const string SpawnYawDegKey = "spawn.yaw_deg";
 
         [SerializeField] private Transform trackRoot;
         [SerializeField] private Transform vehicleRoot;
@@ -135,6 +137,7 @@ namespace UavSimulator.Core
 
             Time.timeScale = validation.TimeScale;
             ConfigureRoute(config.trackParams);
+            ApplyVehicleSpawn(config.trackParams);
         }
 
         public SimulationRuntimeDiagnostics GetDiagnostics()
@@ -491,6 +494,142 @@ namespace UavSimulator.Core
         private static string FormatFloat(float value)
         {
             return value.ToString("0.###", CultureInfo.InvariantCulture);
+        }
+
+        private void ApplyVehicleSpawn(ConfigKeyValue[] trackParams)
+        {
+            if (activeVehicle == null)
+            {
+                return;
+            }
+
+            var spawn = ResolveSpawnPose(trackParams);
+            activeVehicle.transform.position = spawn.position;
+            activeVehicle.transform.rotation = Quaternion.Euler(0f, spawn.yawDeg, 0f);
+
+            if (activeVehicle.TryGetComponent<Rigidbody>(out var body) && body != null)
+            {
+                body.linearVelocity = Vector3.zero;
+                body.angularVelocity = Vector3.zero;
+            }
+        }
+
+        private (Vector3 position, float yawDeg) ResolveSpawnPose(ConfigKeyValue[] trackParams)
+        {
+            var spawn = GetDefaultSpawnPose(activeTrackId);
+
+            if (activeRouteWaypoints.Length >= 2)
+            {
+                var first = activeRouteWaypoints[0];
+                var second = activeRouteWaypoints[1];
+                spawn.position = new Vector3(first.x, spawn.position.y, first.z);
+                var direction = second - first;
+                direction.y = 0f;
+                if (direction.sqrMagnitude > 0.0001f)
+                {
+                    spawn.yawDeg = Quaternion.LookRotation(direction.normalized, Vector3.up).eulerAngles.y;
+                }
+            }
+
+            if (TryReadTrackParam(trackParams, SpawnPositionKey, out var rawSpawnPosition) &&
+                TryParseSpawnPosition(rawSpawnPosition, spawn.position.y, out var parsedPosition))
+            {
+                spawn.position = parsedPosition;
+            }
+
+            if (TryReadTrackParam(trackParams, SpawnYawDegKey, out var rawYaw) &&
+                float.TryParse(rawYaw, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsedYaw))
+            {
+                spawn.yawDeg = parsedYaw;
+            }
+
+            return spawn;
+        }
+
+        private static bool TryReadTrackParam(ConfigKeyValue[] trackParams, string key, out string value)
+        {
+            value = null;
+            if (trackParams == null || trackParams.Length == 0)
+            {
+                return false;
+            }
+
+            foreach (var param in trackParams)
+            {
+                if (param == null || string.IsNullOrWhiteSpace(param.key))
+                {
+                    continue;
+                }
+
+                if (!string.Equals(param.key, key, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                value = param.value;
+                return !string.IsNullOrWhiteSpace(value);
+            }
+
+            return false;
+        }
+
+        private static bool TryParseSpawnPosition(string raw, float defaultY, out Vector3 position)
+        {
+            position = new Vector3(0f, defaultY, 0f);
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                return false;
+            }
+
+            var parts = raw.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length < 2)
+            {
+                return false;
+            }
+
+            if (!TryParseFloat(parts[0], out var x))
+            {
+                return false;
+            }
+
+            if (parts.Length == 2)
+            {
+                if (!TryParseFloat(parts[1], out var z))
+                {
+                    return false;
+                }
+
+                position = new Vector3(x, defaultY, z);
+                return true;
+            }
+
+            if (!TryParseFloat(parts[1], out var y) || !TryParseFloat(parts[2], out var z3))
+            {
+                return false;
+            }
+
+            position = new Vector3(x, y, z3);
+            return true;
+        }
+
+        private static (Vector3 position, float yawDeg) GetDefaultSpawnPose(string trackId)
+        {
+            if (string.Equals(trackId, BuiltinPluginFactory.RoadSystemRealisticTrackId, StringComparison.Ordinal))
+            {
+                return (new Vector3(-11f, 0.2f, -13.5f), 3f);
+            }
+
+            if (string.Equals(trackId, BuiltinPluginFactory.RoadSystemArenaTrackId, StringComparison.Ordinal))
+            {
+                return (new Vector3(-6f, 0.2f, -8.5f), 0f);
+            }
+
+            if (string.Equals(trackId, BuiltinPluginFactory.BasicArenaTrackId, StringComparison.Ordinal))
+            {
+                return (new Vector3(0f, 0.2f, -7.5f), 0f);
+            }
+
+            return (new Vector3(0f, 0.2f, -6f), 0f);
         }
     }
 }

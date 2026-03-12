@@ -6,6 +6,19 @@ public sealed record CommandResponse(bool Sent, string? Error = null);
 
 public sealed record ConnectRequest(string? Host, int? Port, string? RuntimeMode = null);
 
+public sealed record UnityRuntimeOptionDto(string Id, string DisplayName);
+
+public sealed record UnityRuntimeCatalogDto(
+    string SelectedTrackId,
+    string SelectedVehicleId,
+    IReadOnlyList<UnityRuntimeOptionDto> Tracks,
+    IReadOnlyList<UnityRuntimeOptionDto> Vehicles);
+
+public sealed record UnityRuntimeSelectionRequest(
+    string? TrackId,
+    string? VehicleId,
+    bool ApplyImmediately = true);
+
 public sealed record ConnectionTargetDto(string Host, int Port, string RuntimeMode = "real-robot");
 
 public sealed record StartLoggingRequest(string? Tag);

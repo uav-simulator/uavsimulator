@@ -87,6 +87,30 @@ app.MapPost("/api/connection/disconnect", async (RuntimeControlService runtimeCo
 });
 
 app.MapGet("/api/connection/target", (RuntimeControlService runtimeControlService) => Results.Ok(runtimeControlService.GetConnectionTarget()));
+app.MapGet("/api/unity/runtime-catalog", async (string? host, int? port, UnityKs0223RuntimeProvider unityRuntimeProvider, CancellationToken cancellationToken) =>
+{
+    try
+    {
+        var catalog = await unityRuntimeProvider.GetRuntimeCatalogAsync(host, port, cancellationToken);
+        return Results.Ok(catalog);
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+});
+app.MapPost("/api/unity/runtime-selection", async (UnityRuntimeSelectionRequest request, UnityKs0223RuntimeProvider unityRuntimeProvider, CancellationToken cancellationToken) =>
+{
+    try
+    {
+        var catalog = await unityRuntimeProvider.SetRuntimeSelectionAsync(request.TrackId, request.VehicleId, request.ApplyImmediately, cancellationToken);
+        return Results.Ok(catalog);
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+});
 app.MapGet("/api/camera/status", (RuntimeControlService runtimeControlService, CameraStreamService service, UnityKs0223RuntimeProvider unityRuntimeProvider) =>
 {
     var mode = runtimeControlService.GetCurrentMode();

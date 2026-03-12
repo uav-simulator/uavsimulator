@@ -1,6 +1,7 @@
 using Barmetler.RoadSystem;
 using Barmetler.RoadSystem.Util;
 using UnityEngine;
+using UnityEngine.Rendering;
 #if UNITY_EDITOR
 using UnityEditor;
 #endif
@@ -357,6 +358,20 @@ namespace UavSimulator.Tracks
             var lightsRoot = new GameObject("Lighting");
             lightsRoot.transform.SetParent(transform, false);
 
+            var sun = new GameObject("SunLight");
+            sun.transform.SetParent(lightsRoot.transform, false);
+            sun.transform.rotation = Quaternion.Euler(38f, -34f, 0f);
+            var sunLight = sun.AddComponent<Light>();
+            sunLight.type = LightType.Directional;
+            sunLight.intensity = 1.05f;
+            sunLight.color = new Color(1.0f, 0.97f, 0.92f);
+            sunLight.shadows = LightShadows.Soft;
+
+            RenderSettings.ambientMode = AmbientMode.Trilight;
+            RenderSettings.ambientSkyColor = new Color(0.54f, 0.62f, 0.72f);
+            RenderSettings.ambientEquatorColor = new Color(0.34f, 0.37f, 0.40f);
+            RenderSettings.ambientGroundColor = new Color(0.22f, 0.24f, 0.25f);
+
             CreateLamp(lightsRoot.transform, "LampA", new Vector3(-14f, 0f, -11f));
             CreateLamp(lightsRoot.transform, "LampB", new Vector3(-13f, 0f, 1f));
             CreateLamp(lightsRoot.transform, "LampC", new Vector3(11f, 0f, 8f));
@@ -517,7 +532,7 @@ namespace UavSimulator.Tracks
         {
 #if UNITY_EDITOR
             var skyboxMaterial = AssetDatabase.LoadAssetAtPath<Material>(ArcadeDaySkyboxPath);
-            if (skyboxMaterial != null)
+            if (skyboxMaterial != null && skyboxMaterial.shader != null && skyboxMaterial.shader.isSupported)
             {
                 RenderSettings.skybox = skyboxMaterial;
             }
@@ -574,9 +589,28 @@ namespace UavSimulator.Tracks
 
         private static Material CreateLitMaterial(Color color, float smoothness)
         {
-            var material = new Material(Shader.Find("Universal Render Pipeline/Lit"));
-            material.color = color;
-            material.SetFloat("_Smoothness", smoothness);
+            var shader = ResolveRuntimeLitShader();
+            var material = new Material(shader);
+            if (material.HasProperty("_BaseColor"))
+            {
+                material.SetColor("_BaseColor", color);
+            }
+
+            if (material.HasProperty("_Color"))
+            {
+                material.SetColor("_Color", color);
+            }
+
+            if (material.HasProperty("_Smoothness"))
+            {
+                material.SetFloat("_Smoothness", smoothness);
+            }
+
+            if (material.HasProperty("_Glossiness"))
+            {
+                material.SetFloat("_Glossiness", smoothness);
+            }
+
             return material;
         }
 
@@ -626,10 +660,44 @@ namespace UavSimulator.Tracks
             var source = AssetDatabase.LoadAssetAtPath<Material>(path);
             if (source != null)
             {
-                return new Material(source);
+                if (source.shader != null && source.shader.isSupported)
+                {
+                    return new Material(source);
+                }
+
+                var fallback = CreateLitMaterial(source.color, 0.16f);
+                if (source.mainTexture != null)
+                {
+                    fallback.mainTexture = source.mainTexture;
+                }
+
+                return fallback;
             }
 #endif
             return null;
+        }
+
+        private static Shader ResolveRuntimeLitShader()
+        {
+            var shader = Shader.Find("Universal Render Pipeline/Lit");
+            if (shader != null && shader.isSupported)
+            {
+                return shader;
+            }
+
+            shader = Shader.Find("Standard");
+            if (shader != null && shader.isSupported)
+            {
+                return shader;
+            }
+
+            shader = Shader.Find("Legacy Shaders/Diffuse");
+            if (shader != null)
+            {
+                return shader;
+            }
+
+            throw new MissingReferenceException("Unable to resolve a supported lit shader for runtime track materials.");
         }
     }
 }

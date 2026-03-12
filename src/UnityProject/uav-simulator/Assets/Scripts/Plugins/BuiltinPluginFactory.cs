@@ -441,6 +441,7 @@ namespace UavSimulator.Plugins
 
             FitVisualToVehicleBounds(parent, visualRoot.transform);
             StripVisualPhysicsAndScripts(visualRoot);
+            SanitizeRendererMaterials(visualRoot);
 
             return true;
         }
@@ -568,6 +569,91 @@ namespace UavSimulator.Plugins
                     listener.enabled = false;
                 }
             }
+        }
+
+        private static void SanitizeRendererMaterials(GameObject visualRoot)
+        {
+            var renderers = visualRoot.GetComponentsInChildren<Renderer>(includeInactive: true);
+            foreach (var renderer in renderers)
+            {
+                if (renderer == null)
+                {
+                    continue;
+                }
+
+                var sharedMaterials = renderer.sharedMaterials;
+                var changed = false;
+                for (var i = 0; i < sharedMaterials.Length; i++)
+                {
+                    var source = sharedMaterials[i];
+                    if (source == null)
+                    {
+                        continue;
+                    }
+
+                    if (source.shader != null && source.shader.isSupported)
+                    {
+                        continue;
+                    }
+
+                    sharedMaterials[i] = CreateFallbackMaterial(source);
+                    changed = true;
+                }
+
+                if (changed)
+                {
+                    renderer.sharedMaterials = sharedMaterials;
+                }
+            }
+        }
+
+        private static Material CreateFallbackMaterial(Material source)
+        {
+            var shader = ResolveRuntimeLitShader();
+            var fallback = new Material(shader)
+            {
+                color = source.color
+            };
+
+            if (source.mainTexture != null)
+            {
+                fallback.mainTexture = source.mainTexture;
+            }
+
+            if (fallback.HasProperty("_Smoothness"))
+            {
+                fallback.SetFloat("_Smoothness", 0.2f);
+            }
+
+            if (fallback.HasProperty("_Glossiness"))
+            {
+                fallback.SetFloat("_Glossiness", 0.2f);
+            }
+
+            return fallback;
+        }
+
+        private static Shader ResolveRuntimeLitShader()
+        {
+            var shader = Shader.Find("Universal Render Pipeline/Lit");
+            if (shader != null && shader.isSupported)
+            {
+                return shader;
+            }
+
+            shader = Shader.Find("Standard");
+            if (shader != null && shader.isSupported)
+            {
+                return shader;
+            }
+
+            shader = Shader.Find("Legacy Shaders/Diffuse");
+            if (shader != null)
+            {
+                return shader;
+            }
+
+            throw new MissingReferenceException("Unable to resolve a supported shader for vehicle fallback materials.");
         }
 
         private static void CreateFallbackVisualShell(Transform parent)

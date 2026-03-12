@@ -8,6 +8,7 @@ import type {
   SensorBridgeStatusDto,
   SensorTelemetryDto,
   StatusDto,
+  UnityRuntimeCatalogDto,
 } from './types'
 
 const apiBase = import.meta.env.VITE_API_BASE_URL ?? ''
@@ -40,6 +41,33 @@ export async function connectPi(host: string, port?: number, runtimeMode?: strin
 export async function disconnectPi(): Promise<StatusDto> {
   const response = await fetch(withBase('/api/connection/disconnect'), { method: 'POST' })
   return handleJson<StatusDto>(response)
+}
+
+export async function fetchUnityRuntimeCatalog(host?: string, port?: number): Promise<UnityRuntimeCatalogDto> {
+  const params = new URLSearchParams()
+  if (host?.trim()) {
+    params.set('host', host.trim())
+  }
+  if (port !== undefined) {
+    params.set('port', String(port))
+  }
+
+  const query = params.toString()
+  const response = await fetch(withBase(`/api/unity/runtime-catalog${query ? `?${query}` : ''}`))
+  return handleJson<UnityRuntimeCatalogDto>(response)
+}
+
+export async function setUnityRuntimeSelection(payload: {
+  trackId?: string
+  vehicleId?: string
+  applyImmediately?: boolean
+}): Promise<UnityRuntimeCatalogDto> {
+  const response = await fetch(withBase('/api/unity/runtime-selection'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  return handleJson<UnityRuntimeCatalogDto>(response)
 }
 
 export async function sendCommand(command: string): Promise<CommandResponse> {

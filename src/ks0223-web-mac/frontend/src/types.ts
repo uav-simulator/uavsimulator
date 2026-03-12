@@ -82,3 +82,15 @@ export type SensorBridgeResponse = {
   body: string | null
   error?: string | null
 }
+
+export type UnityRuntimeOptionDto = {
+  id: string
+  displayName: string
+}
+
+export type UnityRuntimeCatalogDto = {
+  selectedTrackId: string
+  selectedVehicleId: string
+  tracks: UnityRuntimeOptionDto[]
+  vehicles: UnityRuntimeOptionDto[]
+}
