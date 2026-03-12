@@ -1,4 +1,3 @@
-#if UAVSIM_ROADSYSTEM
 using Barmetler.RoadSystem;
 using Barmetler.RoadSystem.Util;
 using UnityEngine;
@@ -628,22 +627,3 @@ namespace UavSimulator.Tracks
         }
     }
 }
-#else
-using UnityEngine;
-
-namespace UavSimulator.Tracks
-{
-    public sealed class RoadSystemRealisticTrack : TrackBase
-    {
-        private void Awake()
-        {
-            Debug.LogWarning("RoadSystem package is unavailable in this assembly context. Using empty RoadSystemRealisticTrack fallback.");
-        }
-
-        public override void ResetTrack(int seed)
-        {
-            _ = seed;
-        }
-    }
-}
-#endif

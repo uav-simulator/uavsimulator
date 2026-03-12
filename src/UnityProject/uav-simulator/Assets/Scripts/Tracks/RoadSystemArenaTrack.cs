@@ -1,4 +1,3 @@
-#if UAVSIM_ROADSYSTEM
 using Barmetler.RoadSystem;
 using Barmetler.RoadSystem.Util;
 using UnityEngine;
@@ -418,23 +417,3 @@ namespace UavSimulator.Tracks
         }
     }
 }
-#else
-using UnityEngine;
-
-namespace UavSimulator.Tracks
-{
-    // Compile-safe fallback when Road System package assemblies are not wired into this asmdef.
-    public sealed class RoadSystemArenaTrack : TrackBase
-    {
-        private void Awake()
-        {
-            Debug.LogWarning("RoadSystem package is unavailable in this assembly context. Using empty RoadSystemArenaTrack fallback.");
-        }
-
-        public override void ResetTrack(int seed)
-        {
-            _ = seed;
-        }
-    }
-}
-#endif
