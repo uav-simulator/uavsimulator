@@ -548,6 +548,11 @@ namespace UavSimulator.Tracks
                 new Vector3(-hw, -hh, -hd), new Vector3(hw, -hh, -hd), new Vector3(hw, hh, -hd), new Vector3(-hw, hh, -hd),
                 new Vector3(-hw, -hh, hd),  new Vector3(hw, -hh, hd),  new Vector3(hw, hh, hd),  new Vector3(-hw, hh, hd),
             };
+            var uv = new[]
+            {
+                new Vector2(0f, 0f), new Vector2(1f, 0f), new Vector2(1f, 1f), new Vector2(0f, 1f),
+                new Vector2(0f, 0f), new Vector2(1f, 0f), new Vector2(1f, 1f), new Vector2(0f, 1f),
+            };
 
             var triangles = new[]
             {
@@ -560,6 +565,7 @@ namespace UavSimulator.Tracks
             };
 
             mesh.SetVertices(vertices);
+            mesh.SetUVs(0, uv);
             mesh.SetTriangles(triangles, 0);
             mesh.RecalculateNormals();
             mesh.RecalculateBounds();
