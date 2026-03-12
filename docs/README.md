@@ -27,6 +27,10 @@
 ### 4.1. CLI
 - [cli.md](cli.md)
 
+### 4.2. Releases
+- [release-distribution-model.md](release-distribution-model.md)
+- [release-manifest-v1.md](release-manifest-v1.md)
+
 ### 5. Контракты
 - [contracts.md](contracts.md)
 
