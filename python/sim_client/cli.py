@@ -32,35 +32,45 @@ DEFAULT_RUSIM_HOME = REPO_ROOT / ".rusim"
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="CLI for uav-simulator operator/runtime flows.")
-    subparsers = parser.add_subparsers(dest="command", required=True)
+    parser.set_defaults(_parser=parser)
+    subparsers = parser.add_subparsers(dest="command")
 
     doctor = subparsers.add_parser("doctor", help="Check simulator health and contract.")
+    doctor.set_defaults(_parser=doctor)
     doctor.add_argument("--base-url", default="http://127.0.0.1:8000")
 
-    subparsers.add_parser("version", help="Show rusim CLI and runtime metadata.")
+    version_cmd = subparsers.add_parser("version", help="Show rusim CLI and runtime metadata.")
+    version_cmd.set_defaults(_parser=version_cmd)
 
     contract = subparsers.add_parser("contract", help="Print simulator contract.")
+    contract.set_defaults(_parser=contract)
     contract.add_argument("--base-url", default="http://127.0.0.1:8000")
 
     install = subparsers.add_parser("install", help="Install rusim wrapper into user PATH.")
+    install.set_defaults(_parser=install)
     install.add_argument("--bin-dir", default=str(DEFAULT_BIN_DIR))
     install.add_argument("--rc-file", default=str(DEFAULT_ZSHRC))
     install.add_argument("--write-shell-config", action="store_true")
 
     list_cmd = subparsers.add_parser("list", help="List available runtime entities from simulator contract.")
-    list_sub = list_cmd.add_subparsers(dest="list_command", required=True)
+    list_cmd.set_defaults(_parser=list_cmd)
+    list_sub = list_cmd.add_subparsers(dest="list_command")
     for name in ("tracks", "scenes", "vehicles"):
         parser_item = list_sub.add_parser(name, help=f"List available {name}.")
+        parser_item.set_defaults(_parser=parser_item)
         parser_item.add_argument("--base-url", default="http://127.0.0.1:8000")
 
     inspect = subparsers.add_parser("inspect", help="Inspect a vehicle or track from simulator contract.")
-    inspect_sub = inspect.add_subparsers(dest="inspect_command", required=True)
+    inspect.set_defaults(_parser=inspect)
+    inspect_sub = inspect.add_subparsers(dest="inspect_command")
     for name in ("track", "scene", "vehicle"):
         parser_item = inspect_sub.add_parser(name, help=f"Inspect {name} by id.")
+        parser_item.set_defaults(_parser=parser_item)
         parser_item.add_argument("id")
         parser_item.add_argument("--base-url", default="http://127.0.0.1:8000")
 
     reset_cmd = subparsers.add_parser("reset", help="Reset simulator by selecting track and vehicle directly.")
+    reset_cmd.set_defaults(_parser=reset_cmd)
     reset_cmd.add_argument("--base-url", default="http://127.0.0.1:8000")
     reset_cmd.add_argument("--track-id", default="")
     reset_cmd.add_argument("--vehicle-id", default="")
@@ -68,9 +78,11 @@ def build_parser() -> argparse.ArgumentParser:
     reset_cmd.add_argument("--time-scale", type=float, default=1.0)
 
     runtime = subparsers.add_parser("runtime", help="Build and inspect standalone runtime.")
-    runtime_sub = runtime.add_subparsers(dest="runtime_command", required=True)
+    runtime.set_defaults(_parser=runtime)
+    runtime_sub = runtime.add_subparsers(dest="runtime_command")
 
     build = runtime_sub.add_parser("build", help="Build standalone macOS runtime app.")
+    build.set_defaults(_parser=build)
     build.add_argument("--unity-bin", default=os.environ.get("UNITY_BIN", DEFAULT_UNITY_BIN))
     build.add_argument("--project-path", default=DEFAULT_PROJECT_PATH)
     build.add_argument("--scene", default=DEFAULT_SCENE_PATH)
@@ -79,12 +91,15 @@ def build_parser() -> argparse.ArgumentParser:
     build.add_argument("--label", default="")
 
     list_builds = runtime_sub.add_parser("list", help="List registered standalone runtime builds.")
+    list_builds.set_defaults(_parser=list_builds)
     list_builds.add_argument("--json", action="store_true")
 
     inspect_build = runtime_sub.add_parser("inspect", help="Inspect runtime build metadata.")
+    inspect_build.set_defaults(_parser=inspect_build)
     inspect_build.add_argument("build")
 
     run_build = runtime_sub.add_parser("run", help="Run standalone runtime by build id, latest or favorite.")
+    run_build.set_defaults(_parser=run_build)
     run_build.add_argument("--build", default="latest")
     run_build.add_argument("--mode", choices=["windowed", "background", "headless"], default="windowed")
     run_build.add_argument("--host", default="127.0.0.1")
@@ -93,20 +108,26 @@ def build_parser() -> argparse.ArgumentParser:
     run_build.add_argument("--wait-seconds", type=float, default=45.0)
 
     favorite = runtime_sub.add_parser("favorite", help="Manage favorite standalone runtime build.")
-    favorite_sub = favorite.add_subparsers(dest="runtime_favorite_command", required=True)
+    favorite.set_defaults(_parser=favorite)
+    favorite_sub = favorite.add_subparsers(dest="runtime_favorite_command")
     favorite_set = favorite_sub.add_parser("set", help="Mark build as favorite.")
+    favorite_set.set_defaults(_parser=favorite_set)
     favorite_set.add_argument("build")
-    favorite_sub.add_parser("show", help="Show favorite build.")
+    favorite_show = favorite_sub.add_parser("show", help="Show favorite build.")
+    favorite_show.set_defaults(_parser=favorite_show)
 
     remove_build = runtime_sub.add_parser("remove", help="Remove runtime build from registry and disk.")
+    remove_build.set_defaults(_parser=remove_build)
     remove_build.add_argument("build")
     remove_build.add_argument("--keep-files", action="store_true")
     remove_build.add_argument("--grace-seconds", type=float, default=8.0)
 
     server = subparsers.add_parser("server", help="Manage Unity runtime process.")
-    server_sub = server.add_subparsers(dest="server_command", required=True)
+    server.set_defaults(_parser=server)
+    server_sub = server.add_subparsers(dest="server_command")
 
     start = server_sub.add_parser("start", help="Start Unity runtime server.")
+    start.set_defaults(_parser=start)
     start.add_argument("--mode", choices=["windowed", "background", "headless"], default="windowed")
     start.add_argument("--unity-bin", default=os.environ.get("UNITY_BIN", DEFAULT_UNITY_BIN))
     start.add_argument("--project-path", default=DEFAULT_PROJECT_PATH)
@@ -118,26 +139,33 @@ def build_parser() -> argparse.ArgumentParser:
     start.add_argument("--runtime-app", default="")
 
     status = server_sub.add_parser("status", help="Show Unity runtime server status.")
+    status.set_defaults(_parser=status)
     status.add_argument("--host", default="127.0.0.1")
     status.add_argument("--port", type=int, default=8000)
 
     stop = server_sub.add_parser("stop", help="Stop Unity runtime server.")
+    stop.set_defaults(_parser=stop)
     stop.add_argument("--grace-seconds", type=float, default=8.0)
 
     scenario = subparsers.add_parser("scenario", help="Scenario file operations.")
-    scenario_sub = scenario.add_subparsers(dest="scenario_command", required=True)
+    scenario.set_defaults(_parser=scenario)
+    scenario_sub = scenario.add_subparsers(dest="scenario_command")
 
     validate_cmd = scenario_sub.add_parser("validate", help="Validate scenario file.")
+    validate_cmd.set_defaults(_parser=validate_cmd)
     validate_cmd.add_argument("file")
 
     reset_cmd = scenario_sub.add_parser("reset", help="Reset simulator from scenario file.")
+    reset_cmd.set_defaults(_parser=reset_cmd)
     reset_cmd.add_argument("file")
     reset_cmd.add_argument("--base-url", default="http://127.0.0.1:8000")
 
     print_reset_cmd = scenario_sub.add_parser("print-reset", help="Print reset payload derived from scenario.")
+    print_reset_cmd.set_defaults(_parser=print_reset_cmd)
     print_reset_cmd.add_argument("file")
 
     step = subparsers.add_parser("step", help="Send a single control step.")
+    step.set_defaults(_parser=step)
     step.add_argument("--base-url", default="http://127.0.0.1:8000")
     step.add_argument("--throttle", type=float, default=0.0)
     step.add_argument("--steer", type=float, default=0.0)
@@ -148,7 +176,20 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
-    args = parser.parse_args(argv)
+    raw_args = list(sys.argv[1:] if argv is None else argv)
+
+    if not raw_args:
+        parser.print_help()
+        return 0
+
+    if raw_args[0] == "help":
+        return _handle_help(parser, raw_args[1:])
+
+    args = parser.parse_args(raw_args)
+
+    if getattr(args, "command", None) is None:
+        parser.print_help()
+        return 0
 
     try:
         if args.command == "doctor":
@@ -177,8 +218,21 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 
-    parser.error("Unknown command")
+    parser.print_help()
     return 2
+
+
+def _handle_help(parser: argparse.ArgumentParser, topics: list[str]) -> int:
+    if not topics:
+        parser.print_help()
+        return 0
+
+    help_args = topics + ["--help"]
+    try:
+        parser.parse_args(help_args)
+    except SystemExit as exc:  # argparse exits with 0 after printing help
+        return int(exc.code)
+    return 0
 
 
 def _doctor(base_url: str) -> int:
@@ -271,6 +325,9 @@ def _install(args: argparse.Namespace) -> int:
 
 
 def _list_entities(args: argparse.Namespace) -> int:
+    if not args.list_command:
+        args._parser.print_help()
+        return 0
     contract = SimClient(base_url=args.base_url).get_contract()
     if args.list_command in ("tracks", "scenes"):
         items = [_normalize_track_descriptor(item) for item in contract.get("availableTracks") or []]
@@ -293,6 +350,9 @@ def _list_entities(args: argparse.Namespace) -> int:
 
 
 def _inspect_entity(args: argparse.Namespace) -> int:
+    if not args.inspect_command:
+        args._parser.print_help()
+        return 0
     contract = SimClient(base_url=args.base_url).get_contract()
     if args.inspect_command in ("track", "scene"):
         item = _find_track(contract, args.id)
@@ -357,6 +417,9 @@ def _reset_runtime(args: argparse.Namespace) -> int:
 
 
 def _runtime(args: argparse.Namespace) -> int:
+    if not args.runtime_command:
+        args._parser.print_help()
+        return 0
     if args.runtime_command == "build":
         return _runtime_build(args)
     if args.runtime_command == "list":
@@ -373,6 +436,9 @@ def _runtime(args: argparse.Namespace) -> int:
 
 
 def _server(args: argparse.Namespace) -> int:
+    if not args.server_command:
+        args._parser.print_help()
+        return 0
     if args.server_command == "start":
         return _server_start(args)
     if args.server_command == "status":
@@ -383,6 +449,9 @@ def _server(args: argparse.Namespace) -> int:
 
 
 def _scenario(args: argparse.Namespace) -> int:
+    if not args.scenario_command:
+        args._parser.print_help()
+        return 0
     payload = load_scenario_file(args.file)
     ok, errors = validate_scenario(payload)
     if args.scenario_command == "validate":
@@ -800,6 +869,9 @@ def _runtime_run(args: argparse.Namespace) -> int:
 
 
 def _runtime_favorite(args: argparse.Namespace) -> int:
+    if not args.runtime_favorite_command:
+        args._parser.print_help()
+        return 0
     if args.runtime_favorite_command == "set":
         return _runtime_favorite_set(args.build)
     if args.runtime_favorite_command == "show":

@@ -24,6 +24,8 @@ type Props = {
   onRuntimeModeChange: (value: string) => void
   targetHost: string
   onTargetHostChange: (value: string) => void
+  targetPort: string
+  onTargetPortChange: (value: string) => void
   onConnect: () => Promise<void>
   onDisconnect: () => Promise<void>
   onCommand: (command: string) => Promise<void>
@@ -55,6 +57,8 @@ export function ControlPage({
   onRuntimeModeChange,
   targetHost,
   onTargetHostChange,
+  targetPort,
+  onTargetPortChange,
   onConnect,
   onDisconnect,
   onCommand,
@@ -83,6 +87,8 @@ export function ControlPage({
           onRuntimeModeChange={onRuntimeModeChange}
           targetHost={targetHost}
           onTargetHostChange={onTargetHostChange}
+          targetPort={targetPort}
+          onTargetPortChange={onTargetPortChange}
           onConnect={onConnect}
           onDisconnect={onDisconnect}
         />
