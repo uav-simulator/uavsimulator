@@ -86,7 +86,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     run_build = runtime_sub.add_parser("run", help="Run standalone runtime by build id, latest or favorite.")
     run_build.add_argument("--build", default="latest")
-    run_build.add_argument("--mode", choices=["windowed", "headless"], default="windowed")
+    run_build.add_argument("--mode", choices=["windowed", "background", "headless"], default="windowed")
     run_build.add_argument("--host", default="127.0.0.1")
     run_build.add_argument("--port", type=int, default=8000)
     run_build.add_argument("--scenario")
@@ -107,7 +107,7 @@ def build_parser() -> argparse.ArgumentParser:
     server_sub = server.add_subparsers(dest="server_command", required=True)
 
     start = server_sub.add_parser("start", help="Start Unity runtime server.")
-    start.add_argument("--mode", choices=["windowed", "headless"], default="windowed")
+    start.add_argument("--mode", choices=["windowed", "background", "headless"], default="windowed")
     start.add_argument("--unity-bin", default=os.environ.get("UNITY_BIN", DEFAULT_UNITY_BIN))
     start.add_argument("--project-path", default=DEFAULT_PROJECT_PATH)
     start.add_argument("--scene", default=DEFAULT_SCENE_PATH)
@@ -882,14 +882,18 @@ def _editor_launch_command(unity_bin: Path, project_path: Path, scene: str, log_
         "-logFile",
         str(log_file),
     ]
-    if mode == "headless":
+    if mode == "background":
+        cmd.append("-batchmode")
+    elif mode == "headless":
         cmd.extend(["-batchmode", "-nographics"])
     return cmd
 
 
 def _runtime_launch_command(executable: Path, mode: str, log_file: Path) -> list[str]:
     cmd = [str(executable), "-logFile", str(log_file)]
-    if mode == "headless":
+    if mode == "background":
+        cmd.append("-batchmode")
+    elif mode == "headless":
         cmd.extend(["-batchmode", "-nographics"])
     return cmd
 
