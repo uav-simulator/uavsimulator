@@ -28,7 +28,7 @@ flowchart LR
     Dev["Разработчик"] --> Build["Standalone runtime build (.app/.zip)"]
     Build --> Release["GitHub Release"]
     Release --> Manifest["rusim-release-manifest.json"]
-    Manifest --> Client["rusim upgrade (future)"]
+    Manifest --> Client["rusim upgrade"]
     Release --> Client
 ```
 
@@ -70,11 +70,13 @@ flowchart LR
 На текущем этапе реализовано:
 - schema и documentation для manifest;
 - локальный генератор manifest;
-- GitHub Actions workflow, который генерирует `rusim-release-manifest.json` из GitHub Release assets и прикладывает его к release.
+- GitHub Actions workflow, который генерирует `rusim-release-manifest.json` из GitHub Release assets и прикладывает его к release;
+- команда `rusim upgrade`:
+  - `--check-only` для проверки доступности обновления;
+  - установка runtime из release manifest в локальный registry.
 
 На текущем этапе ещё не реализовано:
 - полноценная cloud-сборка macOS runtime в GitHub Actions;
-- `rusim upgrade`;
 - `rusim runtime install/download` из публичного release channel.
 
 ## Практический workflow сейчас
@@ -94,8 +96,15 @@ rusim runtime build
 rusim-release-manifest.json
 ```
 
-## Следующий шаг
-После этого уже можно делать:
-1. `rusim upgrade check`
-2. `rusim upgrade`
-3. `rusim runtime download/install`
+## Практические команды
+Проверить наличие апдейта:
+
+```bash
+rusim upgrade --repo NMGorovenko/uav-simulator --tag latest --check-only
+```
+
+Установить релиз:
+
+```bash
+rusim upgrade --repo NMGorovenko/uav-simulator --tag latest
+```

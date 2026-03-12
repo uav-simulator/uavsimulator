@@ -17,6 +17,7 @@
 
 ## CLI
 - `rusim version`
+- `rusim upgrade --repo NMGorovenko/uav-simulator --tag latest --check-only`
 - `rusim doctor --base-url http://127.0.0.1:8000`
 - `rusim contract --base-url http://127.0.0.1:8000`
 - `rusim runtime list`

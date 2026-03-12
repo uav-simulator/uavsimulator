@@ -37,6 +37,7 @@ rusim help
 Доступные команды:
 - `version`
 - `install`
+- `upgrade`
 - `doctor`
 - `contract`
 - `list`
@@ -81,7 +82,32 @@ rusim version
 - показать `rusim home`;
 - показать `latest` и `favorite` build, если они уже есть.
 
-## 3. Диагностика runtime
+## 3. Upgrade runtime из GitHub Release
+
+```bash
+rusim upgrade --repo NMGorovenko/uav-simulator --tag latest --check-only
+rusim upgrade --repo NMGorovenko/uav-simulator --tag v0.1.0
+```
+
+Назначение:
+- скачать `rusim-release-manifest.json` из GitHub Release;
+- выбрать runtime asset по текущей платформе;
+- скачать runtime archive;
+- проверить `sha256` (если checksum есть в manifest);
+- распаковать и зарегистрировать build в локальном runtime registry.
+
+Поддерживаемые аргументы:
+- `--repo`
+- `--tag` (`latest` или конкретный tag)
+- `--manifest-url` (ручная ссылка на manifest)
+- `--platform`
+- `--channel`
+- `--check-only`
+- `--force`
+- `--no-set-favorite`
+- `--github-token` (по умолчанию берётся из `GITHUB_TOKEN`)
+
+## 4. Диагностика runtime
 
 ### Проверка health и contract
 
@@ -99,7 +125,7 @@ rusim doctor --base-url http://127.0.0.1:8000
 rusim contract --base-url http://127.0.0.1:8000
 ```
 
-## 4. Discovery команд для tracks/scenes и vehicles
+## 5. Discovery команд для tracks/scenes и vehicles
 
 ### Список tracks
 
@@ -121,7 +147,7 @@ rusim list scenes --base-url http://127.0.0.1:8000
 rusim list vehicles --base-url http://127.0.0.1:8000
 ```
 
-## 5. Inspect команд
+## 6. Inspect команд
 
 ### Inspect track
 
@@ -153,7 +179,7 @@ rusim inspect vehicle vehicle.ks0223.v1 --base-url http://127.0.0.1:8000
 - подключение идёт к общему runtime;
 - выбор активной машинки делается через `rusim reset`.
 
-## 6. Прямой выбор track и vehicle
+## 7. Прямой выбор track и vehicle
 
 ```bash
 rusim reset --base-url http://127.0.0.1:8000 --track-id track.basic_arena.v1 --vehicle-id vehicle.ks0223.v1
@@ -170,7 +196,7 @@ rusim reset --base-url http://127.0.0.1:8000 --track-id track.basic_arena.v1 --v
 - переключить активную машинку;
 - отправить нормализованный `reset` payload в runtime.
 
-## 7. Standalone runtime build
+## 8. Standalone runtime build
 
 ```bash
 rusim runtime build --project-path src/UnityProject/uav-simulator
@@ -227,7 +253,7 @@ rusim runtime remove latest --keep-files
 Ограничение:
 - если проект уже открыт в Unity Editor, batch build может быть заблокирован стандартным Unity project lock.
 
-## 8. Управление runtime process
+## 9. Управление runtime process
 
 ### Запуск через Unity project path
 
@@ -290,7 +316,7 @@ $RUSIM_HOME/runtime/
 .rusim/runtime/
 ```
 
-## 9. Scenario-команды
+## 10. Scenario-команды
 
 ### Проверка scenario-файла
 
@@ -310,7 +336,7 @@ rusim scenario print-reset configs/scenarios/ks0223-demo.yaml
 rusim scenario reset configs/scenarios/ks0223-demo.yaml --base-url http://127.0.0.1:8000
 ```
 
-## 10. Одиночный step
+## 11. Одиночный step
 
 ```bash
 rusim step --base-url http://127.0.0.1:8000 --throttle 0.2 --steer 0.1 --brake 0.0
