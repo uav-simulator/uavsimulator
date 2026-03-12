@@ -54,6 +54,9 @@ nav:
   - Установка: installation.md
   - Использование: usage.md
   - CLI: cli.md
+  - Releases:
+      - Distribution Model: release-distribution-model.md
+      - Release Manifest v1: release-manifest-v1.md
   - Контракты:
       - Обзор контрактов: contracts.md
       - Product Definition v1: product-definition-v1.md
