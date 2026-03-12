@@ -121,7 +121,8 @@ namespace UavSimulator.Api
         {
             if (req.HttpMethod == "GET" && req.Url.AbsolutePath == "/health")
             {
-                return (200, "application/json; charset=utf-8", "{\"status\":\"ok\"}");
+                var health = await UnityMainThreadDispatcher.Instance.Enqueue(() => facade.GetHealth());
+                return JsonResponse(200, health);
             }
 
             if (req.HttpMethod == "GET" && req.Url.AbsolutePath == "/contract")

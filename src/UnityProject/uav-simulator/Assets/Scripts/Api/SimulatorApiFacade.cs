@@ -5,6 +5,17 @@ using UnityEngine;
 
 namespace UavSimulator.Api
 {
+    [Serializable]
+    public sealed class SimulatorHealthStatus
+    {
+        public string status;
+        public string pluginRegistrySource;
+        public int availableVehicles;
+        public int availableTracks;
+        public string activeVehicleId;
+        public string activeTrackId;
+    }
+
     public sealed class SimulatorApiFacade
     {
         private readonly SimulationManager simulationManager;
@@ -17,6 +28,20 @@ namespace UavSimulator.Api
         }
 
         public SimulatorContractDescriptor GetContract() => simulationManager.GetContract();
+
+        public SimulatorHealthStatus GetHealth()
+        {
+            var diagnostics = simulationManager.GetDiagnostics();
+            return new SimulatorHealthStatus
+            {
+                status = "ok",
+                pluginRegistrySource = diagnostics.pluginRegistrySource,
+                availableVehicles = diagnostics.availableVehicles,
+                availableTracks = diagnostics.availableTracks,
+                activeVehicleId = diagnostics.activeVehicleId,
+                activeTrackId = diagnostics.activeTrackId,
+            };
+        }
 
         public StepResult Reset(SimulationConfig config)
         {

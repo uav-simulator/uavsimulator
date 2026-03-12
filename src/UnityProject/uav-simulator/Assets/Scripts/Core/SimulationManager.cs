@@ -10,6 +10,16 @@ using UnityEngine;
 
 namespace UavSimulator.Core
 {
+    [Serializable]
+    public sealed class SimulationRuntimeDiagnostics
+    {
+        public string pluginRegistrySource;
+        public int availableVehicles;
+        public int availableTracks;
+        public string activeVehicleId;
+        public string activeTrackId;
+    }
+
     public sealed class SimulationManager : MonoBehaviour
     {
         private const string RouteWaypointsKey = "route.waypoints";
@@ -27,6 +37,8 @@ namespace UavSimulator.Core
         private int activeRouteWaypointIndex;
         private float activeRouteReachDistance = 1f;
         private bool activeRouteLoop;
+        private string activeTrackId = string.Empty;
+        private string activeVehicleId = string.Empty;
 
         private void Awake()
         {
@@ -115,12 +127,26 @@ namespace UavSimulator.Core
 
             activeTrack = InstantiateTrack(validation.Track);
             activeVehicle = InstantiateVehicle(validation.Vehicle);
+            activeTrackId = validation.Track != null ? validation.Track.id ?? string.Empty : string.Empty;
+            activeVehicleId = validation.Vehicle != null ? validation.Vehicle.id ?? string.Empty : string.Empty;
 
             activeTrack.ResetTrack(config.seed);
             activeVehicle.ResetVehicle(config.seed);
 
             Time.timeScale = validation.TimeScale;
             ConfigureRoute(config.trackParams);
+        }
+
+        public SimulationRuntimeDiagnostics GetDiagnostics()
+        {
+            return new SimulationRuntimeDiagnostics
+            {
+                pluginRegistrySource = registry != null ? registry.Source.ToString() : PluginRegistrySource.BuiltinFactory.ToString(),
+                availableVehicles = registry?.Vehicles?.Length ?? 0,
+                availableTracks = registry?.Tracks?.Length ?? 0,
+                activeVehicleId = activeVehicleId ?? string.Empty,
+                activeTrackId = activeTrackId ?? string.Empty,
+            };
         }
 
         public StepResult Step(ControlCommand command)
@@ -233,12 +259,14 @@ namespace UavSimulator.Core
             {
                 Destroy(activeVehicle.gameObject);
                 activeVehicle = null;
+                activeVehicleId = string.Empty;
             }
 
             if (activeTrack != null)
             {
                 Destroy(activeTrack.gameObject);
                 activeTrack = null;
+                activeTrackId = string.Empty;
             }
 
             Time.timeScale = defaultTimeScale;

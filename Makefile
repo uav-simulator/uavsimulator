@@ -37,7 +37,7 @@ ROS_BRIDGE_RESET_FLAG := $(if $(filter 1 true TRUE yes YES,$(UAVSIM_ROS_RESET_ON
 	ros-ui-container ros-control-ui-container ros-topics ros-install-image-plugins \
 	ros-install-control-ui ros-cmd-vel ros-stop clean-pyc
 
-SCENARIO ?= $(PROJECT_ROOT)/configs/scenarios/ks0223-demo.yaml
+SCENARIO ?= $(PROJECT_ROOT)/configs/scenarios/demo.yaml
 RUNTIME_APP ?=
 RUSIM_RELEASE_REPO ?= NMGorovenko/uav-simulator
 RUSIM_RELEASE_TAG ?= latest
