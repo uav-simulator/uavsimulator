@@ -338,6 +338,12 @@ $RUSIM_HOME/runtime/
 rusim scenario validate configs/scenarios/demo.yaml
 ```
 
+Для realistic v2:
+
+```bash
+rusim scenario validate configs/scenarios/demo-realistic-v2.yaml
+```
+
 ### Печать reset payload
 
 ```bash
@@ -348,6 +354,12 @@ rusim scenario print-reset configs/scenarios/demo.yaml
 
 ```bash
 rusim scenario reset configs/scenarios/demo.yaml --base-url http://127.0.0.1:8000
+```
+
+Для realistic v2:
+
+```bash
+rusim scenario reset configs/scenarios/demo-realistic-v2.yaml --base-url http://127.0.0.1:8000
 ```
 
 ## 11. Одиночный step

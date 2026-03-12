@@ -5,6 +5,8 @@
 ## Текущее состояние
 - Плагинная архитектура для треков и роботов.
 - Runtime fallback-плагины (включая `track.roadsystem_arena.v1`, `track.basic_arena.v1`, `vehicle.ks0223.arcade.*`, `vehicle.ks0223.v1`).
+- Добавлен реалистичный RoadSystem plugin track:
+  - `track.roadsystem_realistic.v2` (бордюры, старт/финиш, освещение, расширенное окружение).
 - Ассетные визуалы машин (через plugin `vehicleId`):
   - `vehicle.ks0223.v1` (PROMETEO visual)
   - `vehicle.ks0223.arcade.blue.v1`
@@ -54,6 +56,7 @@ CLI пример CARLA-style:
   - `make demo-reset UAVSIM_VEHICLE_ID=vehicle.ks0223.v1`
   - `make demo-reset UAVSIM_VEHICLE_ID=vehicle.drone.simple.v1`
   - `make demo-reset UAVSIM_TRACK_ID=track.roadsystem_arena.v1`
+  - `make sim-scenario-reset SCENARIO=configs/scenarios/demo-realistic-v2.yaml`
 
 ## Упрощённый Make Workflow
 - `make sim-public`: запуск Unity с API для Docker/внешних клиентов.
