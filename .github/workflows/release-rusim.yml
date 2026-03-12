@@ -1,0 +1,60 @@
+name: Release Rusim Package
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag, for example v0.1.1
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve release tag
+        id: meta
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            tag="${{ inputs.tag }}"
+          else
+            tag="${GITHUB_REF_NAME}"
+          fi
+          if [[ ! "$tag" =~ ^v ]]; then
+            echo "::error::Tag must start with 'v' (got: $tag)"
+            exit 1
+          fi
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v6
+        with:
+          ref: refs/tags/${{ steps.meta.outputs.tag }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Build rusim package artifacts
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install build twine
+          mkdir -p "dist/rusim/${{ steps.meta.outputs.tag }}"
+          python -m build python --outdir "dist/rusim/${{ steps.meta.outputs.tag }}"
+          python -m twine check "dist/rusim/${{ steps.meta.outputs.tag }}"/*
+
+      - name: Publish rusim artifacts to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          files: |
+            dist/rusim/${{ steps.meta.outputs.tag }}/*.whl
+            dist/rusim/${{ steps.meta.outputs.tag }}/*.tar.gz
+          fail_on_unmatched_files: true
+          overwrite_files: true

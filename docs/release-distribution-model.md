@@ -11,6 +11,10 @@
 ## Базовый принцип
 Наружу распространяется не git checkout, а **versioned standalone runtime release**.
 
+Важно разделение:
+- `runtime` (Unity `.app/.zip`) — публикуется вручную из локальной сборки;
+- `rusim` (Python package) — собирается и публикуется в GitHub Actions.
+
 Источник истины для distribution:
 1. Git tag
 2. GitHub Release
@@ -71,6 +75,7 @@ flowchart LR
 - schema и documentation для manifest;
 - локальный генератор manifest (`scripts/generate_release_manifest.py`);
 - GitHub Actions workflow `Release Manifest` (manual), который публикует `rusim-release-manifest.json` для уже созданного Release;
+- GitHub Actions workflow `Release Rusim Package`, который на tag собирает `rusim` package artifacts (`.whl`, `.tar.gz`) и прикрепляет их в GitHub Release;
 - команда `rusim upgrade`:
   - `--check-only` для проверки доступности обновления;
   - установка runtime из release manifest в локальный registry.
@@ -91,7 +96,11 @@ rusim runtime build --project-path src/UnityProject/uav-simulator
 
 3. Создать GitHub Release `vX.Y.Z` и прикрепить runtime zip + checksum.
 
-4. Запустить manual workflow `Release Manifest` с нужным `tag`.
+4. `Release Rusim Package` автоматически (или вручную через workflow dispatch) соберёт и прикрепит:
+- `uav_sim_client-*.whl`
+- `uav_sim_client-*.tar.gz`
+
+5. Запустить manual workflow `Release Manifest` с нужным `tag`.
 
 ```text
 rusim-release-manifest.json
