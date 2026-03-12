@@ -43,29 +43,24 @@ rusim --help
 rusim upgrade --repo NMGorovenko/uav-simulator --tag latest --check-only
 ```
 
-## Публикация runtime релиза (GitHub Actions)
-Релизный runtime теперь собирается в CI, а не на локальной машине.
+## Публикация runtime релиза (без cloud-build)
+На текущем этапе runtime **не собирается в GitHub Actions**.
+Релиз публикуется из локально собранного `.app` и затем дополняется manifest.
 
-Триггер:
-- `push` тега формата `v*` (например `v0.1.1`).
-
-Практический запуск:
+Шаг 1. Собрать runtime локально:
 
 ```bash
-git tag v0.1.1
-git push origin v0.1.1
+rusim runtime build --project-path src/UnityProject/uav-simulator
 ```
 
-Workflow `Release Runtime`:
-- собирает Unity runtime (`StandaloneOSX`);
-- публикует `uav-simulator-macos-vX.Y.Z.zip`;
-- публикует checksum `uav-simulator-macos-vX.Y.Z.zip.sha256`;
-- генерирует и прикрепляет `rusim-release-manifest.json`.
+Шаг 2. Упаковать `.app` в zip и посчитать checksum:
+- `uav-simulator-macos-vX.Y.Z.zip`
+- `uav-simulator-macos-vX.Y.Z.zip.sha256`
 
-Если запуск по тегу упал, workflow можно перезапустить вручную в GitHub Actions (`Release Runtime` -> `Run workflow`) с тем же `tag`.
+Шаг 3. Создать GitHub Release `vX.Y.Z` и загрузить эти 2 asset-а.
 
-Требование:
-- в GitHub Secrets должен быть задан `UNITY_LICENSE`.
+Шаг 4. Запустить workflow `Release Manifest` вручную с параметром `tag=vX.Y.Z`, чтобы прикрепить:
+- `rusim-release-manifest.json`
 
 Практические варианты:
 

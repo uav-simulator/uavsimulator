@@ -87,6 +87,7 @@ rusim version
 ```bash
 rusim upgrade --repo NMGorovenko/uav-simulator --tag latest --check-only
 rusim upgrade --repo NMGorovenko/uav-simulator --tag v0.1.0
+rusim runtime upgrade --repo NMGorovenko/uav-simulator --tag latest --check-only
 ```
 
 Назначение:
@@ -109,6 +110,10 @@ rusim upgrade --repo NMGorovenko/uav-simulator --tag v0.1.0
 
 Примечание для private репозитория:
 - задайте `GITHUB_TOKEN` (или `--github-token`), иначе скачивание release assets может вернуть `404`.
+
+`runtime upgrade`:
+- `rusim runtime upgrade ...` — алиас к тому же upgrade flow;
+- удобно использовать рядом с `rusim runtime list/run/favorite`.
 
 ## 4. Диагностика runtime
 
