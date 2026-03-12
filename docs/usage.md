@@ -75,6 +75,7 @@ source ~/.zshrc
 
 Поддерживаемые команды:
 
+- `version`
 - `install`
 - `doctor`
 - `contract`
@@ -93,6 +94,7 @@ source ~/.zshrc
 Примеры:
 
 ```bash
+rusim version
 rusim install --write-shell-config
 rusim doctor --base-url http://127.0.0.1:8000
 rusim contract --base-url http://127.0.0.1:8000
@@ -134,10 +136,10 @@ rusim server stop
 Для продуктового сценария без Unity Editor используется standalone runtime build:
 
 ```bash
-rusim runtime build --project-path src/UnityProject/uav-simulator --output build/runtime/macos/uav-simulator.app
-rusim server start --runtime-app build/runtime/macos/uav-simulator.app --mode windowed --port 8011
-rusim server start --runtime-app build/runtime/macos/uav-simulator.app --mode headless --port 8011
-make sim-server-start-runtime MODE=headless UAVSIM_API_PORT=8011
+rusim runtime build --project-path src/UnityProject/uav-simulator
+rusim runtime list
+rusim runtime favorite set latest
+rusim runtime run --build favorite --mode headless --port 8011
 ```
 
 Именно этот путь должен стать основным для конечного пользователя.

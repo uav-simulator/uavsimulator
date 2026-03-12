@@ -31,14 +31,14 @@ ROS2_VNC_PORT ?= 5901
 
 ROS_BRIDGE_RESET_FLAG := $(if $(filter 1 true TRUE yes YES,$(UAVSIM_ROS_RESET_ON_START)),--reset-on-start,)
 
-.PHONY: help quickstart venv sim sim-public sim-health sim-step sim-reset sim-doctor sim-contract sim-install-cli sim-runtime-build sim-server-start sim-server-start-runtime sim-server-status sim-server-stop sim-scenario-validate sim-scenario-print sim-scenario-reset \
+.PHONY: help quickstart venv sim sim-public sim-health sim-step sim-reset sim-doctor sim-contract sim-install-cli sim-version sim-runtime-build sim-runtime-list sim-runtime-inspect sim-runtime-run sim-runtime-favorite-show sim-runtime-favorite-set sim-server-start sim-server-start-runtime sim-server-status sim-server-stop sim-scenario-validate sim-scenario-print sim-scenario-reset \
 	demo-up demo-control demo-reset demo-status demo-proof demo-proof-ci demo-down demo-restart ros-demo-reset \
 	ros-mock ros-bridge ros-demo ros-up ros-down ros-shell ros-bridge-container \
 	ros-ui-container ros-control-ui-container ros-topics ros-install-image-plugins \
 	ros-install-control-ui ros-cmd-vel ros-stop clean-pyc
 
 SCENARIO ?= $(PROJECT_ROOT)/configs/scenarios/ks0223-demo.yaml
-RUNTIME_APP ?= $(PROJECT_ROOT)/build/runtime/macos/uav-simulator.app
+RUNTIME_APP ?=
 
 help:
 	@echo "Main (daily):"
@@ -46,9 +46,15 @@ help:
 	@echo "  make sim-doctor"
 	@echo "  make sim-contract"
 	@echo "  make sim-install-cli"
+	@echo "  make sim-version"
 	@echo "  make sim-runtime-build"
+	@echo "  make sim-runtime-list"
+	@echo "  make sim-runtime-inspect BUILD=latest"
+	@echo "  make sim-runtime-run BUILD=latest MODE=headless PORT=8011"
+	@echo "  make sim-runtime-favorite-show"
+	@echo "  make sim-runtime-favorite-set BUILD=latest"
 	@echo "  make sim-server-start MODE=headless PORT=8011"
-	@echo "  make sim-server-start-runtime MODE=headless PORT=8011"
+	@echo "  make sim-server-start-runtime MODE=headless PORT=8011 RUNTIME_APP=/abs/path/to/app"
 	@echo "  make sim-server-status PORT=8011"
 	@echo "  make sim-server-stop"
 	@echo "  make sim-scenario-validate SCENARIO=configs/scenarios/ks0223-demo.yaml"
@@ -119,8 +125,26 @@ sim-contract:
 sim-install-cli:
 	@"$(PROJECT_ROOT)/rusim" install --write-shell-config
 
+sim-version:
+	@"$(PROJECT_ROOT)/rusim" version
+
 sim-runtime-build:
-	PYTHONPATH=python $(PYTHON) -m sim_client.cli runtime build --project-path "$(UNITY_PROJECT)" --output "$(RUNTIME_APP)"
+	PYTHONPATH=python $(PYTHON) -m sim_client.cli runtime build --project-path "$(UNITY_PROJECT)" $(if $(RUNTIME_APP),--output "$(RUNTIME_APP)",)
+
+sim-runtime-list:
+	@"$(PROJECT_ROOT)/rusim" runtime list
+
+sim-runtime-inspect:
+	@"$(PROJECT_ROOT)/rusim" runtime inspect "$(BUILD)"
+
+sim-runtime-run:
+	@"$(PROJECT_ROOT)/rusim" runtime run --build "$(BUILD)" --mode "$(MODE)" --port "$(UAVSIM_API_PORT)"
+
+sim-runtime-favorite-show:
+	@"$(PROJECT_ROOT)/rusim" runtime favorite show
+
+sim-runtime-favorite-set:
+	@"$(PROJECT_ROOT)/rusim" runtime favorite set "$(BUILD)"
 
 sim-server-start:
 	PYTHONPATH=python $(PYTHON) -m sim_client.cli server start --project-path "$(UNITY_PROJECT)" --mode "$(MODE)" --port "$(UAVSIM_API_PORT)"
