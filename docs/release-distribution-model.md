@@ -6,7 +6,7 @@
 Цель:
 - иметь понятный внешний source of truth для runtime release;
 - отделить локальный dev-registry от публичной дистрибуции;
-- подготовить основу для будущей команды `rusim upgrade`.
+- использовать `rusim upgrade` как канонический клиент обновления.
 
 ## Базовый принцип
 Наружу распространяется не git checkout, а **versioned standalone runtime release**.
@@ -54,7 +54,7 @@ flowchart LR
 Минусы:
 - бинарные asset-ы завязаны на процесс публикации release;
 - checksum нужно публиковать явно;
-- полноценная автоматическая сборка runtime зависит от доступности Unity build path.
+- cloud-сборка runtime зависит от доступности и валидности Unity license в GitHub Secrets.
 
 ## Что считается release manifest
 Канонический формат описан в:
@@ -69,31 +69,41 @@ flowchart LR
 ## Текущий статус
 На текущем этапе реализовано:
 - schema и documentation для manifest;
-- локальный генератор manifest;
-- GitHub Actions workflow, который генерирует `rusim-release-manifest.json` из GitHub Release assets и прикладывает его к release;
+- локальный генератор manifest (`scripts/generate_release_manifest.py`);
+- GitHub Actions release pipeline на `push tag` (`v*`):
+  - Unity build (GameCI, `StandaloneOSX`);
+  - упаковка runtime в `uav-simulator-macos-vX.Y.Z.zip` + `sha256`;
+  - публикация GitHub Release;
+  - генерация и публикация `rusim-release-manifest.json`;
 - команда `rusim upgrade`:
   - `--check-only` для проверки доступности обновления;
   - установка runtime из release manifest в локальный registry.
 
 На текущем этапе ещё не реализовано:
-- полноценная cloud-сборка macOS runtime в GitHub Actions;
-- `rusim runtime install/download` из публичного release channel.
+- мультиплатформенная cloud-сборка (`linux/windows`);
+- отдельная команда `rusim release` для управления публикацией релизов из CLI.
 
 ## Практический workflow сейчас
-1. Собрать runtime локально:
+1. Создать и отправить tag:
 
 ```bash
-rusim runtime build
+git tag v0.1.1
+git push origin v0.1.1
 ```
 
-2. Подготовить release asset-архив и checksum.
-
-3. Опубликовать GitHub Release с runtime asset-ами.
-
-4. Workflow `Release Manifest` сгенерирует и прикрепит:
+2. GitHub Actions workflow `Release Runtime` автоматически:
+- собирает runtime;
+- публикует release assets;
+- прикрепляет `rusim-release-manifest.json`.
 
 ```text
 rusim-release-manifest.json
+```
+
+3. Пользователь обновляется через:
+
+```bash
+rusim upgrade --repo NMGorovenko/uav-simulator --tag latest
 ```
 
 ## Практические команды

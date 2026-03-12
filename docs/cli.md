@@ -107,6 +107,9 @@ rusim upgrade --repo NMGorovenko/uav-simulator --tag v0.1.0
 - `--no-set-favorite`
 - `--github-token` (по умолчанию берётся из `GITHUB_TOKEN`)
 
+Примечание для private репозитория:
+- задайте `GITHUB_TOKEN` (или `--github-token`), иначе скачивание release assets может вернуть `404`.
+
 ## 4. Диагностика runtime
 
 ### Проверка health и contract
