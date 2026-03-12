@@ -62,6 +62,15 @@ rusim runtime build --project-path src/UnityProject/uav-simulator
 Шаг 4. Запустить workflow `Release Manifest` вручную с параметром `tag=vX.Y.Z`, чтобы прикрепить:
 - `rusim-release-manifest.json`
 
+## Публикация `rusim` релиза (GitHub Actions)
+Пакет `rusim` можно релизить полностью в GitHub:
+- workflow: `Release Rusim Package`
+- триггер: `push` тега `v*` или ручной `workflow_dispatch` с `tag`.
+
+Workflow собирает и прикрепляет в GitHub Release:
+- `.whl`
+- `.tar.gz`
+
 Практические варианты:
 
 ### Вариант 1. Запуск из репозитория
