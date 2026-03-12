@@ -37,6 +37,12 @@ source ~/.zshrc
 rusim --help
 ```
 
+Проверка release-канала и upgrade:
+
+```bash
+rusim upgrade --repo NMGorovenko/uav-simulator --tag latest --check-only
+```
+
 Практические варианты:
 
 ### Вариант 1. Запуск из репозитория

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import shutil
@@ -8,6 +9,10 @@ import signal
 import subprocess
 import sys
 import time
+import urllib.error
+import urllib.parse
+import urllib.request
+import zipfile
 from datetime import datetime
 from importlib.metadata import PackageNotFoundError, version as package_version
 from pathlib import Path
@@ -28,6 +33,9 @@ DEFAULT_RUNTIME_OUTPUT_DIR = REPO_ROOT / "build" / "runtime" / "macos"
 DEFAULT_BIN_DIR = Path.home() / ".local" / "bin"
 DEFAULT_ZSHRC = Path.home() / ".zshrc"
 DEFAULT_RUSIM_HOME = REPO_ROOT / ".rusim"
+DEFAULT_GITHUB_REPO = os.environ.get("GITHUB_REPOSITORY", "NMGorovenko/uav-simulator")
+DEFAULT_RELEASE_CHANNEL = "stable"
+RELEASE_MANIFEST_ASSET_NAME = "rusim-release-manifest.json"
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -51,6 +59,18 @@ def build_parser() -> argparse.ArgumentParser:
     install.add_argument("--bin-dir", default=str(DEFAULT_BIN_DIR))
     install.add_argument("--rc-file", default=str(DEFAULT_ZSHRC))
     install.add_argument("--write-shell-config", action="store_true")
+
+    upgrade = subparsers.add_parser("upgrade", help="Download and install runtime from GitHub Release manifest.")
+    upgrade.set_defaults(_parser=upgrade)
+    upgrade.add_argument("--repo", default=DEFAULT_GITHUB_REPO)
+    upgrade.add_argument("--tag", default="latest", help="Release tag or 'latest'.")
+    upgrade.add_argument("--manifest-url", default="", help="Optional direct URL to release manifest JSON.")
+    upgrade.add_argument("--platform", default=_detect_runtime_platform())
+    upgrade.add_argument("--channel", default=DEFAULT_RELEASE_CHANNEL)
+    upgrade.add_argument("--check-only", action="store_true")
+    upgrade.add_argument("--force", action="store_true", help="Reinstall even if same release build is already present.")
+    upgrade.add_argument("--no-set-favorite", action="store_true")
+    upgrade.add_argument("--github-token", default=os.environ.get("GITHUB_TOKEN", ""))
 
     list_cmd = subparsers.add_parser("list", help="List available runtime entities from simulator contract.")
     list_cmd.set_defaults(_parser=list_cmd)
@@ -200,6 +220,8 @@ def main(argv: list[str] | None = None) -> int:
             return _contract(args.base_url)
         if args.command == "install":
             return _install(args)
+        if args.command == "upgrade":
+            return _upgrade(args)
         if args.command == "list":
             return _list_entities(args)
         if args.command == "inspect":
@@ -320,6 +342,107 @@ def _install(args: argparse.Namespace) -> int:
         "rcUpdated": rc_updated,
         "nextStep": "source ~/.zshrc" if args.write_shell_config and not path_ok else "rusim --help",
     }
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0
+
+
+def _upgrade(args: argparse.Namespace) -> int:
+    platform = _normalize_platform(args.platform)
+    manifest_data, manifest_url, release_meta = _resolve_release_manifest(
+        repo=args.repo,
+        tag=args.tag,
+        manifest_url=args.manifest_url,
+        github_token=args.github_token,
+    )
+    release_entry = _select_manifest_release(manifest_data, args.channel, release_meta.get("tag"))
+    runtime_asset = _select_runtime_asset(release_entry, platform)
+
+    version = str(release_entry.get("version") or "unknown")
+    tag = str(release_entry.get("tag") or release_meta.get("tag") or "unknown")
+    build_id = f"release-{tag}-{platform}"
+    registry = _load_runtime_registry()
+    existing = next((item for item in registry.get("builds") or [] if str(item.get("buildId") or "") == build_id), None)
+    already_installed = existing is not None and Path(str(existing.get("appPath") or "")).expanduser().exists()
+
+    result: Dict[str, Any] = {
+        "repo": args.repo,
+        "channel": args.channel,
+        "manifestUrl": manifest_url,
+        "releaseTag": tag,
+        "releaseVersion": version,
+        "platform": platform,
+        "assetName": runtime_asset.get("name"),
+        "assetUrl": runtime_asset.get("browserDownloadUrl"),
+        "buildId": build_id,
+        "alreadyInstalled": already_installed,
+        "checkOnly": bool(args.check_only),
+    }
+
+    if args.check_only:
+        result["upgradeAvailable"] = not already_installed
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0
+
+    if already_installed and not args.force:
+        result["skipped"] = True
+        result["reason"] = "build already installed (use --force to reinstall)"
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return 0
+
+    asset_url = str(runtime_asset.get("browserDownloadUrl") or "").strip()
+    if not asset_url:
+        raise RuntimeError("Runtime asset has empty browserDownloadUrl in release manifest.")
+
+    downloads_dir = _rusim_home() / "downloads" / tag
+    downloads_dir.mkdir(parents=True, exist_ok=True)
+    archive_path = downloads_dir / str(runtime_asset.get("name") or "runtime.zip")
+    _download_file(asset_url, archive_path, github_token=args.github_token)
+
+    expected_sha = str(runtime_asset.get("sha256") or "").strip().lower()
+    actual_sha = _sha256_file(archive_path)
+    if expected_sha and expected_sha != actual_sha:
+        raise RuntimeError(
+            f"SHA256 mismatch for {archive_path.name}: expected={expected_sha} actual={actual_sha}"
+        )
+
+    install_root = _rusim_home() / "releases" / tag
+    install_root.mkdir(parents=True, exist_ok=True)
+    app_path = _extract_runtime_archive(archive_path, install_root)
+    executable_path = _resolve_runtime_executable(app_path)
+
+    entry = _register_external_runtime_build(
+        build_id=build_id,
+        version_label=f"{version} ({tag})",
+        app_path=app_path,
+        executable_path=executable_path,
+        unity_version=str(release_entry.get("unityVersion") or "unknown"),
+        source=f"github-release://{args.repo}/{tag}",
+        source_project_path=Path(f"github-release://{args.repo}"),
+        metadata={
+            "releaseTag": tag,
+            "releaseVersion": version,
+            "manifestUrl": manifest_url,
+            "assetName": str(runtime_asset.get("name") or ""),
+            "assetUrl": asset_url,
+            "channel": args.channel,
+        },
+    )
+
+    if not args.no_set_favorite:
+        registry = _load_runtime_registry()
+        registry["favoriteBuildId"] = entry["buildId"]
+        _save_runtime_registry(registry)
+
+    result.update(
+        {
+            "installed": True,
+            "downloadedArchive": str(archive_path),
+            "archiveSha256": actual_sha,
+            "appPath": str(app_path),
+            "executablePath": str(executable_path),
+            "favoriteBuildId": _load_runtime_registry().get("favoriteBuildId"),
+        }
+    )
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0
 
@@ -1101,6 +1224,38 @@ def _register_runtime_build(
     return entry
 
 
+def _register_external_runtime_build(
+    *,
+    build_id: str,
+    version_label: str,
+    app_path: Path,
+    executable_path: Path,
+    unity_version: str,
+    source: str,
+    source_project_path: Path,
+    metadata: Dict[str, Any],
+) -> Dict[str, Any]:
+    registry = _load_runtime_registry()
+    builds = [entry for entry in registry.get("builds") or [] if entry.get("buildId") != build_id]
+    entry: Dict[str, Any] = {
+        "buildId": build_id,
+        "versionLabel": version_label,
+        "createdAt": datetime.now().isoformat(timespec="seconds"),
+        "gitSha": _git_short_sha(),
+        "unityVersion": unity_version,
+        "scene": DEFAULT_SCENE_PATH,
+        "appPath": str(app_path),
+        "executablePath": str(executable_path),
+        "sourceProjectPath": str(source_project_path),
+        "source": source,
+    }
+    entry.update(metadata)
+    builds.append(entry)
+    registry["builds"] = builds
+    _save_runtime_registry(registry)
+    return entry
+
+
 def _sorted_builds(builds: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return sorted(builds, key=lambda item: str(item.get("createdAt") or ""), reverse=True)
 
@@ -1136,6 +1291,177 @@ def _resolve_build_selector(build_selector: str, registry: Dict[str, Any] | None
     if not app_path.exists():
         raise RuntimeError(f"Registered runtime app does not exist: {app_path}")
     return entry
+
+
+def _resolve_release_manifest(*, repo: str, tag: str, manifest_url: str, github_token: str) -> tuple[Dict[str, Any], str, Dict[str, str]]:
+    if manifest_url.strip():
+        data = _http_get_json(manifest_url.strip(), github_token=github_token)
+        return data, manifest_url.strip(), {"tag": tag if tag != "latest" else str(data.get("latestTag") or "")}
+
+    release = _fetch_github_release(repo=repo, tag=tag, github_token=github_token)
+    release_tag = str(release.get("tag_name") or "")
+    assets = release.get("assets") or []
+    manifest_asset = next((item for item in assets if str(item.get("name") or "") == RELEASE_MANIFEST_ASSET_NAME), None)
+    if not manifest_asset:
+        raise RuntimeError(
+            f"Release '{release_tag or tag}' does not contain '{RELEASE_MANIFEST_ASSET_NAME}'. "
+            "Run Release Manifest workflow or attach manifest asset manually."
+        )
+
+    url = str(manifest_asset.get("browser_download_url") or "").strip()
+    if not url:
+        raise RuntimeError(f"Manifest asset URL is empty in release '{release_tag or tag}'.")
+
+    data = _http_get_json(url, github_token=github_token)
+    return data, url, {"tag": release_tag}
+
+
+def _fetch_github_release(*, repo: str, tag: str, github_token: str) -> Dict[str, Any]:
+    if "/" not in repo:
+        raise RuntimeError(f"Invalid repo format '{repo}'. Expected owner/repo.")
+
+    if tag == "latest":
+        url = f"https://api.github.com/repos/{repo}/releases/latest"
+    else:
+        encoded = urllib.parse.quote(tag, safe="")
+        url = f"https://api.github.com/repos/{repo}/releases/tags/{encoded}"
+    return _http_get_json(url, github_token=github_token)
+
+
+def _http_get_json(url: str, *, github_token: str) -> Dict[str, Any]:
+    data = _http_get_bytes(url, github_token=github_token)
+    return json.loads(data.decode("utf-8"))
+
+
+def _http_get_bytes(url: str, *, github_token: str) -> bytes:
+    request = urllib.request.Request(url)
+    if "api.github.com" in url:
+        request.add_header("Accept", "application/vnd.github+json")
+    else:
+        request.add_header("Accept", "application/octet-stream")
+    if github_token:
+        request.add_header("Authorization", f"Bearer {github_token}")
+
+    try:
+        with urllib.request.urlopen(request, timeout=60) as response:
+            return response.read()
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"HTTP {exc.code} for {url}: {body}") from exc
+
+
+def _download_file(url: str, output_path: Path, *, github_token: str) -> None:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    payload = _http_get_bytes(url, github_token=github_token)
+    output_path.write_bytes(payload)
+
+
+def _extract_runtime_archive(archive_path: Path, target_dir: Path) -> Path:
+    if archive_path.suffix.lower() != ".zip":
+        raise RuntimeError(f"Unsupported runtime archive format: {archive_path.name}. Expected .zip")
+
+    temp_extract = target_dir / "_extract_tmp"
+    if temp_extract.exists():
+        shutil.rmtree(temp_extract)
+    temp_extract.mkdir(parents=True, exist_ok=True)
+
+    with zipfile.ZipFile(archive_path, "r") as archive:
+        archive.extractall(temp_extract)
+
+    app_candidates = sorted(temp_extract.rglob("*.app"))
+    if not app_candidates:
+        raise RuntimeError(f"Archive does not contain .app bundle: {archive_path}")
+
+    source_app = app_candidates[0]
+    final_app = target_dir / source_app.name
+    if final_app.exists():
+        shutil.rmtree(final_app)
+    shutil.move(str(source_app), str(final_app))
+    shutil.rmtree(temp_extract, ignore_errors=True)
+    return final_app
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        while True:
+            chunk = handle.read(1024 * 1024)
+            if not chunk:
+                break
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _select_manifest_release(manifest: Dict[str, Any], channel: str, preferred_tag: str) -> Dict[str, Any]:
+    if int(manifest.get("schemaVersion") or 0) != 1:
+        raise RuntimeError(f"Unsupported release manifest schemaVersion: {manifest.get('schemaVersion')}")
+
+    manifest_channel = str(manifest.get("channel") or "")
+    if channel and manifest_channel and manifest_channel != channel:
+        raise RuntimeError(f"Manifest channel mismatch: expected '{channel}', got '{manifest_channel}'")
+
+    releases = manifest.get("releases") or []
+    if not releases:
+        raise RuntimeError("Release manifest does not contain releases.")
+
+    if preferred_tag:
+        matched = next((item for item in releases if str(item.get("tag") or "") == preferred_tag), None)
+        if matched:
+            return matched
+
+    latest_tag = str(manifest.get("latestTag") or "")
+    if latest_tag:
+        matched = next((item for item in releases if str(item.get("tag") or "") == latest_tag), None)
+        if matched:
+            return matched
+
+    return releases[0]
+
+
+def _select_runtime_asset(release_entry: Dict[str, Any], platform: str) -> Dict[str, Any]:
+    assets = release_entry.get("assets") or []
+    if not assets:
+        raise RuntimeError("Release entry does not contain assets.")
+
+    exact = next(
+        (
+            item
+            for item in assets
+            if str(item.get("kind") or "") == "runtime"
+            and str(item.get("platform") or "") == platform
+        ),
+        None,
+    )
+    if exact:
+        return exact
+
+    fallback = next((item for item in assets if str(item.get("kind") or "") == "runtime"), None)
+    if fallback:
+        return fallback
+    raise RuntimeError("Release entry does not contain runtime assets.")
+
+
+def _normalize_platform(value: str) -> str:
+    lowered = value.strip().lower()
+    if lowered in {"mac", "macos", "darwin", "osx"}:
+        return "macos"
+    if lowered in {"linux", "ubuntu"}:
+        return "linux"
+    if lowered in {"windows", "win", "win32"}:
+        return "windows"
+    if not lowered:
+        return _detect_runtime_platform()
+    return lowered
+
+
+def _detect_runtime_platform() -> str:
+    if sys.platform == "darwin":
+        return "macos"
+    if sys.platform.startswith("linux"):
+        return "linux"
+    if sys.platform in {"win32", "cygwin"}:
+        return "windows"
+    return "unknown"
 
 
 def _first_track_id(contract: Dict[str, Any]) -> str:

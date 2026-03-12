@@ -6,7 +6,7 @@
 Он нужен для:
 - внешнего source of truth по доступным release-артефактам;
 - проверки версии и download URL;
-- будущего `rusim upgrade`.
+- команды `rusim upgrade`.
 
 ## Формат
 
@@ -138,8 +138,8 @@ python scripts/generate_release_manifest.py github-release \
   --output dist/v0.1.0/rusim-release-manifest.json
 ```
 
-## Будущее использование
-Будущий `rusim upgrade` должен:
+## Использование в `rusim upgrade`
+Команда `rusim upgrade` использует manifest так:
 1. получить latest release manifest;
 2. сравнить локальную установленную версию и `latestVersion`;
 3. выбрать asset по `platform`;

@@ -82,6 +82,7 @@ CLI ведёт себя дружелюбно:
 
 - `version`
 - `install`
+- `upgrade`
 - `doctor`
 - `contract`
 - `list tracks`
@@ -101,6 +102,7 @@ CLI ведёт себя дружелюбно:
 ```bash
 rusim version
 rusim install --write-shell-config
+rusim upgrade --repo NMGorovenko/uav-simulator --tag latest --check-only
 rusim doctor --base-url http://127.0.0.1:8000
 rusim contract --base-url http://127.0.0.1:8000
 rusim list tracks --base-url http://127.0.0.1:8000
