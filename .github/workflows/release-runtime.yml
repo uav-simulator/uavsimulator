@@ -36,8 +36,6 @@ jobs:
       RUSIM_BUILD_OUTPUT: build/runtime/macos/uav-simulator.app
       RUSIM_BUILD_SCENE: Assets/Scenes/TrackScence.unity
     steps:
-      - uses: actions/checkout@v6
-
       - name: Resolve release metadata
         id: meta
         run: |
@@ -56,6 +54,10 @@ jobs:
           echo "version=${version}" >> "$GITHUB_OUTPUT"
           echo "asset_name=${asset_name}" >> "$GITHUB_OUTPUT"
           echo "checksum_name=${asset_name}.sha256" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v6
+        with:
+          ref: refs/tags/${{ steps.meta.outputs.tag }}
 
       - name: Build StandaloneOSX runtime (GameCI)
         uses: game-ci/unity-builder@v4
