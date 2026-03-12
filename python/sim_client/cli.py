@@ -1330,6 +1330,19 @@ def _resolve_release_manifest(*, repo: str, tag: str, manifest_url: str, github_
     release_tag = str(release.get("tag_name") or "")
     assets = release.get("assets") or []
     manifest_asset = next((item for item in assets if str(item.get("name") or "") == RELEASE_MANIFEST_ASSET_NAME), None)
+    if not manifest_asset and tag == "latest":
+        for candidate in _fetch_github_releases(repo=repo, github_token=github_token):
+            candidate_assets = candidate.get("assets") or []
+            candidate_manifest = next(
+                (item for item in candidate_assets if str(item.get("name") or "") == RELEASE_MANIFEST_ASSET_NAME),
+                None,
+            )
+            if candidate_manifest:
+                release = candidate
+                release_tag = str(release.get("tag_name") or release_tag)
+                manifest_asset = candidate_manifest
+                break
+
     if not manifest_asset:
         raise RuntimeError(
             f"Release '{release_tag or tag}' does not contain '{RELEASE_MANIFEST_ASSET_NAME}'. "
@@ -1356,6 +1369,17 @@ def _fetch_github_release(*, repo: str, tag: str, github_token: str) -> Dict[str
         encoded = urllib.parse.quote(tag, safe="")
         url = f"https://api.github.com/repos/{repo}/releases/tags/{encoded}"
     return _http_get_json(url, github_token=github_token)
+
+
+def _fetch_github_releases(*, repo: str, github_token: str, per_page: int = 30) -> List[Dict[str, Any]]:
+    if "/" not in repo:
+        raise RuntimeError(f"Invalid repo format '{repo}'. Expected owner/repo.")
+    url = f"https://api.github.com/repos/{repo}/releases?per_page={per_page}"
+    payload = _http_get_bytes(url, github_token=github_token)
+    parsed = json.loads(payload.decode("utf-8"))
+    if not isinstance(parsed, list):
+        return []
+    return [item for item in parsed if isinstance(item, dict)]
 
 
 def _http_get_json(url: str, *, github_token: str) -> Dict[str, Any]:

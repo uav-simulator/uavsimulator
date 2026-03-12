@@ -114,6 +114,7 @@ rusim runtime upgrade --repo NMGorovenko/uav-simulator --tag latest --check-only
 `runtime upgrade`:
 - `rusim runtime upgrade ...` — алиас к тому же upgrade flow;
 - удобно использовать рядом с `rusim runtime list/run/favorite`.
+- при `--tag latest` runtime-upgrade выбирает самый новый Release, где есть `rusim-release-manifest.json`.
 
 ## 4. Диагностика runtime
 
