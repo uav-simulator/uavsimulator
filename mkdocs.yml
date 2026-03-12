@@ -53,6 +53,7 @@ nav:
   - Технологии: stack.md
   - Установка: installation.md
   - Использование: usage.md
+  - CLI: cli.md
   - Контракты:
       - Обзор контрактов: contracts.md
       - Product Definition v1: product-definition-v1.md

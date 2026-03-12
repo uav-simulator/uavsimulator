@@ -24,6 +24,9 @@
 ### 4. Использование
 - [usage.md](usage.md)
 
+### 4.1. CLI
+- [cli.md](cli.md)
+
 ### 5. Контракты
 - [contracts.md](contracts.md)
 
