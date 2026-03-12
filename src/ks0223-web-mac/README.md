@@ -182,6 +182,7 @@ Operator UI поддерживает два режима работы без о�
 - `Unity simulator`
   - target host: Unity runtime с `HttpJsonApiHost` (по умолчанию `127.0.0.1:8000`);
   - backend работает как live-адаптер поверх Unity HTTP API (`/health`, `/contract`, `/reset`, `/step`);
+  - при reset backend автоматически выбирает лучший доступный трек из контракта (приоритет: `track.roadsystem_realistic.v2` -> `track.roadsystem_arena.v1` -> `track.basic_arena.v1`);
   - камера, телеметрия и управление отдаются в тех же UI-панелях.
   - если backend запущен в Docker, loopback-host автоматически нормализуется для доступа к Unity на macOS host.
 

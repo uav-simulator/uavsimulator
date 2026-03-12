@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Linq;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Ks0223.Web.Backend.Hubs;
@@ -9,6 +10,19 @@ namespace Ks0223.Web.Backend.Services;
 
 public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
 {
+    private static readonly string[] PreferredVehicleIds =
+    {
+        "vehicle.ks0223.arcade.blue.v1",
+        "vehicle.ks0223.v1",
+    };
+
+    private static readonly string[] PreferredTrackIds =
+    {
+        "track.roadsystem_realistic.v2",
+        "track.roadsystem_arena.v1",
+        "track.basic_arena.v1",
+    };
+
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
         PropertyNameCaseInsensitive = true,
@@ -27,6 +41,8 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
     private string runtimeLabel = "Keyestudio KS0223 (Unity Simulator)";
     private string targetHost = "127.0.0.1";
     private int targetPort = 8000;
+    private string selectedVehicleId = PreferredVehicleIds[0];
+    private string selectedTrackId = PreferredTrackIds[0];
     private double? latencyMs;
     private string? lastError;
     private DateTimeOffset? lastLoopAt;
@@ -447,36 +463,82 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
         response.EnsureSuccessStatusCode();
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
         using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
-        var vehicles = document.RootElement.TryGetProperty("availableVehicles", out var availableVehicles)
-            ? availableVehicles
-            : default;
 
-        var hasKs0223 = false;
-        if (vehicles.ValueKind == JsonValueKind.Array)
+        var availableVehicleIds = new HashSet<string>(StringComparer.Ordinal);
+        var availableTrackIds = new HashSet<string>(StringComparer.Ordinal);
+        var vehicleDisplayNames = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        if (document.RootElement.TryGetProperty("availableVehicles", out var vehicles) &&
+            vehicles.ValueKind == JsonValueKind.Array)
         {
             foreach (var vehicle in vehicles.EnumerateArray())
             {
-                if (vehicle.TryGetProperty("deviceId", out var deviceId) &&
-                    string.Equals(deviceId.GetString(), "vehicle.ks0223.v1", StringComparison.Ordinal))
+                if (!vehicle.TryGetProperty("deviceId", out var deviceIdElement))
                 {
-                    if (vehicle.TryGetProperty("displayName", out var displayNameElement))
-                    {
-                        var displayName = displayNameElement.GetString();
-                        if (!string.IsNullOrWhiteSpace(displayName))
-                        {
-                            runtimeLabel = displayName!;
-                        }
-                    }
+                    continue;
+                }
 
-                    hasKs0223 = true;
-                    break;
+                var deviceId = deviceIdElement.GetString();
+                if (string.IsNullOrWhiteSpace(deviceId))
+                {
+                    continue;
+                }
+
+                availableVehicleIds.Add(deviceId);
+
+                if (vehicle.TryGetProperty("displayName", out var displayNameElement))
+                {
+                    var displayName = displayNameElement.GetString();
+                    if (!string.IsNullOrWhiteSpace(displayName))
+                    {
+                        vehicleDisplayNames[deviceId] = displayName!;
+                    }
                 }
             }
         }
 
-        if (!hasKs0223)
+        if (document.RootElement.TryGetProperty("availableTracks", out var tracks) &&
+            tracks.ValueKind == JsonValueKind.Array)
         {
-            throw new InvalidOperationException("Unity simulator contract does not expose vehicle.ks0223.v1");
+            foreach (var track in tracks.EnumerateArray())
+            {
+                if (!track.TryGetProperty("trackId", out var trackIdElement))
+                {
+                    continue;
+                }
+
+                var trackId = trackIdElement.GetString();
+                if (string.IsNullOrWhiteSpace(trackId))
+                {
+                    continue;
+                }
+
+                availableTrackIds.Add(trackId);
+            }
+        }
+
+        if (availableVehicleIds.Count == 0)
+        {
+            throw new InvalidOperationException("Unity simulator contract does not expose any vehicles");
+        }
+
+        if (availableTrackIds.Count == 0)
+        {
+            throw new InvalidOperationException("Unity simulator contract does not expose any tracks");
+        }
+
+        var resolvedVehicleId = ResolvePreferred(availableVehicleIds, PreferredVehicleIds)
+            ?? availableVehicleIds.FirstOrDefault(id => id.StartsWith("vehicle.ks0223", StringComparison.Ordinal))
+            ?? availableVehicleIds.First();
+        var resolvedTrackId = ResolvePreferred(availableTrackIds, PreferredTrackIds)
+            ?? availableTrackIds.First();
+
+        selectedVehicleId = resolvedVehicleId;
+        selectedTrackId = resolvedTrackId;
+
+        if (vehicleDisplayNames.TryGetValue(resolvedVehicleId, out var selectedDisplayName))
+        {
+            runtimeLabel = selectedDisplayName;
         }
     }
 
@@ -486,8 +548,8 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
         {
             seed = 1,
             timeScale = 1.0,
-            selectedTrackId = "track.basic_arena.v1",
-            selectedVehicleId = "vehicle.ks0223.v1",
+            selectedTrackId,
+            selectedVehicleId,
             trackParams = Array.Empty<object>(),
             vehicleParams = Array.Empty<object>(),
             flags = Array.Empty<object>(),
@@ -758,6 +820,19 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
         {
             // best effort
         }
+    }
+
+    private static string? ResolvePreferred(HashSet<string> availableIds, IEnumerable<string> preferredIds)
+    {
+        foreach (var candidate in preferredIds)
+        {
+            if (availableIds.Contains(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        return null;
     }
 
     private static float NormalizeServo(int angleDeg) => Math.Clamp((angleDeg - 90f) / 90f, -1f, 1f);
