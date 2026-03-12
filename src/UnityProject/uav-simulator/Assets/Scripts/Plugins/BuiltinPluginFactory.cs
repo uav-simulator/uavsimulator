@@ -36,7 +36,7 @@ namespace UavSimulator.Plugins
         private const float TargetVehicleLength = 0.52f;
         private const float VehicleVisualGroundOffset = 0.01f;
 
-        public static PluginRegistrySnapshot CreateSnapshot()
+        public static PluginRegistrySnapshot CreateSnapshot(PluginRegistrySource source = PluginRegistrySource.BuiltinFactory)
         {
             var vehicle = CreateVehicleDescriptor(
                 Ks0223VehicleId,
@@ -77,7 +77,8 @@ namespace UavSimulator.Plugins
 
             return new PluginRegistrySnapshot(
                 vehicles: new[] { vehicle, arcadeBlueVehicle, arcadeRedVehicle, arcadeGrayVehicle, arcadePurpleVehicle, simpleDrone },
-                tracks: new[] { track, roadSystemTrack });
+                tracks: new[] { roadSystemTrack, track },
+                source: source);
         }
 
         public static bool TryCreateVehicleInstance(string descriptorId, Transform parent, out VehicleBase vehicle)

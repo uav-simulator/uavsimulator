@@ -277,6 +277,11 @@ def _doctor(base_url: str) -> int:
     result = {
         "baseUrl": base_url,
         "healthStatus": health.get("status"),
+        "pluginRegistrySource": health.get("pluginRegistrySource"),
+        "activeVehicleId": health.get("activeVehicleId"),
+        "activeTrackId": health.get("activeTrackId"),
+        "healthAvailableVehicles": health.get("availableVehicles"),
+        "healthAvailableTracks": health.get("availableTracks"),
         "contractValid": ok,
         "contractErrors": errors,
         "simulatorId": contract.get("simulatorId"),
