@@ -99,3 +99,4 @@ output/*.xwd
 output/*.log
 output/debug_turns/
 .rusim/
+dist/
