@@ -19,6 +19,7 @@ namespace UavSimulator.Plugins
         public const string SimpleDroneVehicleId = "vehicle.drone.simple.v1";
         public const string BasicArenaTrackId = "track.basic_arena.v1";
         public const string RoadSystemArenaTrackId = "track.roadsystem_arena.v1";
+        public const string RoadSystemRealisticTrackId = "track.roadsystem_realistic.v2";
 
         private const string PrometeoPrefabPath = "Assets/PROMETEO - Car Controller/Prefabs/Prometheus.prefab";
         private const string ArcadeBluePrefabPath = "Assets/ARCADE - FREE Racing Car/Prefabs (Meshes Only)/Free Racing Car Blue Variant.prefab";
@@ -75,9 +76,15 @@ namespace UavSimulator.Plugins
             roadSystemTrack.description = "RoadSystem spline-based arena with boundaries and markings.";
             roadSystemTrack.parametersSchemaJson = "{\"type\":\"object\",\"properties\":{}}";
 
+            var roadSystemRealisticTrack = ScriptableObject.CreateInstance<TrackPluginDescriptor>();
+            roadSystemRealisticTrack.id = RoadSystemRealisticTrackId;
+            roadSystemRealisticTrack.displayName = "RoadSystem Realistic v2 (Runtime)";
+            roadSystemRealisticTrack.description = "RoadSystem-based realistic track with curbs, start/finish markers and richer environment.";
+            roadSystemRealisticTrack.parametersSchemaJson = "{\"type\":\"object\",\"properties\":{}}";
+
             return new PluginRegistrySnapshot(
                 vehicles: new[] { vehicle, arcadeBlueVehicle, arcadeRedVehicle, arcadeGrayVehicle, arcadePurpleVehicle, simpleDrone },
-                tracks: new[] { roadSystemTrack, track },
+                tracks: new[] { roadSystemTrack, roadSystemRealisticTrack, track },
                 source: source);
         }
 
@@ -141,6 +148,16 @@ namespace UavSimulator.Plugins
                 root.transform.position = Vector3.zero;
                 root.transform.rotation = Quaternion.identity;
                 track = root.AddComponent<RoadSystemArenaTrack>();
+                return true;
+            }
+
+            if (string.Equals(descriptorId, RoadSystemRealisticTrackId, StringComparison.Ordinal))
+            {
+                var root = new GameObject("RoadSystemRealisticTrack");
+                root.transform.SetParent(parent, false);
+                root.transform.position = Vector3.zero;
+                root.transform.rotation = Quaternion.identity;
+                track = root.AddComponent<RoadSystemRealisticTrack>();
                 return true;
             }
 

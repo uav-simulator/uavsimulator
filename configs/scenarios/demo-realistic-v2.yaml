@@ -1,0 +1,50 @@
+scenarioId: demo-realistic-v2
+displayName: Demo Realistic Track v2
+description: Реалистичный демонстрационный сценарий на RoadSystem-треке v2.
+version: 1
+
+runtime:
+  runtimeMode: unity-sim
+  headless: false
+  timeScale: 1.0
+  seed: 42
+
+world:
+  trackId: track.roadsystem_realistic.v2
+
+vehicle:
+  vehicleId: vehicle.ks0223.arcade.blue.v1
+  params:
+    camera.profile: balanced
+
+sensors:
+  camera:
+    enabled: true
+    profile: balanced
+  telemetry:
+    profile: default
+  lineTracker:
+    enabled: true
+  ultrasonic:
+    enabled: true
+
+route:
+  waypoints:
+    - [-11.0, -13.5]
+    - [-10.5, -4.5]
+    - [-6.0, 3.5]
+    - [1.5, 7.5]
+    - [9.5, 2.5]
+    - [10.5, -6.5]
+    - [4.5, -12.5]
+  loop: true
+  reachDistanceM: 1.4
+
+agents:
+  count: 1
+  isolated: true
+  seeEachOther: false
+
+logging:
+  enabled: true
+  tag: demo-realistic-v2

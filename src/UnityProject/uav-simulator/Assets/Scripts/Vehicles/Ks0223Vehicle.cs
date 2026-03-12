@@ -25,6 +25,16 @@ namespace UavSimulator.Vehicles
             new Vector2(6.2f, -2f),
             new Vector2(6f, 7.2f),
         };
+        private static readonly Vector2[] RoadSystemRealisticCenterline =
+        {
+            new Vector2(-11f, -14f),
+            new Vector2(-11f, -4f),
+            new Vector2(-6f, 4f),
+            new Vector2(2f, 8f),
+            new Vector2(10f, 2f),
+            new Vector2(11f, -7f),
+            new Vector2(4f, -13f),
+        };
 
         [SerializeField] private float maxSpeedMps = 2.2f;
         [SerializeField] private float accelerationMps2 = 4.0f;
@@ -438,7 +448,8 @@ namespace UavSimulator.Vehicles
         {
             var distanceBasicArena = DistanceToPolyline(p, BasicArenaCenterline);
             var distanceRoadSystem = DistanceToPolyline(p, RoadSystemArenaCenterline);
-            return Mathf.Min(distanceBasicArena, distanceRoadSystem);
+            var distanceRoadSystemRealistic = DistanceToPolyline(p, RoadSystemRealisticCenterline);
+            return Mathf.Min(distanceBasicArena, Mathf.Min(distanceRoadSystem, distanceRoadSystemRealistic));
         }
 
         private static float DistanceToPolyline(Vector2 p, Vector2[] points)
