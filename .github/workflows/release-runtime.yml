@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag, for example v0.1.1
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -27,7 +33,6 @@ jobs:
     needs: unity-license-gate
     runs-on: ubuntu-latest
     env:
-      TAG: ${{ github.ref_name }}
       RUSIM_BUILD_OUTPUT: build/runtime/macos/uav-simulator.app
       RUSIM_BUILD_SCENE: Assets/Scenes/TrackScence.unity
     steps:
@@ -36,7 +41,15 @@ jobs:
       - name: Resolve release metadata
         id: meta
         run: |
-          tag="${TAG}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            tag="${{ inputs.tag }}"
+          else
+            tag="${GITHUB_REF_NAME}"
+          fi
+          if [[ ! "$tag" =~ ^v ]]; then
+            echo "::error::Tag must start with 'v' (got: $tag)"
+            exit 1
+          fi
           version="${tag#v}"
           asset_name="uav-simulator-macos-${tag}.zip"
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
@@ -59,6 +72,7 @@ jobs:
 
       - name: Package runtime archive
         run: |
+          TAG="${{ steps.meta.outputs.tag }}"
           test -d build/runtime/macos/uav-simulator.app
           mkdir -p "dist/${TAG}"
           rm -f "dist/${TAG}/${{ steps.meta.outputs.asset_name }}"

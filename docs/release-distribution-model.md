@@ -96,6 +96,9 @@ git push origin v0.1.1
 - публикует release assets;
 - прикрепляет `rusim-release-manifest.json`.
 
+Fallback:
+- если tag-run упал из-за инфраструктуры, тот же workflow можно запустить вручную через `workflow_dispatch` с параметром `tag`.
+
 ```text
 rusim-release-manifest.json
 ```
