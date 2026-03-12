@@ -1,6 +1,8 @@
+using System;
 using Barmetler.RoadSystem;
 using Barmetler.RoadSystem.Util;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 namespace UavSimulator.Tracks
 {
@@ -446,10 +448,14 @@ namespace UavSimulator.Tracks
 
         private static Shader ResolveRuntimeLitShader()
         {
-            var shader = Shader.Find("Universal Render Pipeline/Lit");
-            if (shader != null && shader.isSupported)
+            Shader shader;
+            if (IsUrpActive())
             {
-                return shader;
+                shader = Shader.Find("Universal Render Pipeline/Lit");
+                if (shader != null && shader.isSupported)
+                {
+                    return shader;
+                }
             }
 
             shader = Shader.Find("Standard");
@@ -465,6 +471,19 @@ namespace UavSimulator.Tracks
             }
 
             throw new MissingReferenceException("Unable to resolve a supported lit shader for runtime track materials.");
+        }
+
+        private static bool IsUrpActive()
+        {
+            var pipeline = GraphicsSettings.currentRenderPipeline;
+            if (pipeline == null)
+            {
+                return false;
+            }
+
+            var name = pipeline.GetType().Name;
+            return name.Contains("UniversalRenderPipeline", StringComparison.Ordinal) ||
+                   name.Contains("URP", StringComparison.Ordinal);
         }
     }
 }

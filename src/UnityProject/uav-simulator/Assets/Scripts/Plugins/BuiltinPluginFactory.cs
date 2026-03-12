@@ -3,6 +3,7 @@ using UavSimulator.Contracts;
 using UavSimulator.Tracks;
 using UavSimulator.Vehicles;
 using UnityEngine;
+using UnityEngine.Rendering;
 #if UNITY_EDITOR
 using UnityEditor;
 #endif
@@ -635,10 +636,14 @@ namespace UavSimulator.Plugins
 
         private static Shader ResolveRuntimeLitShader()
         {
-            var shader = Shader.Find("Universal Render Pipeline/Lit");
-            if (shader != null && shader.isSupported)
+            Shader shader;
+            if (IsUrpActive())
             {
-                return shader;
+                shader = Shader.Find("Universal Render Pipeline/Lit");
+                if (shader != null && shader.isSupported)
+                {
+                    return shader;
+                }
             }
 
             shader = Shader.Find("Standard");
@@ -654,6 +659,19 @@ namespace UavSimulator.Plugins
             }
 
             throw new MissingReferenceException("Unable to resolve a supported shader for vehicle fallback materials.");
+        }
+
+        private static bool IsUrpActive()
+        {
+            var pipeline = GraphicsSettings.currentRenderPipeline;
+            if (pipeline == null)
+            {
+                return false;
+            }
+
+            var name = pipeline.GetType().Name;
+            return name.Contains("UniversalRenderPipeline", StringComparison.Ordinal) ||
+                   name.Contains("URP", StringComparison.Ordinal);
         }
 
         private static void CreateFallbackVisualShell(Transform parent)
