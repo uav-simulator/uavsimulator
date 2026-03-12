@@ -43,6 +43,28 @@ rusim --help
 rusim upgrade --repo NMGorovenko/uav-simulator --tag latest --check-only
 ```
 
+## Публикация runtime релиза (GitHub Actions)
+Релизный runtime теперь собирается в CI, а не на локальной машине.
+
+Триггер:
+- `push` тега формата `v*` (например `v0.1.1`).
+
+Практический запуск:
+
+```bash
+git tag v0.1.1
+git push origin v0.1.1
+```
+
+Workflow `Release Runtime`:
+- собирает Unity runtime (`StandaloneOSX`);
+- публикует `uav-simulator-macos-vX.Y.Z.zip`;
+- публикует checksum `uav-simulator-macos-vX.Y.Z.zip.sha256`;
+- генерирует и прикрепляет `rusim-release-manifest.json`.
+
+Требование:
+- в GitHub Secrets должен быть задан `UNITY_LICENSE`.
+
 Практические варианты:
 
 ### Вариант 1. Запуск из репозитория

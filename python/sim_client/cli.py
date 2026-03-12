@@ -356,6 +356,7 @@ def _upgrade(args: argparse.Namespace) -> int:
     )
     release_entry = _select_manifest_release(manifest_data, args.channel, release_meta.get("tag"))
     runtime_asset = _select_runtime_asset(release_entry, platform)
+    asset_url = _resolve_runtime_asset_url(runtime_asset, github_token=args.github_token)
 
     version = str(release_entry.get("version") or "unknown")
     tag = str(release_entry.get("tag") or release_meta.get("tag") or "unknown")
@@ -372,7 +373,7 @@ def _upgrade(args: argparse.Namespace) -> int:
         "releaseVersion": version,
         "platform": platform,
         "assetName": runtime_asset.get("name"),
-        "assetUrl": runtime_asset.get("browserDownloadUrl"),
+        "assetUrl": asset_url,
         "buildId": build_id,
         "alreadyInstalled": already_installed,
         "checkOnly": bool(args.check_only),
@@ -388,10 +389,6 @@ def _upgrade(args: argparse.Namespace) -> int:
         result["reason"] = "build already installed (use --force to reinstall)"
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
-
-    asset_url = str(runtime_asset.get("browserDownloadUrl") or "").strip()
-    if not asset_url:
-        raise RuntimeError("Runtime asset has empty browserDownloadUrl in release manifest.")
 
     downloads_dir = _rusim_home() / "downloads" / tag
     downloads_dir.mkdir(parents=True, exist_ok=True)
@@ -1111,11 +1108,29 @@ def _resolve_runtime_executable(runtime_app: Path) -> Path:
     binary_name = runtime_app.stem
     executable = runtime_app / "Contents" / "MacOS" / binary_name
     if executable.exists():
-        return executable
-    candidates = list((runtime_app / "Contents" / "MacOS").glob("*"))
+        return _ensure_executable_file(executable)
+    candidates = [
+        item
+        for item in (runtime_app / "Contents" / "MacOS").glob("*")
+        if item.is_file() and not item.name.startswith("._")
+    ]
     if len(candidates) == 1:
-        return candidates[0]
+        return _ensure_executable_file(candidates[0])
+    preferred = next((item for item in candidates if item.name == binary_name), None)
+    if preferred:
+        return _ensure_executable_file(preferred)
+    executable_candidates = [item for item in candidates if os.access(item, os.X_OK)]
+    if len(executable_candidates) == 1:
+        return _ensure_executable_file(executable_candidates[0])
     raise FileNotFoundError(f"Runtime executable not found in app bundle: {runtime_app}")
+
+
+def _ensure_executable_file(path: Path) -> Path:
+    mode = path.stat().st_mode
+    if mode & 0o111:
+        return path
+    path.chmod(mode | 0o755)
+    return path
 
 
 def _path_contains(path_entry: str, path_env: str) -> bool:
@@ -1308,7 +1323,9 @@ def _resolve_release_manifest(*, repo: str, tag: str, manifest_url: str, github_
             "Run Release Manifest workflow or attach manifest asset manually."
         )
 
-    url = str(manifest_asset.get("browser_download_url") or "").strip()
+    api_url = str(manifest_asset.get("url") or "").strip()
+    browser_url = str(manifest_asset.get("browser_download_url") or "").strip()
+    url = api_url if api_url and github_token else browser_url or api_url
     if not url:
         raise RuntimeError(f"Manifest asset URL is empty in release '{release_tag or tag}'.")
 
@@ -1335,7 +1352,13 @@ def _http_get_json(url: str, *, github_token: str) -> Dict[str, Any]:
 
 def _http_get_bytes(url: str, *, github_token: str) -> bytes:
     request = urllib.request.Request(url)
-    if "api.github.com" in url:
+    is_github_api = "api.github.com" in url
+    is_release_asset_api = is_github_api and "/releases/assets/" in url
+
+    if is_release_asset_api:
+        request.add_header("Accept", "application/octet-stream")
+        request.add_header("X-GitHub-Api-Version", "2022-11-28")
+    elif is_github_api:
         request.add_header("Accept", "application/vnd.github+json")
     else:
         request.add_header("Accept", "application/octet-stream")
@@ -1368,7 +1391,11 @@ def _extract_runtime_archive(archive_path: Path, target_dir: Path) -> Path:
     with zipfile.ZipFile(archive_path, "r") as archive:
         archive.extractall(temp_extract)
 
-    app_candidates = sorted(temp_extract.rglob("*.app"))
+    app_candidates = sorted(
+        item
+        for item in temp_extract.rglob("*.app")
+        if "__MACOSX" not in item.parts and not any(part.startswith("._") for part in item.parts)
+    )
     if not app_candidates:
         raise RuntimeError(f"Archive does not contain .app bundle: {archive_path}")
 
@@ -1439,6 +1466,18 @@ def _select_runtime_asset(release_entry: Dict[str, Any], platform: str) -> Dict[
     if fallback:
         return fallback
     raise RuntimeError("Release entry does not contain runtime assets.")
+
+
+def _resolve_runtime_asset_url(runtime_asset: Dict[str, Any], *, github_token: str) -> str:
+    api_url = str(runtime_asset.get("apiUrl") or "").strip()
+    browser_url = str(runtime_asset.get("browserDownloadUrl") or "").strip()
+    if api_url and github_token:
+        return api_url
+    if browser_url:
+        return browser_url
+    if api_url:
+        return api_url
+    raise RuntimeError("Runtime asset does not contain download URL (browserDownloadUrl/apiUrl).")
 
 
 def _normalize_platform(value: str) -> str:

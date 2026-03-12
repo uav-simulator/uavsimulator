@@ -107,7 +107,7 @@ def generate_github_release_manifest(
     channel: str,
 ) -> dict[str, Any]:
     release = _fetch_release_by_tag(repo=repo, tag=tag, github_token=github_token)
-    assets = _build_release_assets(release.get("assets") or [])
+    assets = _build_release_assets(release.get("assets") or [], github_token=github_token)
     manifest = _build_manifest(
         repo=repo,
         version=_normalize_version_from_tag(str(release.get("tag_name") or tag)),
@@ -167,19 +167,20 @@ def _build_local_asset_entry(path: Path, base_download_url: str) -> dict[str, An
         "platform": _infer_platform(name),
         "contentType": mimetypes.guess_type(name)[0] or "application/octet-stream",
         "sizeBytes": path.stat().st_size,
+        "apiUrl": "",
         "browserDownloadUrl": browser_download_url,
         "sha256": sha256,
         "sha256Source": "inline",
     }
 
 
-def _build_release_assets(release_assets: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _build_release_assets(release_assets: list[dict[str, Any]], *, github_token: str) -> list[dict[str, Any]]:
     checksum_by_target: dict[str, str] = {}
     for asset in release_assets:
         name = str(asset.get("name") or "")
         if name.endswith(".sha256"):
             target_name = name[: -len(".sha256")]
-            checksum = _try_extract_checksum_from_asset(asset)
+            checksum = _try_extract_checksum_from_asset(asset, github_token=github_token)
             if checksum:
                 checksum_by_target[target_name] = checksum
 
@@ -196,6 +197,7 @@ def _build_release_assets(release_assets: list[dict[str, Any]]) -> list[dict[str
                 "platform": _infer_platform(name),
                 "contentType": str(asset.get("content_type") or "application/octet-stream"),
                 "sizeBytes": int(asset.get("size") or 0),
+                "apiUrl": str(asset.get("url") or ""),
                 "browserDownloadUrl": str(asset.get("browser_download_url") or ""),
                 "sha256": checksum_by_target.get(name),
                 "sha256Source": "release-asset" if checksum_by_target.get(name) else None,
@@ -242,17 +244,31 @@ def _fetch_release_by_tag(*, repo: str, tag: str, github_token: str) -> dict[str
         raise RuntimeError(f"GitHub API error {exc.code}: {body}") from exc
 
 
-def _try_extract_checksum_from_asset(asset: dict[str, Any]) -> str | None:
-    url = str(asset.get("browser_download_url") or "")
-    if not url:
-        return None
+def _try_extract_checksum_from_asset(asset: dict[str, Any], *, github_token: str) -> str | None:
+    urls_to_try: list[tuple[str, bool]] = []
+    api_url = str(asset.get("url") or "")
+    browser_download_url = str(asset.get("browser_download_url") or "")
+    if api_url:
+        urls_to_try.append((api_url, True))
+    if browser_download_url:
+        urls_to_try.append((browser_download_url, False))
 
-    request = urllib.request.Request(url)
-    request.add_header("Accept", "application/octet-stream")
-    try:
-        with urllib.request.urlopen(request, timeout=30) as response:
-            content = response.read().decode("utf-8", errors="replace").strip()
-    except Exception:
+    content: str | None = None
+    for url, use_api_headers in urls_to_try:
+        request = urllib.request.Request(url)
+        request.add_header("Accept", "application/octet-stream")
+        if use_api_headers:
+            request.add_header("X-GitHub-Api-Version", "2022-11-28")
+        if github_token:
+            request.add_header("Authorization", f"Bearer {github_token}")
+        try:
+            with urllib.request.urlopen(request, timeout=30) as response:
+                content = response.read().decode("utf-8", errors="replace").strip()
+                break
+        except Exception:
+            continue
+
+    if not content:
         return None
 
     match = re.search(r"\b([a-fA-F0-9]{64})\b", content)

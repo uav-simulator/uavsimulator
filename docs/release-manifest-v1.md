@@ -32,6 +32,7 @@
           "platform": "macos",
           "contentType": "application/zip",
           "sizeBytes": 123456789,
+          "apiUrl": "https://api.github.com/repos/.../releases/assets/123456",
           "browserDownloadUrl": "https://github.com/.../download/...",
           "sha256": "0123abcd...",
           "sha256Source": "release-asset"
@@ -101,6 +102,10 @@
 - `browserDownloadUrl`
   - прямой URL скачивания.
 
+- `apiUrl`
+  - GitHub API URL release asset-а (`/releases/assets/{id}`);
+  - используется `rusim upgrade` для приватных репозиториев, когда нужен authenticated download.
+
 - `sha256`
   - SHA-256 checksum runtime asset-а;
   - может быть `null`, если checksum пока не опубликован.
@@ -137,6 +142,10 @@ python scripts/generate_release_manifest.py github-release \
   --tag v0.1.0 \
   --output dist/v0.1.0/rusim-release-manifest.json
 ```
+
+CI-поток:
+- при `git push` тега `v*` workflow `Release Runtime` сначала публикует runtime assets, затем генерирует и прикладывает `rusim-release-manifest.json`;
+- workflow `Release Manifest` оставлен как manual fallback для перерасчёта manifest по конкретному tag.
 
 ## Использование в `rusim upgrade`
 Команда `rusim upgrade` использует manifest так:

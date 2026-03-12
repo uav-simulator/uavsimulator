@@ -120,7 +120,7 @@ rusim step --base-url http://127.0.0.1:8000 --throttle 0.2 --steer 0.1
 - подключение идёт к общему runtime, а выбор активной машинки/сцены делается через `rusim reset`.
 
 Ограничение текущего среза:
-- CLI пока не управляет полным release/distribution lifecycle;
+- CLI поддерживает потребление релиза (`rusim upgrade`), но не управляет публикацией release/tag lifecycle;
 - для `headless` камера не гарантируется, потому что Unity запускается с `-nographics`.
 
 Частично это уже закрыто:
