@@ -111,6 +111,7 @@ rusim inspect vehicle vehicle.ks0223.arcade.blue.v1 --base-url http://127.0.0.1:
 rusim reset --base-url http://127.0.0.1:8000 --track-id track.roadsystem_arena.v1 --vehicle-id vehicle.ks0223.arcade.blue.v1
 rusim scenario validate configs/scenarios/demo.yaml
 rusim scenario reset configs/scenarios/demo.yaml --base-url http://127.0.0.1:8000
+rusim scenario reset configs/scenarios/demo-realistic-v2.yaml --base-url http://127.0.0.1:8000
 rusim step --base-url http://127.0.0.1:8000 --throttle 0.2 --steer 0.1
 ```
 

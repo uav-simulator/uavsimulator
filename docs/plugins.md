@@ -37,6 +37,7 @@
 ## Текущие track plugins (runtime fallback)
 - `track.basic_arena.v1`
 - `track.roadsystem_arena.v1` (на базе `Road System`)
+- `track.roadsystem_realistic.v2` (расширенная RoadSystem карта с бордюрами, старт/финиш зоной и окружением)
 
 Примечание:
 - Все перечисленные `vehicleId` используют общую KS0223 физику/сенсоры (`Ks0223Vehicle`), но разные визуальные модели.
