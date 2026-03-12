@@ -226,6 +226,7 @@ rusim runtime remove latest --keep-files
 
 ```bash
 rusim server start --mode windowed
+rusim server start --mode background --port 8011
 rusim server start --mode headless --port 8011
 ```
 
@@ -233,15 +234,35 @@ rusim server start --mode headless --port 8011
 
 ```bash
 rusim server start --runtime-app build/runtime/macos/uav-simulator.app --mode windowed --port 8011
+rusim server start --runtime-app build/runtime/macos/uav-simulator.app --mode background --port 8011
 rusim server start --runtime-app build/runtime/macos/uav-simulator.app --mode headless --port 8011
 ```
 
 ### Запуск по registry id
 
 ```bash
-rusim runtime run --build latest --mode headless --port 8011
+rusim runtime run --build latest --mode background --port 8011
 rusim runtime run --build favorite --mode windowed --port 8011
 ```
+
+### Значение режимов
+
+- `windowed`
+  - обычный запуск с видимым окном;
+  - нужен для ручной отладки и визуальной работы в симуляции.
+
+- `background`
+  - запуск без полноценного пользовательского окна, но с сохранением graphics device;
+  - нужен, когда требуется камера и рендер, но не нужен обычный UI рантайма.
+
+- `headless`
+  - запуск с `-batchmode -nographics`;
+  - подходит для серверных, CI и training-сценариев, где видео не требуется;
+  - в этом режиме камера может быть недоступна, потому что Unity идёт без graphics device.
+
+Практический вывод по текущей реализации:
+- `background` уже подтверждён на standalone runtime: после `reset` команда `step` возвращает camera frame;
+- `headless` следует использовать только там, где видеопоток не нужен по определению.
 
 ### Статус и остановка
 
@@ -312,4 +333,5 @@ rusim runtime list
 rusim runtime inspect latest
 rusim runtime favorite set latest
 rusim runtime favorite show
+rusim runtime run --build latest --mode background --port 8011
 ```

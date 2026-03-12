@@ -120,8 +120,13 @@ make docker-up
 
 1. Один понятный bootstrap-путь.
 2. Один CLI entrypoint.
-3. Возможность запустить симулятор в server/headless режиме.
+3. Возможность запустить симулятор в `windowed / background / headless` режимах.
 4. Возможность подключаться к симуляции с другой машины.
+
+Рекомендуемая интерпретация:
+- `windowed` — визуальная ручная работа;
+- `background` — рекомендуемый серверный режим, если нужна камера;
+- `headless` — без графики, если видео не нужно.
 
 ## Целевой CLI-поток
 Текущий целевой UX уже частично реализован:
@@ -131,7 +136,7 @@ rusim version
 rusim install
 rusim doctor
 rusim runtime build
-rusim runtime run --build latest
+rusim runtime run --build latest --mode background
 rusim web open
 ```
 
@@ -172,6 +177,7 @@ CLI также поддерживает первый launcher Unity runtime:
 
 ```bash
 rusim server start --mode windowed
+rusim server start --mode background --port 8011
 rusim server start --mode headless --port 8011
 rusim server status --port 8011
 rusim server stop
@@ -193,7 +199,7 @@ rusim runtime build --project-path src/UnityProject/uav-simulator
 ```bash
 rusim runtime list
 rusim runtime favorite set latest
-rusim runtime run --build favorite --mode headless --port 8011
+rusim runtime run --build favorite --mode background --port 8011
 rusim runtime remove latest
 ```
 

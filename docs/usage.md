@@ -113,8 +113,8 @@ rusim step --base-url http://127.0.0.1:8000 --throttle 0.2 --steer 0.1
 - подключение идёт к общему runtime, а выбор активной машинки/сцены делается через `rusim reset`.
 
 Ограничение текущего среза:
-- CLI пока управляет уже поднятым runtime;
-- полноценный lifecycle запуска Unity в server/headless режиме остаётся следующим продуктовым шагом.
+- CLI пока не управляет полным release/distribution lifecycle;
+- для `headless` камера не гарантируется, потому что Unity запускается с `-nographics`.
 
 Частично это уже закрыто:
 - добавлен `rusim server start/status/stop` для запуска отдельного Unity runtime instance;
@@ -124,6 +124,7 @@ rusim step --base-url http://127.0.0.1:8000 --throttle 0.2 --steer 0.1
 
 ```bash
 rusim server start --mode windowed
+rusim server start --mode background --port 8011
 rusim server start --mode headless --port 8011
 rusim server status --port 8011
 rusim server stop
@@ -139,11 +140,20 @@ rusim server stop
 rusim runtime build --project-path src/UnityProject/uav-simulator
 rusim runtime list
 rusim runtime favorite set latest
-rusim runtime run --build favorite --mode headless --port 8011
+rusim runtime run --build favorite --mode background --port 8011
 rusim runtime remove latest
 ```
 
 Именно этот путь должен стать основным для конечного пользователя.
+
+Рекомендуемая интерпретация режимов:
+- `windowed` — ручная визуальная работа;
+- `background` — есть камера и рендер, но не нужен обычный UI;
+- `headless` — максимально лёгкий режим без графики, useful для CI, server-side rollout и batch training.
+
+Практически подтверждено:
+- standalone runtime в режиме `background` успешно отвечает на `/health` и `/contract`;
+- после `reset` endpoint `/step` возвращает `frame.dataBase64`, то есть camera flow в этом режиме работает.
 
 Registry build-артефактов хранится в:
 - `.rusim/runtime-builds.json`

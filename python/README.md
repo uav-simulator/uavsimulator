@@ -22,7 +22,7 @@
 - `rusim runtime list`
 - `rusim runtime inspect latest`
 - `rusim runtime favorite show`
-- `rusim runtime run --build latest --mode headless --port 8011`
+- `rusim runtime run --build latest --mode background --port 8011`
 - `rusim runtime remove latest`
 - `rusim scenario validate configs/scenarios/ks0223-demo.yaml`
 - `rusim scenario reset configs/scenarios/ks0223-demo.yaml --base-url http://127.0.0.1:8000`
@@ -32,6 +32,10 @@ CLI нужен как минимальный продуктовый entrypoint �
 - preflight/doctor проверки;
 - scenario-driven reset;
 - smoke управления без ручного `curl`.
+
+Рекомендация по режимам запуска:
+- `background` — основной безоконный режим, если нужен camera flow;
+- `headless` — для CI и batch-сценариев без видео.
 
 Registry build-артефактов и runtime state:
 - `RUSIM_HOME/runtime-builds.json`
