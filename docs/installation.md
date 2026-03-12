@@ -62,6 +62,8 @@ Workflow `Release Runtime`:
 - публикует checksum `uav-simulator-macos-vX.Y.Z.zip.sha256`;
 - генерирует и прикрепляет `rusim-release-manifest.json`.
 
+Если запуск по тегу упал, workflow можно перезапустить вручную в GitHub Actions (`Release Runtime` -> `Run workflow`) с тем же `tag`.
+
 Требование:
 - в GitHub Secrets должен быть задан `UNITY_LICENSE`.
 
