@@ -70,6 +70,7 @@ rusim runtime build --project-path src/UnityProject/uav-simulator
 Workflow собирает и прикрепляет в GitHub Release:
 - `.whl`
 - `.tar.gz`
+- версия пакета автоматически синхронизируется с tag (`vX.Y.Z` -> `X.Y.Z`).
 
 Практические варианты:
 

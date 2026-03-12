@@ -31,6 +31,7 @@ jobs:
             exit 1
           fi
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
 
       - uses: actions/checkout@v6
         with:
@@ -40,6 +41,25 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: "3.11"
+
+      - name: Sync package version with tag
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import os
+          import re
+
+          version = os.environ["VERSION"].strip()
+          pyproject = Path("python/pyproject.toml")
+          content = pyproject.read_text(encoding="utf-8")
+          updated = re.sub(r'(?m)^version = "[^"]+"$', f'version = "{version}"', content, count=1)
+          if updated == content:
+              raise SystemExit("Failed to update [project].version in python/pyproject.toml")
+          pyproject.write_text(updated, encoding="utf-8")
+          print(f"Set python package version to {version}")
+          PY
 
       - name: Build rusim package artifacts
         run: |
