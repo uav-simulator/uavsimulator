@@ -7,12 +7,14 @@ namespace UavSimulator.Tracks
 {
     public sealed class RoadSystemArenaTrack : TrackBase
     {
-        [SerializeField] private float groundSize = 44f;
-        [SerializeField] private float roadWidth = 2.6f;
+        [SerializeField] private float groundSize = 52f;
+        [SerializeField] private float roadWidth = 2.9f;
         [SerializeField] private float roadThickness = 0.10f;
-        [SerializeField] private float boundaryHeight = 0.35f;
-        [SerializeField] private float boundaryThickness = 0.14f;
-        [SerializeField] private float dashSpacing = 1.1f;
+        [SerializeField] private float shoulderWidth = 0.42f;
+        [SerializeField] private float shoulderHeight = 0.03f;
+        [SerializeField] private float boundaryHeight = 0.28f;
+        [SerializeField] private float boundaryThickness = 0.12f;
+        [SerializeField] private float dashSpacing = 1.0f;
 
         private bool built;
         private Road road;
@@ -50,6 +52,7 @@ namespace UavSimulator.Tracks
             _ = roadSystem;
 
             road = BuildMainRoad(roadSystemRoot.transform);
+            CreateShoulders(road);
             CreateCenterMarkings(road);
             CreateBoundaries(road);
             CreateScenery();
@@ -94,7 +97,7 @@ namespace UavSimulator.Tracks
 
             var roadMaterial = new Material(Shader.Find("Universal Render Pipeline/Lit"));
             roadMaterial.color = new Color(0.15f, 0.15f, 0.16f);
-            roadMaterial.SetFloat("_Smoothness", 0.42f);
+            roadMaterial.SetFloat("_Smoothness", 0.37f);
             meshRenderer.sharedMaterial = roadMaterial;
 
             roadComponent.RefreshEndPoints(updatemesh: false);
@@ -109,6 +112,39 @@ namespace UavSimulator.Tracks
             meshGenerator.GenerateRoadMesh(stepSize: 0.65f);
 
             return roadComponent;
+        }
+
+        private void CreateShoulders(Road roadComponent)
+        {
+            if (roadComponent == null)
+            {
+                return;
+            }
+
+            var shouldersRoot = new GameObject("RoadShoulders");
+            shouldersRoot.transform.SetParent(transform, false);
+
+            var points = roadComponent.GetEvenlySpacedPoints(0.75f, 1f);
+            var sideOffset = roadWidth * 0.5f + shoulderWidth * 0.5f;
+            for (var i = 0; i < points.Length - 1; i++)
+            {
+                var a = points[i].position;
+                var b = points[i + 1].position;
+                var delta = b - a;
+                var length = delta.magnitude;
+                if (length < 0.05f)
+                {
+                    continue;
+                }
+
+                var forward = delta / length;
+                var right = Vector3.Cross(Vector3.up, forward).normalized;
+                var center = (a + b) * 0.5f + Vector3.up * (shoulderHeight * 0.5f);
+                var rotation = Quaternion.LookRotation(forward, Vector3.up);
+
+                CreateShoulderBox(shouldersRoot.transform, $"Shoulder_L_{i:000}", center - right * sideOffset, rotation, length + 0.08f);
+                CreateShoulderBox(shouldersRoot.transform, $"Shoulder_R_{i:000}", center + right * sideOffset, rotation, length + 0.08f);
+            }
         }
 
         private void CreateCenterMarkings(Road roadComponent)
@@ -179,24 +215,24 @@ namespace UavSimulator.Tracks
 
         private void CreateCap(Transform parent, string name, Vector3 position, Vector3 forward)
         {
-            var cap = new GameObject(name);
-            cap.transform.SetParent(parent, false);
-            cap.transform.position = position + Vector3.up * (boundaryHeight * 0.5f);
+            var cap = CreateBlock(
+                name,
+                parent,
+                parent.InverseTransformPoint(position + Vector3.up * (boundaryHeight * 0.5f)),
+                new Vector3(roadWidth + boundaryThickness * 2f, boundaryHeight, boundaryThickness));
             cap.transform.rotation = Quaternion.LookRotation(forward, Vector3.up);
-
-            var collider = cap.AddComponent<BoxCollider>();
-            collider.size = new Vector3(roadWidth + boundaryThickness * 2f, boundaryHeight, boundaryThickness);
+            ApplyColor(cap, new Color(0.76f, 0.79f, 0.83f), 0.18f);
         }
 
         private void CreateBoundaryBox(Transform parent, string name, Vector3 worldCenter, Quaternion worldRotation, float length)
         {
-            var barrier = new GameObject(name);
-            barrier.transform.SetParent(parent, false);
-            barrier.transform.position = worldCenter;
+            var barrier = CreateBlock(
+                name,
+                parent,
+                parent.InverseTransformPoint(worldCenter),
+                new Vector3(boundaryThickness, boundaryHeight, length));
             barrier.transform.rotation = worldRotation;
-
-            var collider = barrier.AddComponent<BoxCollider>();
-            collider.size = new Vector3(boundaryThickness, boundaryHeight, length);
+            ApplyColor(barrier, new Color(0.76f, 0.79f, 0.83f), 0.18f);
         }
 
         private void CreateScenery()
@@ -208,6 +244,17 @@ namespace UavSimulator.Tracks
             CreateTree(sceneryRoot.transform, "TreeB", new Vector3(-10f, 0f, 3f), 1.2f);
             CreateTree(sceneryRoot.transform, "TreeC", new Vector3(10f, 0f, -8f), 1.05f);
             CreateTree(sceneryRoot.transform, "TreeD", new Vector3(10f, 0f, 10f), 1.1f);
+            CreateTree(sceneryRoot.transform, "TreeE", new Vector3(-13f, 0f, -2f), 0.95f);
+            CreateTree(sceneryRoot.transform, "TreeF", new Vector3(12f, 0f, 2f), 1.0f);
+            CreateLamp(sceneryRoot.transform, "LampA", new Vector3(-8.8f, 0f, -8.4f));
+            CreateLamp(sceneryRoot.transform, "LampB", new Vector3(-8.8f, 0f, -1.8f));
+            CreateLamp(sceneryRoot.transform, "LampC", new Vector3(8.8f, 0f, 6.4f));
+            CreateCone(sceneryRoot.transform, "ConeStartL", new Vector3(-4.8f, 0f, -8.7f));
+            CreateCone(sceneryRoot.transform, "ConeStartR", new Vector3(-7.2f, 0f, -8.7f));
+            CreateCone(sceneryRoot.transform, "ConeMidL", new Vector3(-4.9f, 0f, -2.0f));
+            CreateCone(sceneryRoot.transform, "ConeMidR", new Vector3(-7.1f, 0f, -2.0f));
+            CreateCone(sceneryRoot.transform, "ConeFinishL", new Vector3(4.8f, 0f, 6.8f));
+            CreateCone(sceneryRoot.transform, "ConeFinishR", new Vector3(7.2f, 0f, 6.8f));
         }
 
         private static void CreateTree(Transform parent, string name, Vector3 localPosition, float scale)
@@ -232,6 +279,52 @@ namespace UavSimulator.Tracks
             crown.transform.localScale = new Vector3(0.85f, 0.9f, 0.85f);
             DisableCollider(crown);
             ApplyColor(crown, new Color(0.18f, 0.45f, 0.18f), 0.12f);
+        }
+
+        private static void CreateLamp(Transform parent, string name, Vector3 localPosition)
+        {
+            var lamp = new GameObject(name);
+            lamp.transform.SetParent(parent, false);
+            lamp.transform.localPosition = localPosition;
+
+            var pole = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            pole.name = "Pole";
+            pole.transform.SetParent(lamp.transform, false);
+            pole.transform.localScale = new Vector3(0.06f, 1.0f, 0.06f);
+            pole.transform.localPosition = new Vector3(0f, 1.0f, 0f);
+            DisableCollider(pole);
+            ApplyColor(pole, new Color(0.70f, 0.72f, 0.75f), 0.20f);
+
+            var bulb = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            bulb.name = "Bulb";
+            bulb.transform.SetParent(lamp.transform, false);
+            bulb.transform.localScale = Vector3.one * 0.20f;
+            bulb.transform.localPosition = new Vector3(0f, 2.05f, 0f);
+            DisableCollider(bulb);
+            ApplyColor(bulb, new Color(0.96f, 0.93f, 0.64f), 0.75f);
+        }
+
+        private static void CreateCone(Transform parent, string name, Vector3 localPosition)
+        {
+            var cone = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            cone.name = name;
+            cone.transform.SetParent(parent, false);
+            cone.transform.localScale = new Vector3(0.12f, 0.17f, 0.12f);
+            cone.transform.localPosition = new Vector3(localPosition.x, 0.17f, localPosition.z);
+            DisableCollider(cone);
+            ApplyColor(cone, new Color(0.95f, 0.45f, 0.10f), 0.16f);
+        }
+
+        private void CreateShoulderBox(Transform parent, string name, Vector3 worldCenter, Quaternion worldRotation, float length)
+        {
+            var shoulder = CreateBlock(
+                name,
+                parent,
+                parent.InverseTransformPoint(worldCenter),
+                new Vector3(shoulderWidth, shoulderHeight, length));
+            shoulder.transform.rotation = worldRotation;
+            DisableCollider(shoulder);
+            ApplyColor(shoulder, new Color(0.31f, 0.29f, 0.25f), 0.08f);
         }
 
         private static Mesh CreateBoxMesh(float width, float height, float depth)

@@ -10,6 +10,21 @@ namespace UavSimulator.Vehicles
     {
         private const string LeftPwmKey = "drive.left_pwm_norm";
         private const string RightPwmKey = "drive.right_pwm_norm";
+        private static readonly Vector2[] BasicArenaCenterline =
+        {
+            new Vector2(0f, -8f),
+            new Vector2(0f, -1f),
+            new Vector2(6f, -1f),
+            new Vector2(6f, 5f),
+        };
+        private static readonly Vector2[] RoadSystemArenaCenterline =
+        {
+            new Vector2(-6f, -9f),
+            new Vector2(-6f, -2.2f),
+            new Vector2(0.2f, 2.8f),
+            new Vector2(6.2f, -2f),
+            new Vector2(6f, 7.2f),
+        };
 
         [SerializeField] private float maxSpeedMps = 2.2f;
         [SerializeField] private float accelerationMps2 = 4.0f;
@@ -421,17 +436,29 @@ namespace UavSimulator.Vehicles
 
         private static float DistanceToRoadCenterline(Vector2 p)
         {
-            var a0 = new Vector2(0f, -8f);
-            var a1 = new Vector2(0f, -1f);
-            var b0 = new Vector2(0f, -1f);
-            var b1 = new Vector2(6f, -1f);
-            var c0 = new Vector2(6f, -1f);
-            var c1 = new Vector2(6f, 5f);
+            var distanceBasicArena = DistanceToPolyline(p, BasicArenaCenterline);
+            var distanceRoadSystem = DistanceToPolyline(p, RoadSystemArenaCenterline);
+            return Mathf.Min(distanceBasicArena, distanceRoadSystem);
+        }
 
-            var da = DistanceToSegment(p, a0, a1);
-            var db = DistanceToSegment(p, b0, b1);
-            var dc = DistanceToSegment(p, c0, c1);
-            return Mathf.Min(da, Mathf.Min(db, dc));
+        private static float DistanceToPolyline(Vector2 p, Vector2[] points)
+        {
+            if (points == null || points.Length < 2)
+            {
+                return float.MaxValue;
+            }
+
+            var best = float.MaxValue;
+            for (var i = 0; i < points.Length - 1; i++)
+            {
+                var distance = DistanceToSegment(p, points[i], points[i + 1]);
+                if (distance < best)
+                {
+                    best = distance;
+                }
+            }
+
+            return best;
         }
 
         private static float DistanceToSegment(Vector2 p, Vector2 a, Vector2 b)
