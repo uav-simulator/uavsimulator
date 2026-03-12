@@ -21,10 +21,17 @@ source ~/.zshrc
 ./rusim --help
 ```
 
+Поведение справки:
+- `rusim` без аргументов печатает корневую справку;
+- `rusim help` делает то же самое;
+- `rusim runtime`, `rusim server`, `rusim inspect`, `rusim scenario`, `rusim list` печатают справку по разделу, а не завершаются ошибкой;
+- `rusim help runtime` и `rusim help server` также поддерживаются.
+
 ## Полный список команд верхнего уровня
 
 ```bash
 rusim --help
+rusim help
 ```
 
 Доступные команды:

@@ -43,6 +43,7 @@ type RuntimeMode = 'real-robot' | 'unity-sim'
 
 const RUNTIME_MODE_STORAGE_KEY = 'ks0223_runtime_mode'
 const TARGET_HOST_STORAGE_KEY_PREFIX = 'ks0223_target_host_'
+const TARGET_PORT_STORAGE_KEY_PREFIX = 'ks0223_target_port_'
 const DEFAULT_TARGET_HOST = '192.168.1.121'
 const DEFAULT_UNITY_TARGET_HOST = '127.0.0.1'
 const DRIVE_SPEED_STORAGE_KEY = 'ks0223_drive_speed_percent'
@@ -155,8 +156,16 @@ function defaultHostForMode(mode: RuntimeMode): string {
   return mode === 'unity-sim' ? DEFAULT_UNITY_TARGET_HOST : DEFAULT_TARGET_HOST
 }
 
+function defaultPortForMode(mode: RuntimeMode): number {
+  return mode === 'unity-sim' ? 8000 : 5051
+}
+
 function targetHostStorageKey(mode: RuntimeMode): string {
   return `${TARGET_HOST_STORAGE_KEY_PREFIX}${mode}`
+}
+
+function targetPortStorageKey(mode: RuntimeMode): string {
+  return `${TARGET_PORT_STORAGE_KEY_PREFIX}${mode}`
 }
 
 function readStoredTargetHost(mode: RuntimeMode): string {
@@ -166,6 +175,34 @@ function readStoredTargetHost(mode: RuntimeMode): string {
 
   const cached = window.localStorage.getItem(targetHostStorageKey(mode))
   return cached?.trim() || defaultHostForMode(mode)
+}
+
+function readStoredTargetPort(mode: RuntimeMode): string {
+  if (typeof window === 'undefined') {
+    return String(defaultPortForMode(mode))
+  }
+
+  const cached = window.localStorage.getItem(targetPortStorageKey(mode))
+  const parsed = Number(cached)
+  if (!cached || Number.isNaN(parsed) || parsed < 1 || parsed > 65535) {
+    return String(defaultPortForMode(mode))
+  }
+
+  return String(parsed)
+}
+
+function normalizePortInput(value: string, mode: RuntimeMode): string {
+  const trimmed = value.trim()
+  if (!trimmed) {
+    return String(defaultPortForMode(mode))
+  }
+
+  const parsed = Number(trimmed)
+  if (Number.isNaN(parsed) || parsed < 1 || parsed > 65535) {
+    return String(defaultPortForMode(mode))
+  }
+
+  return String(Math.round(parsed))
 }
 
 function getActiveRuntimeMode(status: StatusDto | null, selectedRuntimeMode: RuntimeMode): RuntimeMode {
@@ -198,6 +235,7 @@ function App() {
     return normalizeRuntimeMode(window.localStorage.getItem(RUNTIME_MODE_STORAGE_KEY))
   })
   const [targetHost, setTargetHost] = useState(() => readStoredTargetHost(selectedRuntimeMode))
+  const [targetPort, setTargetPort] = useState(() => readStoredTargetPort(selectedRuntimeMode))
 
   const [driveSpeedPercent, setDriveSpeedPercent] = useState(() => readStoredNumber(DRIVE_SPEED_STORAGE_KEY, 80, 0, 100))
   const [cameraSpeedPercent, setCameraSpeedPercent] = useState(() => readStoredNumber(CAMERA_SPEED_STORAGE_KEY, 70, 0, 100))
@@ -299,6 +337,11 @@ function App() {
   }, [selectedRuntimeMode, targetHost])
 
   useEffect(() => {
+    const normalized = normalizePortInput(targetPort, selectedRuntimeMode)
+    window.localStorage.setItem(targetPortStorageKey(selectedRuntimeMode), normalized)
+  }, [selectedRuntimeMode, targetPort])
+
+  useEffect(() => {
     window.localStorage.setItem(DRIVE_SPEED_STORAGE_KEY, String(driveSpeedPercent))
   }, [driveSpeedPercent])
 
@@ -383,13 +426,16 @@ function App() {
         return
       }
 
-      const next = await connectPi(normalizedHost, undefined, selectedRuntimeMode)
+      const normalizedPort = normalizePortInput(targetPort, selectedRuntimeMode)
+      const next = await connectPi(normalizedHost, Number(normalizedPort), selectedRuntimeMode)
       setStatus(next)
       setSelectedRuntimeMode(normalizeRuntimeMode(next.runtimeMode))
       setTargetHost(next.targetHost)
+      setTargetPort(String(next.targetPort))
       window.localStorage.setItem(targetHostStorageKey(normalizeRuntimeMode(next.runtimeMode)), next.targetHost)
+      window.localStorage.setItem(targetPortStorageKey(normalizeRuntimeMode(next.runtimeMode)), String(next.targetPort))
     })
-  }, [guarded, selectedRuntimeMode, targetHost])
+  }, [guarded, selectedRuntimeMode, targetHost, targetPort])
 
   const handleDisconnect = useCallback(async () => {
     await guarded(async () => {
@@ -402,6 +448,7 @@ function App() {
     const nextMode = normalizeRuntimeMode(value)
     setSelectedRuntimeMode(nextMode)
     setTargetHost(readStoredTargetHost(nextMode))
+    setTargetPort(readStoredTargetPort(nextMode))
   }, [])
 
   const handleCommand = useCallback(
@@ -562,6 +609,8 @@ function App() {
         onRuntimeModeChange={handleRuntimeModeChange}
         targetHost={targetHost}
         onTargetHostChange={setTargetHost}
+        targetPort={targetPort}
+        onTargetPortChange={setTargetPort}
         onConnect={handleConnect}
         onDisconnect={handleDisconnect}
         onCommand={handleCommand}
@@ -638,7 +687,7 @@ function App() {
               KS0223 Control Center
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600 }}>
-              {activeRuntimeMode === 'unity-sim' ? 'Unity' : 'Pi'} {(status?.desiredConnection || status?.tcpConnected) ? (status?.targetHost ?? targetHost) : targetHost}:{(status?.desiredConnection || status?.tcpConnected) ? (status?.targetPort ?? (activeRuntimeMode === 'unity-sim' ? 8000 : 5051)) : (activeRuntimeMode === 'unity-sim' ? 8000 : 5051)}
+              {activeRuntimeMode === 'unity-sim' ? 'Unity' : 'Pi'} {(status?.desiredConnection || status?.tcpConnected) ? (status?.targetHost ?? targetHost) : targetHost}:{(status?.desiredConnection || status?.tcpConnected) ? (status?.targetPort ?? defaultPortForMode(activeRuntimeMode)) : normalizePortInput(targetPort, activeRuntimeMode)}
             </Typography>
           </Toolbar>
         </AppBar>

@@ -73,6 +73,11 @@ source ~/.zshrc
 ./rusim --help
 ```
 
+CLI ведёт себя дружелюбно:
+- `rusim` без аргументов показывает корневую справку;
+- `rusim help` и `rusim help runtime` работают как ожидается;
+- пустые группы команд (`rusim runtime`, `rusim server`, `rusim inspect`, `rusim scenario`, `rusim list`) показывают help по разделу вместо argparse error.
+
 Поддерживаемые команды:
 
 - `version`

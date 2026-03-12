@@ -23,6 +23,8 @@ type Props = {
   onRuntimeModeChange: (value: string) => void
   targetHost: string
   onTargetHostChange: (value: string) => void
+  targetPort: string
+  onTargetPortChange: (value: string) => void
   onConnect: () => Promise<void>
   onDisconnect: () => Promise<void>
 }
@@ -42,6 +44,8 @@ export function ConnectionCard({
   onRuntimeModeChange,
   targetHost,
   onTargetHostChange,
+  targetPort,
+  onTargetPortChange,
   onConnect,
   onDisconnect,
 }: Props) {
@@ -96,7 +100,18 @@ export function ConnectionCard({
             onChange={(event) => onTargetHostChange(event.target.value)}
             disabled={busy}
             placeholder={isUnityMode ? '127.0.0.1' : '192.168.1.121'}
-            helperText={`Порт: ${status?.targetPort ?? defaultPort}`}
+            helperText="Host или IP целевого runtime"
+          />
+
+          <TextField
+            size="small"
+            label="Порт runtime"
+            type="number"
+            value={targetPort}
+            onChange={(event) => onTargetPortChange(event.target.value)}
+            disabled={busy}
+            inputProps={{ min: 1, max: 65535, step: 1 }}
+            helperText={`Текущий порт: ${status?.targetPort ?? defaultPort}`}
           />
 
           <Stack direction="row" spacing={1}>
