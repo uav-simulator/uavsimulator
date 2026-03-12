@@ -43,6 +43,8 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
     private int targetPort = 8000;
     private string selectedVehicleId = PreferredVehicleIds[0];
     private string selectedTrackId = PreferredTrackIds[0];
+    private IReadOnlyList<UnityRuntimeOptionDto> availableTracks = Array.Empty<UnityRuntimeOptionDto>();
+    private IReadOnlyList<UnityRuntimeOptionDto> availableVehicles = Array.Empty<UnityRuntimeOptionDto>();
     private double? latencyMs;
     private string? lastError;
     private DateTimeOffset? lastLoopAt;
@@ -118,6 +120,55 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
     public Task ConnectAsync(string? host, int? port, CancellationToken cancellationToken)
     {
         return ConnectCoreAsync(host, port, cancellationToken);
+    }
+
+    public async Task<UnityRuntimeCatalogDto> GetRuntimeCatalogAsync(string? host, int? port, CancellationToken cancellationToken)
+    {
+        var resolvedHost = !string.IsNullOrWhiteSpace(host) ? NormalizeTargetHost(host.Trim()) : targetHost;
+        var resolvedPort = port is >= 1 and <= 65535 ? port.Value : targetPort;
+        return await ProbeContractForEndpointAsync(resolvedHost, resolvedPort, cancellationToken);
+    }
+
+    public async Task<UnityRuntimeCatalogDto> SetRuntimeSelectionAsync(
+        string? trackId,
+        string? vehicleId,
+        bool applyImmediately,
+        CancellationToken cancellationToken)
+    {
+        lock (stateLock)
+        {
+            if (!string.IsNullOrWhiteSpace(trackId))
+            {
+                selectedTrackId = trackId.Trim();
+            }
+
+            if (!string.IsNullOrWhiteSpace(vehicleId))
+            {
+                selectedVehicleId = vehicleId.Trim();
+            }
+        }
+
+        if (!applyImmediately)
+        {
+            return BuildCatalogSnapshot();
+        }
+
+        var shouldApplyReset = false;
+        lock (stateLock)
+        {
+            shouldApplyReset = desiredConnection && unityConnected;
+        }
+
+        if (!shouldApplyReset)
+        {
+            return BuildCatalogSnapshot();
+        }
+
+        var catalog = await ProbeContractAsync(cancellationToken);
+        using var initial = await ResetSimulationAsync(cancellationToken);
+        UpdateFromStepResult(initial);
+        await BroadcastStatusAsync(cancellationToken);
+        return catalog;
     }
 
     public async Task DisconnectAsync(CancellationToken cancellationToken)
@@ -457,16 +508,25 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
         response.EnsureSuccessStatusCode();
     }
 
-    private async Task ProbeContractAsync(CancellationToken cancellationToken)
+    private async Task<UnityRuntimeCatalogDto> ProbeContractAsync(CancellationToken cancellationToken)
     {
-        using var response = await SendAsync(HttpMethod.Get, "/contract", null, cancellationToken);
+        return await ProbeContractForEndpointAsync(targetHost, targetPort, cancellationToken);
+    }
+
+    private async Task<UnityRuntimeCatalogDto> ProbeContractForEndpointAsync(
+        string host,
+        int port,
+        CancellationToken cancellationToken)
+    {
+        using var response = await SendAsync(HttpMethod.Get, "/contract", null, host, port, cancellationToken, updateLastSource: false);
         response.EnsureSuccessStatusCode();
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
         using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
 
+        var vehicleOptions = new List<UnityRuntimeOptionDto>();
+        var trackOptions = new List<UnityRuntimeOptionDto>();
         var availableVehicleIds = new HashSet<string>(StringComparer.Ordinal);
         var availableTrackIds = new HashSet<string>(StringComparer.Ordinal);
-        var vehicleDisplayNames = new Dictionary<string, string>(StringComparer.Ordinal);
 
         if (document.RootElement.TryGetProperty("availableVehicles", out var vehicles) &&
             vehicles.ValueKind == JsonValueKind.Array)
@@ -484,16 +544,15 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
                     continue;
                 }
 
-                availableVehicleIds.Add(deviceId);
-
-                if (vehicle.TryGetProperty("displayName", out var displayNameElement))
+                if (!availableVehicleIds.Add(deviceId))
                 {
-                    var displayName = displayNameElement.GetString();
-                    if (!string.IsNullOrWhiteSpace(displayName))
-                    {
-                        vehicleDisplayNames[deviceId] = displayName!;
-                    }
+                    continue;
                 }
+
+                var displayName = vehicle.TryGetProperty("displayName", out var displayNameElement)
+                    ? displayNameElement.GetString()
+                    : null;
+                vehicleOptions.Add(new UnityRuntimeOptionDto(deviceId, string.IsNullOrWhiteSpace(displayName) ? deviceId : displayName!));
             }
         }
 
@@ -513,7 +572,15 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
                     continue;
                 }
 
-                availableTrackIds.Add(trackId);
+                if (!availableTrackIds.Add(trackId))
+                {
+                    continue;
+                }
+
+                var displayName = track.TryGetProperty("displayName", out var displayNameElement)
+                    ? displayNameElement.GetString()
+                    : null;
+                trackOptions.Add(new UnityRuntimeOptionDto(trackId, string.IsNullOrWhiteSpace(displayName) ? trackId : displayName!));
             }
         }
 
@@ -527,19 +594,27 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
             throw new InvalidOperationException("Unity simulator contract does not expose any tracks");
         }
 
-        var resolvedVehicleId = ResolvePreferred(availableVehicleIds, PreferredVehicleIds)
+        var resolvedVehicleId = ResolveSelected(availableVehicleIds, selectedVehicleId, PreferredVehicleIds)
             ?? availableVehicleIds.FirstOrDefault(id => id.StartsWith("vehicle.ks0223", StringComparison.Ordinal))
             ?? availableVehicleIds.First();
-        var resolvedTrackId = ResolvePreferred(availableTrackIds, PreferredTrackIds)
+        var resolvedTrackId = ResolveSelected(availableTrackIds, selectedTrackId, PreferredTrackIds)
             ?? availableTrackIds.First();
 
-        selectedVehicleId = resolvedVehicleId;
-        selectedTrackId = resolvedTrackId;
-
-        if (vehicleDisplayNames.TryGetValue(resolvedVehicleId, out var selectedDisplayName))
+        lock (stateLock)
         {
-            runtimeLabel = selectedDisplayName;
+            selectedVehicleId = resolvedVehicleId;
+            selectedTrackId = resolvedTrackId;
+            availableVehicles = vehicleOptions;
+            availableTracks = trackOptions;
+            var selectedDisplayName = vehicleOptions.FirstOrDefault(option => string.Equals(option.Id, resolvedVehicleId, StringComparison.Ordinal))
+                ?.DisplayName;
+            if (!string.IsNullOrWhiteSpace(selectedDisplayName))
+            {
+                runtimeLabel = selectedDisplayName!;
+            }
         }
+
+        return BuildCatalogSnapshot();
     }
 
     private async Task<JsonDocument> ResetSimulationAsync(CancellationToken cancellationToken)
@@ -602,12 +677,24 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
 
     private async Task<HttpResponseMessage> SendAsync(HttpMethod method, string path, object? payload, CancellationToken cancellationToken)
     {
+        return await SendAsync(method, path, payload, targetHost, targetPort, cancellationToken, updateLastSource: true);
+    }
+
+    private async Task<HttpResponseMessage> SendAsync(
+        HttpMethod method,
+        string path,
+        object? payload,
+        string host,
+        int port,
+        CancellationToken cancellationToken,
+        bool updateLastSource)
+    {
         var client = httpClientFactory.CreateClient(nameof(UnityKs0223RuntimeProvider));
         client.Timeout = TimeSpan.FromSeconds(5);
-        var url = $"http://{targetHost}:{targetPort}{path}";
+        var url = $"http://{host}:{port}{path}";
 
         var request = new HttpRequestMessage(method, url);
-        var hostHeader = GetHostHeaderOverride(targetHost, targetPort);
+        var hostHeader = GetHostHeaderOverride(host, port);
         if (hostHeader is not null)
         {
             request.Headers.Host = hostHeader;
@@ -618,7 +705,11 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
             request.Content = JsonContent.Create(payload, options: JsonOptions);
         }
 
-        lastSourceUrl = url;
+        if (updateLastSource)
+        {
+            lastSourceUrl = url;
+        }
+
         return await client.SendAsync(request, cancellationToken);
     }
 
@@ -833,6 +924,28 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
         }
 
         return null;
+    }
+
+    private static string? ResolveSelected(HashSet<string> availableIds, string? selectedId, IEnumerable<string> preferredIds)
+    {
+        if (!string.IsNullOrWhiteSpace(selectedId) && availableIds.Contains(selectedId))
+        {
+            return selectedId;
+        }
+
+        return ResolvePreferred(availableIds, preferredIds);
+    }
+
+    private UnityRuntimeCatalogDto BuildCatalogSnapshot()
+    {
+        lock (stateLock)
+        {
+            return new UnityRuntimeCatalogDto(
+                SelectedTrackId: selectedTrackId,
+                SelectedVehicleId: selectedVehicleId,
+                Tracks: availableTracks,
+                Vehicles: availableVehicles);
+        }
     }
 
     private static float NormalizeServo(int angleDeg) => Math.Clamp((angleDeg - 90f) / 90f, -1f, 1f);

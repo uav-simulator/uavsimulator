@@ -10,6 +10,7 @@ import type {
   SensorBridgeStatusDto,
   SensorTelemetryDto,
   StatusDto,
+  UnityRuntimeCatalogDto,
 } from '../types'
 
 type Props = {
@@ -28,6 +29,10 @@ type Props = {
   onTargetPortChange: (value: string) => void
   onConnect: () => Promise<void>
   onDisconnect: () => Promise<void>
+  unityCatalog: UnityRuntimeCatalogDto | null
+  unityCatalogBusy: boolean
+  onUnityCatalogRefresh: () => Promise<void>
+  onUnitySelectionSave: (trackId: string, vehicleId: string, applyImmediately: boolean) => Promise<void>
   onCommand: (command: string) => Promise<void>
   driveSpeedPercent: number
   cameraSpeedPercent: number
@@ -61,6 +66,10 @@ export function ControlPage({
   onTargetPortChange,
   onConnect,
   onDisconnect,
+  unityCatalog,
+  unityCatalogBusy,
+  onUnityCatalogRefresh,
+  onUnitySelectionSave,
   onCommand,
   driveSpeedPercent,
   cameraSpeedPercent,
@@ -91,6 +100,10 @@ export function ControlPage({
           onTargetPortChange={onTargetPortChange}
           onConnect={onConnect}
           onDisconnect={onDisconnect}
+          unityCatalog={unityCatalog}
+          unityCatalogBusy={unityCatalogBusy}
+          onUnityCatalogRefresh={onUnityCatalogRefresh}
+          onUnitySelectionSave={onUnitySelectionSave}
         />
       </Grid>
       <Grid size={{ xs: 12, md: 8 }}>

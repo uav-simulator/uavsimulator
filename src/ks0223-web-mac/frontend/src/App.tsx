@@ -12,12 +12,14 @@ import {
   fetchSensorLatest,
   fetchSensorStatus,
   fetchStatus,
+  fetchUnityRuntimeCatalog,
   ledClear,
   ledSetCustomFrame,
   ledSetPattern,
   openLogsFolder,
   resolveHubUrl,
   sendCommand,
+  setUnityRuntimeSelection,
   setUltrasonicAutoScan,
   setUltrasonicPosition,
   startLogging,
@@ -36,6 +38,7 @@ import type {
   SensorBridgeStatusDto,
   SensorTelemetryDto,
   StatusDto,
+  UnityRuntimeCatalogDto,
 } from './types'
 
 type TabKey = 'dashboard' | 'sensors' | 'led' | 'logs'
@@ -44,6 +47,8 @@ type RuntimeMode = 'real-robot' | 'unity-sim'
 const RUNTIME_MODE_STORAGE_KEY = 'ks0223_runtime_mode'
 const TARGET_HOST_STORAGE_KEY_PREFIX = 'ks0223_target_host_'
 const TARGET_PORT_STORAGE_KEY_PREFIX = 'ks0223_target_port_'
+const UNITY_TRACK_STORAGE_KEY = 'ks0223_unity_track_id'
+const UNITY_VEHICLE_STORAGE_KEY = 'ks0223_unity_vehicle_id'
 const DEFAULT_TARGET_HOST = '192.168.1.121'
 const DEFAULT_UNITY_TARGET_HOST = '127.0.0.1'
 const DRIVE_SPEED_STORAGE_KEY = 'ks0223_drive_speed_percent'
@@ -148,6 +153,14 @@ function readStoredBool(key: string, fallback: boolean): boolean {
   return raw === 'true'
 }
 
+function readStoredString(key: string): string {
+  if (typeof window === 'undefined') {
+    return ''
+  }
+
+  return window.localStorage.getItem(key)?.trim() ?? ''
+}
+
 function normalizeRuntimeMode(value: string | null | undefined): RuntimeMode {
   return value === 'unity-sim' ? 'unity-sim' : 'real-robot'
 }
@@ -236,6 +249,10 @@ function App() {
   })
   const [targetHost, setTargetHost] = useState(() => readStoredTargetHost(selectedRuntimeMode))
   const [targetPort, setTargetPort] = useState(() => readStoredTargetPort(selectedRuntimeMode))
+  const [unityCatalog, setUnityCatalog] = useState<UnityRuntimeCatalogDto | null>(null)
+  const [unityCatalogBusy, setUnityCatalogBusy] = useState(false)
+  const [unityTrackId, setUnityTrackId] = useState(() => readStoredString(UNITY_TRACK_STORAGE_KEY))
+  const [unityVehicleId, setUnityVehicleId] = useState(() => readStoredString(UNITY_VEHICLE_STORAGE_KEY))
 
   const [driveSpeedPercent, setDriveSpeedPercent] = useState(() => readStoredNumber(DRIVE_SPEED_STORAGE_KEY, 80, 0, 100))
   const [cameraSpeedPercent, setCameraSpeedPercent] = useState(() => readStoredNumber(CAMERA_SPEED_STORAGE_KEY, 70, 0, 100))
@@ -276,6 +293,47 @@ function App() {
     setSensorStatus(nextSensorStatus)
     setSensorTelemetry(nextSensorTelemetry)
   }, [])
+
+  const syncUnityCatalog = useCallback(
+    async (hostOverride?: string, portOverride?: number) => {
+      const host = hostOverride?.trim() || targetHost.trim()
+      const port = portOverride ?? Number(normalizePortInput(targetPort, 'unity-sim'))
+      if (!host) {
+        throw new Error('Unity host пустой')
+      }
+
+      setUnityCatalogBusy(true)
+      try {
+        const catalog = await fetchUnityRuntimeCatalog(host, port)
+        setUnityCatalog(catalog)
+        setUnityTrackId(catalog.selectedTrackId)
+        setUnityVehicleId(catalog.selectedVehicleId)
+        return catalog
+      } finally {
+        setUnityCatalogBusy(false)
+      }
+    },
+    [targetHost, targetPort],
+  )
+
+  const applyUnitySelection = useCallback(
+    async (trackId: string, vehicleId: string, applyImmediately: boolean) => {
+      const catalog = await setUnityRuntimeSelection({
+        trackId,
+        vehicleId,
+        applyImmediately,
+      })
+
+      setUnityCatalog(catalog)
+      setUnityTrackId(catalog.selectedTrackId)
+      setUnityVehicleId(catalog.selectedVehicleId)
+
+      if (applyImmediately) {
+        await Promise.all([syncStatus(), syncDiagnostics()])
+      }
+    },
+    [syncDiagnostics, syncStatus],
+  )
 
   useEffect(() => {
     void syncStatus()
@@ -340,6 +398,24 @@ function App() {
     const normalized = normalizePortInput(targetPort, selectedRuntimeMode)
     window.localStorage.setItem(targetPortStorageKey(selectedRuntimeMode), normalized)
   }, [selectedRuntimeMode, targetPort])
+
+  useEffect(() => {
+    if (!unityTrackId) {
+      window.localStorage.removeItem(UNITY_TRACK_STORAGE_KEY)
+      return
+    }
+
+    window.localStorage.setItem(UNITY_TRACK_STORAGE_KEY, unityTrackId)
+  }, [unityTrackId])
+
+  useEffect(() => {
+    if (!unityVehicleId) {
+      window.localStorage.removeItem(UNITY_VEHICLE_STORAGE_KEY)
+      return
+    }
+
+    window.localStorage.setItem(UNITY_VEHICLE_STORAGE_KEY, unityVehicleId)
+  }, [unityVehicleId])
 
   useEffect(() => {
     window.localStorage.setItem(DRIVE_SPEED_STORAGE_KEY, String(driveSpeedPercent))
@@ -427,15 +503,28 @@ function App() {
       }
 
       const normalizedPort = normalizePortInput(targetPort, selectedRuntimeMode)
+      if (selectedRuntimeMode === 'unity-sim' && (unityTrackId || unityVehicleId)) {
+        await setUnityRuntimeSelection({
+          trackId: unityTrackId || undefined,
+          vehicleId: unityVehicleId || undefined,
+          applyImmediately: false,
+        })
+      }
+
       const next = await connectPi(normalizedHost, Number(normalizedPort), selectedRuntimeMode)
       setStatus(next)
-      setSelectedRuntimeMode(normalizeRuntimeMode(next.runtimeMode))
+      const nextRuntimeMode = normalizeRuntimeMode(next.runtimeMode)
+      setSelectedRuntimeMode(nextRuntimeMode)
       setTargetHost(next.targetHost)
       setTargetPort(String(next.targetPort))
-      window.localStorage.setItem(targetHostStorageKey(normalizeRuntimeMode(next.runtimeMode)), next.targetHost)
-      window.localStorage.setItem(targetPortStorageKey(normalizeRuntimeMode(next.runtimeMode)), String(next.targetPort))
+      window.localStorage.setItem(targetHostStorageKey(nextRuntimeMode), next.targetHost)
+      window.localStorage.setItem(targetPortStorageKey(nextRuntimeMode), String(next.targetPort))
+
+      if (nextRuntimeMode === 'unity-sim') {
+        await syncUnityCatalog(next.targetHost, next.targetPort)
+      }
     })
-  }, [guarded, selectedRuntimeMode, targetHost, targetPort])
+  }, [guarded, selectedRuntimeMode, syncUnityCatalog, targetHost, targetPort, unityTrackId, unityVehicleId])
 
   const handleDisconnect = useCallback(async () => {
     await guarded(async () => {
@@ -613,6 +702,12 @@ function App() {
         onTargetPortChange={setTargetPort}
         onConnect={handleConnect}
         onDisconnect={handleDisconnect}
+        unityCatalog={unityCatalog}
+        unityCatalogBusy={unityCatalogBusy}
+        onUnityCatalogRefresh={async () => {
+          await syncUnityCatalog()
+        }}
+        onUnitySelectionSave={applyUnitySelection}
         onCommand={handleCommand}
         driveSpeedPercent={driveSpeedPercent}
         cameraSpeedPercent={cameraSpeedPercent}
@@ -653,6 +748,10 @@ function App() {
     handleRuntimeModeChange,
     handleConnect,
     handleDisconnect,
+    unityCatalog,
+    unityCatalogBusy,
+    syncUnityCatalog,
+    applyUnitySelection,
     handleCommand,
     driveSpeedPercent,
     cameraSpeedPercent,

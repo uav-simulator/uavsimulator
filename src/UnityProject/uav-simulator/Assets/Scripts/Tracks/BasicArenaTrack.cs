@@ -340,10 +340,57 @@ namespace UavSimulator.Tracks
                 smoothness = 0.12f;
             }
 
-            var material = new Material(Shader.Find("Universal Render Pipeline/Lit"));
-            material.color = color;
-            material.SetFloat("_Smoothness", smoothness);
-            renderer.sharedMaterial = material;
+            renderer.sharedMaterial = CreateLitMaterial(color, smoothness);
+        }
+
+        private static Material CreateLitMaterial(Color color, float smoothness)
+        {
+            var shader = ResolveRuntimeLitShader();
+            var material = new Material(shader);
+            if (material.HasProperty("_BaseColor"))
+            {
+                material.SetColor("_BaseColor", color);
+            }
+
+            if (material.HasProperty("_Color"))
+            {
+                material.SetColor("_Color", color);
+            }
+
+            if (material.HasProperty("_Smoothness"))
+            {
+                material.SetFloat("_Smoothness", smoothness);
+            }
+
+            if (material.HasProperty("_Glossiness"))
+            {
+                material.SetFloat("_Glossiness", smoothness);
+            }
+
+            return material;
+        }
+
+        private static Shader ResolveRuntimeLitShader()
+        {
+            var shader = Shader.Find("Universal Render Pipeline/Lit");
+            if (shader != null && shader.isSupported)
+            {
+                return shader;
+            }
+
+            shader = Shader.Find("Standard");
+            if (shader != null && shader.isSupported)
+            {
+                return shader;
+            }
+
+            shader = Shader.Find("Legacy Shaders/Diffuse");
+            if (shader != null)
+            {
+                return shader;
+            }
+
+            throw new MissingReferenceException("Unable to resolve a supported lit shader for runtime track materials.");
         }
 
         private static void MarkStatic(params GameObject[] objects)
