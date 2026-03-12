@@ -112,7 +112,15 @@ namespace UavSimulator.Core
                     for (var m = 0; m < sharedMaterials.Length; m++)
                     {
                         var source = sharedMaterials[m];
-                        if (source == null || !IsUrpShader(source.shader))
+                        if (source == null)
+                        {
+                            continue;
+                        }
+
+                        var shader = source.shader;
+                        var unsupported = shader == null || !shader.isSupported;
+                        var builtinIncompatible = !IsUrpActive() && !IsBuiltinCompatibleShader(shader);
+                        if (!unsupported && !builtinIncompatible)
                         {
                             continue;
                         }
@@ -164,6 +172,26 @@ namespace UavSimulator.Core
         {
             var name = shader != null ? shader.name : string.Empty;
             return name.StartsWith("Universal Render Pipeline/", System.StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsBuiltinCompatibleShader(Shader shader)
+        {
+            if (shader == null)
+            {
+                return false;
+            }
+
+            var name = shader.name ?? string.Empty;
+            if (name.StartsWith("Standard", System.StringComparison.OrdinalIgnoreCase) ||
+                name.StartsWith("Legacy Shaders/", System.StringComparison.OrdinalIgnoreCase) ||
+                name.StartsWith("Unlit/", System.StringComparison.OrdinalIgnoreCase) ||
+                name.StartsWith("Mobile/", System.StringComparison.OrdinalIgnoreCase) ||
+                name.StartsWith("Particles/", System.StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            return false;
         }
 
         private static void EnsureSceneSpecificTrack(Scene scene)
