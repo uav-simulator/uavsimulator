@@ -592,7 +592,10 @@ namespace UavSimulator.Plugins
                         continue;
                     }
 
-                    if (source.shader != null && source.shader.isSupported)
+                    var shader = source.shader;
+                    var unsupported = shader == null || !shader.isSupported;
+                    var builtinIncompatible = !IsUrpActive() && !IsBuiltinCompatibleShader(shader);
+                    if (!unsupported && !builtinIncompatible)
                     {
                         continue;
                     }
@@ -672,6 +675,26 @@ namespace UavSimulator.Plugins
             var name = pipeline.GetType().Name;
             return name.Contains("UniversalRenderPipeline", StringComparison.Ordinal) ||
                    name.Contains("URP", StringComparison.Ordinal);
+        }
+
+        private static bool IsBuiltinCompatibleShader(Shader shader)
+        {
+            if (shader == null)
+            {
+                return false;
+            }
+
+            var name = shader.name ?? string.Empty;
+            if (name.StartsWith("Standard", StringComparison.OrdinalIgnoreCase) ||
+                name.StartsWith("Legacy Shaders/", StringComparison.OrdinalIgnoreCase) ||
+                name.StartsWith("Unlit/", StringComparison.OrdinalIgnoreCase) ||
+                name.StartsWith("Mobile/", StringComparison.OrdinalIgnoreCase) ||
+                name.StartsWith("Particles/", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            return false;
         }
 
         private static void CreateFallbackVisualShell(Transform parent)

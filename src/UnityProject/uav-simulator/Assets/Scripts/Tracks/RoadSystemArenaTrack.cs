@@ -57,6 +57,7 @@ namespace UavSimulator.Tracks
             CreateCenterMarkings(road);
             CreateBoundaries(road);
             CreateScenery();
+            SanitizeTrackMaterials();
 
             built = true;
         }
@@ -484,6 +485,93 @@ namespace UavSimulator.Tracks
             var name = pipeline.GetType().Name;
             return name.Contains("UniversalRenderPipeline", StringComparison.Ordinal) ||
                    name.Contains("URP", StringComparison.Ordinal);
+        }
+
+        private static bool IsBuiltinCompatibleShader(Shader shader)
+        {
+            if (shader == null)
+            {
+                return false;
+            }
+
+            var name = shader.name ?? string.Empty;
+            if (name.StartsWith("Standard", StringComparison.OrdinalIgnoreCase) ||
+                name.StartsWith("Legacy Shaders/", StringComparison.OrdinalIgnoreCase) ||
+                name.StartsWith("Unlit/", StringComparison.OrdinalIgnoreCase) ||
+                name.StartsWith("Mobile/", StringComparison.OrdinalIgnoreCase) ||
+                name.StartsWith("Particles/", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            return false;
+        }
+
+        private void SanitizeTrackMaterials()
+        {
+            if (IsUrpActive())
+            {
+                return;
+            }
+
+            var fallbackShader = Shader.Find("Standard") ?? Shader.Find("Legacy Shaders/Diffuse");
+            if (fallbackShader == null)
+            {
+                return;
+            }
+
+            var replacements = new System.Collections.Generic.Dictionary<Material, Material>();
+            var renderers = GetComponentsInChildren<Renderer>(includeInactive: true);
+            for (var i = 0; i < renderers.Length; i++)
+            {
+                var renderer = renderers[i];
+                if (renderer == null)
+                {
+                    continue;
+                }
+
+                var shared = renderer.sharedMaterials;
+                var changed = false;
+                for (var m = 0; m < shared.Length; m++)
+                {
+                    var source = shared[m];
+                    if (source == null)
+                    {
+                        continue;
+                    }
+
+                    var shader = source.shader;
+                    var unsupported = shader == null || !shader.isSupported;
+                    var builtinIncompatible = !IsBuiltinCompatibleShader(shader);
+                    if (!unsupported && !builtinIncompatible)
+                    {
+                        continue;
+                    }
+
+                    if (!replacements.TryGetValue(source, out var replacement))
+                    {
+                        replacement = new Material(fallbackShader)
+                        {
+                            color = source.color,
+                            mainTexture = source.mainTexture,
+                        };
+                        if (replacement.HasProperty("_Smoothness"))
+                        {
+                            replacement.SetFloat("_Smoothness", 0.16f);
+                        }
+
+                        replacements[source] = replacement;
+                    }
+
+                    shared[m] = replacement;
+                    changed = true;
+                }
+
+                if (changed)
+                {
+                    renderer.sharedMaterials = shared;
+                }
+            }
         }
     }
 }
