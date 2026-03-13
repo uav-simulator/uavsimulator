@@ -58,6 +58,18 @@ const cameraKeyToCommand: Record<string, string> = {
   l: 'CamRight',
 }
 
+function resolveDriveCommand(key: string): string | undefined {
+  return driveKeyToCommand[key] ?? driveKeyToCommand[key.toLowerCase()]
+}
+
+function resolveCameraCommand(key: string): string | undefined {
+  return cameraKeyToCommand[key.toLowerCase()]
+}
+
+function normalizeKeyId(key: string): string {
+  return key.length === 1 ? key.toLowerCase() : key
+}
+
 function clampPercent(value: number): number {
   return Math.max(0, Math.min(100, Math.round(value)))
 }
@@ -92,6 +104,8 @@ export function ControlPad({
   const cameraIntervalRef = useRef<number | null>(null)
   const activeDriveCommandRef = useRef<string | null>(null)
   const activeCameraCommandRef = useRef<string | null>(null)
+  const activeDriveKeyRef = useRef<string | null>(null)
+  const activeCameraKeyRef = useRef<string | null>(null)
   const driveSpeedRef = useRef(clampPercent(driveSpeedPercent))
   const cameraSpeedRef = useRef(clampPercent(cameraSpeedPercent))
   const ultrasonicManualStartedRef = useRef(false)
@@ -212,33 +226,54 @@ export function ControlPad({
         return
       }
 
-      const driveCommand = driveKeyToCommand[event.key]
+      const driveCommand = resolveDriveCommand(event.key)
       if (driveCommand) {
         event.preventDefault()
+        activeDriveKeyRef.current = normalizeKeyId(event.key)
         void startDriveHold(driveCommand)
         return
       }
 
-      const cameraCommand = cameraKeyToCommand[event.key.toLowerCase()]
+      const cameraCommand = resolveCameraCommand(event.key)
       if (cameraCommand) {
         event.preventDefault()
+        activeCameraKeyRef.current = normalizeKeyId(event.key)
         void startCameraHold(cameraCommand)
       }
     }
 
     const keyUp = (event: KeyboardEvent) => {
-      if (event.code === 'Space' || driveKeyToCommand[event.key]) {
+      const driveCommand = resolveDriveCommand(event.key)
+      const driveKeyId = normalizeKeyId(event.key)
+      if (event.code === 'Space' || (driveCommand && activeDriveKeyRef.current === driveKeyId)) {
         event.preventDefault()
+        activeDriveKeyRef.current = null
         void stopDriveHold(true)
       }
 
-      if (cameraKeyToCommand[event.key.toLowerCase()]) {
+      const cameraCommand = resolveCameraCommand(event.key)
+      const cameraKeyId = normalizeKeyId(event.key)
+      if (cameraCommand && activeCameraKeyRef.current === cameraKeyId) {
         event.preventDefault()
+        activeCameraKeyRef.current = null
         void stopCameraHold(true)
       }
     }
 
     const blur = () => {
+      activeDriveKeyRef.current = null
+      activeCameraKeyRef.current = null
+      void stopDriveHold(true)
+      void stopCameraHold(true)
+    }
+
+    const visibilityChange = () => {
+      if (!document.hidden) {
+        return
+      }
+
+      activeDriveKeyRef.current = null
+      activeCameraKeyRef.current = null
       void stopDriveHold(true)
       void stopCameraHold(true)
     }
@@ -246,10 +281,14 @@ export function ControlPad({
     window.addEventListener('keydown', keyDown)
     window.addEventListener('keyup', keyUp)
     window.addEventListener('blur', blur)
+    document.addEventListener('visibilitychange', visibilityChange)
     return () => {
       window.removeEventListener('keydown', keyDown)
       window.removeEventListener('keyup', keyUp)
       window.removeEventListener('blur', blur)
+      document.removeEventListener('visibilitychange', visibilityChange)
+      activeDriveKeyRef.current = null
+      activeCameraKeyRef.current = null
       void stopDriveHold(true)
       void stopCameraHold(true)
     }

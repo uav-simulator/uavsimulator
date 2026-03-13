@@ -17,6 +17,7 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
         public float BrakeNorm { get; set; }
         public int CameraPanDeg { get; set; } = 90;
         public int CameraTiltDeg { get; set; } = 90;
+        public DateTimeOffset LastDriveInputAt { get; set; } = DateTimeOffset.UtcNow;
     }
 
     private sealed class AgentFrameState
@@ -24,6 +25,12 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
         public byte[]? Bytes { get; set; }
         public DateTimeOffset? Timestamp { get; set; }
         public long Version { get; set; }
+    }
+
+    private sealed class AgentControlOwnerState
+    {
+        public string? ClientId { get; set; }
+        public DateTimeOffset LeaseUntil { get; set; }
     }
 
     private static readonly string[] PreferredVehicleIds =
@@ -43,6 +50,8 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
     {
         PropertyNameCaseInsensitive = true,
     };
+    private static readonly TimeSpan DriveInputWatchdog = TimeSpan.FromMilliseconds(320);
+    private static readonly TimeSpan ControlOwnershipLease = TimeSpan.FromSeconds(2);
 
     private readonly object stateLock = new();
     private readonly SemaphoreSlim lifecycleLock = new(1, 1);
@@ -90,6 +99,7 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
     private float brakeNorm;
     private readonly Dictionary<string, AgentControlState> agentControlStates = new(StringComparer.Ordinal);
     private readonly Dictionary<string, AgentFrameState> agentFrameStates = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, AgentControlOwnerState> agentControlOwners = new(StringComparer.Ordinal);
     private CancellationTokenSource? loopCts;
     private Task? loopTask;
     private string? lastSourceUrl;
@@ -239,7 +249,12 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
         }
     }
 
-    public async Task<CommandResponse> SendCommandAsync(string command, string source, string? agentId, CancellationToken cancellationToken)
+    public async Task<CommandResponse> SendCommandAsync(
+        string command,
+        string source,
+        string? agentId,
+        string? clientId,
+        CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (string.IsNullOrWhiteSpace(command))
@@ -247,8 +262,17 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
             return new CommandResponse(false, "Command is empty");
         }
 
-        ApplyCommand(command, agentId);
-        await sessionLogger.WriteAsync("command.outgoing", new { command, source, mode = Mode, agentId }, cancellationToken);
+        var accepted = ApplyCommand(command, agentId, clientId);
+        if (!accepted)
+        {
+            await sessionLogger.WriteAsync(
+                "command.ignored",
+                new { command, source, mode = Mode, agentId, clientId, reason = "control-owned-by-another-client" },
+                cancellationToken);
+            return new CommandResponse(false, "Command ignored: control is owned by another UI tab");
+        }
+
+        await sessionLogger.WriteAsync("command.outgoing", new { command, source, mode = Mode, agentId, clientId }, cancellationToken);
         await BroadcastStatusAsync(cancellationToken);
         return new CommandResponse(true);
     }
@@ -275,6 +299,10 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
         if (uiConnectedClients == 0)
         {
             ResetDriveState();
+            lock (stateLock)
+            {
+                agentControlOwners.Clear();
+            }
         }
 
         await BroadcastStatusAsync();
@@ -467,6 +495,10 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
 
             await ProbeHealthAsync(cancellationToken);
             await ProbeContractAsync(cancellationToken);
+            lock (stateLock)
+            {
+                ResetInteractiveDefaultsLocked();
+            }
             var initial = await ResetSimulationAsync(cancellationToken);
             UpdateFromStepResult(initial, selectedControlAgentId, updateSharedState: true);
 
@@ -931,7 +963,7 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
         return value >= 0.5f ? "1" : "0";
     }
 
-    private void ApplyCommand(string command, string? targetAgentId)
+    private bool ApplyCommand(string command, string? targetAgentId, string? clientId)
     {
         var driveNorm = Math.Clamp(driveSpeedPercent / 100f, 0f, 1f);
         var cameraStep = Math.Max(1, cameraSpeedPercent / 20);
@@ -939,31 +971,42 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
         lock (stateLock)
         {
             var resolvedAgentId = ResolveCommandTargetAgentId(targetAgentId);
+            if (!TryAcquireControlOwnershipLocked(resolvedAgentId, command, clientId))
+            {
+                return false;
+            }
+
             var commandState = GetOrCreateAgentControlStateLocked(resolvedAgentId);
+            var now = DateTimeOffset.UtcNow;
             switch (command)
             {
                 case "DirForward":
                     commandState.LeftPwmNorm = driveNorm;
                     commandState.RightPwmNorm = driveNorm;
                     commandState.BrakeNorm = 0f;
+                    commandState.LastDriveInputAt = now;
                     break;
                 case "DirBack":
                     commandState.LeftPwmNorm = -driveNorm;
                     commandState.RightPwmNorm = -driveNorm;
                     commandState.BrakeNorm = 0f;
+                    commandState.LastDriveInputAt = now;
                     break;
                 case "DirLeft":
                     commandState.LeftPwmNorm = driveNorm;
                     commandState.RightPwmNorm = -driveNorm;
                     commandState.BrakeNorm = 0f;
+                    commandState.LastDriveInputAt = now;
                     break;
                 case "DirRight":
                     commandState.LeftPwmNorm = -driveNorm;
                     commandState.RightPwmNorm = driveNorm;
                     commandState.BrakeNorm = 0f;
+                    commandState.LastDriveInputAt = now;
                     break;
                 case "DirStop":
                     ResetDriveStateLocked(resolvedAgentId);
+                    commandState.LastDriveInputAt = now;
                     break;
                 case "CamUp":
                     commandState.CameraTiltDeg = Math.Clamp(commandState.CameraTiltDeg - cameraStep, 0, 180);
@@ -990,6 +1033,8 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
                 cameraTiltDeg = commandState.CameraTiltDeg;
             }
         }
+
+        return true;
     }
 
     private void ResetDriveState()
@@ -1020,6 +1065,15 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
         lock (stateLock)
         {
             var state = GetOrCreateAgentControlStateLocked(agentId);
+            var now = DateTimeOffset.UtcNow;
+            if ((state.LeftPwmNorm != 0f || state.RightPwmNorm != 0f) &&
+                now - state.LastDriveInputAt > DriveInputWatchdog)
+            {
+                state.LeftPwmNorm = 0f;
+                state.RightPwmNorm = 0f;
+                state.BrakeNorm = 0f;
+            }
+
             return new AgentControlState
             {
                 LeftPwmNorm = state.LeftPwmNorm,
@@ -1027,6 +1081,7 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
                 BrakeNorm = state.BrakeNorm,
                 CameraPanDeg = state.CameraPanDeg,
                 CameraTiltDeg = state.CameraTiltDeg,
+                LastDriveInputAt = state.LastDriveInputAt,
             };
         }
     }
@@ -1075,6 +1130,7 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
         state.LeftPwmNorm = 0f;
         state.RightPwmNorm = 0f;
         state.BrakeNorm = 0f;
+        state.LastDriveInputAt = DateTimeOffset.UtcNow;
     }
 
     private void SyncAgentStateDictionariesLocked(IReadOnlyList<UnityRuntimeAgentSelectionRequest> agents)
@@ -1099,6 +1155,88 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
         {
             agentFrameStates.Remove(staleAgentId);
         }
+
+        foreach (var staleAgentId in agentControlOwners.Keys.Where(id => !normalizedAgentIds.Contains(id)).ToArray())
+        {
+            agentControlOwners.Remove(staleAgentId);
+        }
+    }
+
+    private void ResetInteractiveDefaultsLocked()
+    {
+        selectedControlAgentId = "ego";
+        selectedCameraMode = "driver";
+        configuredAgents = NormalizeConfiguredAgents(Array.Empty<UnityRuntimeAgentSelectionRequest>(), selectedVehicleId);
+        SyncAgentStateDictionariesLocked(configuredAgents);
+        ResetDriveState();
+    }
+
+    private bool TryAcquireControlOwnershipLocked(string agentId, string command, string? clientId)
+    {
+        var normalizedClientId = NormalizeClientId(clientId);
+        if (string.IsNullOrWhiteSpace(normalizedClientId))
+        {
+            return true;
+        }
+
+        var state = GetOrCreateAgentControlOwnerLocked(agentId);
+        var now = DateTimeOffset.UtcNow;
+        var stopLike = IsStopLikeCommand(command);
+
+        if (state.ClientId is null || state.LeaseUntil <= now)
+        {
+            if (!stopLike)
+            {
+                state.ClientId = normalizedClientId;
+                state.LeaseUntil = now + ControlOwnershipLease;
+            }
+
+            return true;
+        }
+
+        if (string.Equals(state.ClientId, normalizedClientId, StringComparison.Ordinal))
+        {
+            if (stopLike)
+            {
+                state.ClientId = null;
+                state.LeaseUntil = DateTimeOffset.MinValue;
+                return true;
+            }
+
+            state.LeaseUntil = now + ControlOwnershipLease;
+            return true;
+        }
+
+        // Another client currently owns this agent controls.
+        // We don't allow takeover during an active lease to avoid conflicting
+        // command streams from multiple browser tabs.
+        return false;
+    }
+
+    private AgentControlOwnerState GetOrCreateAgentControlOwnerLocked(string agentId)
+    {
+        var normalizedAgentId = string.IsNullOrWhiteSpace(agentId) ? "ego" : agentId.Trim();
+        if (!agentControlOwners.TryGetValue(normalizedAgentId, out var state))
+        {
+            state = new AgentControlOwnerState();
+            agentControlOwners[normalizedAgentId] = state;
+        }
+
+        return state;
+    }
+
+    private static bool IsStopLikeCommand(string command) =>
+        string.Equals(command, "DirStop", StringComparison.Ordinal) ||
+        string.Equals(command, "CamStop", StringComparison.Ordinal);
+
+    private static string? NormalizeClientId(string? clientId)
+    {
+        if (string.IsNullOrWhiteSpace(clientId))
+        {
+            return null;
+        }
+
+        return clientId.Trim();
     }
 
     private static string NormalizeCameraMode(string? mode)

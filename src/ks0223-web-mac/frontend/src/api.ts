@@ -77,11 +77,11 @@ export async function setUnityRuntimeSelection(payload: {
   return handleJson<UnityRuntimeCatalogDto>(response)
 }
 
-export async function sendCommand(command: string, agentId?: string): Promise<CommandResponse> {
+export async function sendCommand(command: string, agentId?: string, clientId?: string): Promise<CommandResponse> {
   const response = await fetch(withBase('/api/command'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ command, agentId }),
+    body: JSON.stringify({ command, agentId, clientId }),
   })
 
   return handleJson<CommandResponse>(response)

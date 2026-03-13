@@ -55,6 +55,7 @@ const UNITY_EXTRA_AGENTS_STORAGE_KEY = 'ks0223_unity_extra_agents_v1'
 const UNITY_CAMERA_MODE_STORAGE_KEY = 'ks0223_unity_camera_mode'
 const UNITY_CONTROL_AGENT_STORAGE_KEY = 'ks0223_unity_control_agent'
 const UNITY_CAMERA_AGENT_STORAGE_KEY = 'ks0223_unity_camera_agent'
+const CLIENT_INSTANCE_ID_STORAGE_KEY = 'ks0223_client_instance_id'
 const LEGACY_UNITY_SECONDARY_VEHICLE_STORAGE_KEY = 'ks0223_unity_secondary_vehicle_id'
 const DEFAULT_TARGET_HOST = '192.168.1.121'
 const DEFAULT_UNITY_TARGET_HOST = '127.0.0.1'
@@ -192,6 +193,21 @@ function readStoredUnityAgents(): UnityRuntimeAgentSelectionDraft[] {
   }
 }
 
+function ensureClientInstanceId(): string {
+  if (typeof window === 'undefined') {
+    return 'client-server'
+  }
+
+  const existing = window.sessionStorage.getItem(CLIENT_INSTANCE_ID_STORAGE_KEY)?.trim()
+  if (existing) {
+    return existing
+  }
+
+  const generated = `client-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+  window.sessionStorage.setItem(CLIENT_INSTANCE_ID_STORAGE_KEY, generated)
+  return generated
+}
+
 function normalizeRuntimeMode(value: string | null | undefined): RuntimeMode {
   return value === 'unity-sim' ? 'unity-sim' : 'real-robot'
 }
@@ -262,6 +278,7 @@ function getActiveRuntimeMode(status: StatusDto | null, selectedRuntimeMode: Run
 }
 
 function App() {
+  const clientInstanceId = useMemo(() => ensureClientInstanceId(), [])
   const [status, setStatus] = useState<StatusDto | null>(null)
   const [incoming, setIncoming] = useState<IncomingMessageDto[]>([])
   const [files, setFiles] = useState<LogFileInfo[]>([])
@@ -611,19 +628,18 @@ function App() {
       }
 
       const normalizedPort = normalizePortInput(targetPort, selectedRuntimeMode)
-      if (selectedRuntimeMode === 'unity-sim' && (unityTrackId || unityVehicleId)) {
+      if (selectedRuntimeMode === 'unity-sim' && (unityTrackId || unityVehicleId || unityCameraMode)) {
         await setUnityRuntimeSelection({
           trackId: unityTrackId || undefined,
           vehicleId: unityVehicleId || undefined,
           cameraMode: unityCameraMode,
-          controlAgentId: unityControlAgentId,
-          agents: unityExtraAgents.map((agent) => ({
-            agentId: agent.agentId,
-            vehicleId: agent.vehicleId,
-            isPrimary: false,
-          })),
+          controlAgentId: 'ego',
+          agents: [],
           applyImmediately: false,
         })
+        setUnityExtraAgents([])
+        setUnityControlAgentId('ego')
+        setUnityCameraAgentId('ego')
       }
 
       const next = await connectPi(normalizedHost, Number(normalizedPort), selectedRuntimeMode)
@@ -669,7 +685,7 @@ function App() {
   const handleCommand = useCallback(
     async (command: string, agentId?: string) => {
       try {
-        await sendCommand(command, agentId)
+        await sendCommand(command, agentId, clientInstanceId)
 
         if (command === 'CamUp') {
           setEstimatedCameraTiltDeg((prev) => clamp(prev - 1, 0, 180))
@@ -685,7 +701,7 @@ function App() {
         await syncStatus()
       }
     },
-    [syncStatus],
+    [clientInstanceId, syncStatus],
   )
 
   const activeCommandAgentId = activeRuntimeMode === 'unity-sim' ? unityControlAgentId : undefined
