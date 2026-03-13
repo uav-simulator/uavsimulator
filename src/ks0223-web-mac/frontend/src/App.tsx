@@ -309,6 +309,13 @@ function App() {
   const syncStatus = useCallback(async () => {
     const next = await fetchStatus()
     setStatus(next)
+
+    if (next.desiredConnection || next.tcpConnected) {
+      const nextMode = normalizeRuntimeMode(next.runtimeMode)
+      setSelectedRuntimeMode(nextMode)
+      setTargetHost(next.targetHost)
+      setTargetPort(String(next.targetPort))
+    }
   }, [])
 
   const syncFiles = useCallback(async () => {
@@ -681,6 +688,15 @@ function App() {
     [syncStatus],
   )
 
+  const activeCommandAgentId = activeRuntimeMode === 'unity-sim' ? unityControlAgentId : undefined
+
+  const handleActiveCommand = useCallback(
+    async (command: string) => {
+      await handleCommand(command, activeCommandAgentId)
+    },
+    [activeCommandAgentId, handleCommand],
+  )
+
   const handleStartLogging = useCallback(
     async (tag: string) => {
       await guarded(async () => {
@@ -813,11 +829,11 @@ function App() {
         sensorStatus={sensorStatus}
         sensorTelemetry={sensorTelemetry}
         busy={busy}
-        runtimeMode={selectedRuntimeMode}
+        runtimeMode={activeRuntimeMode}
         onRuntimeModeChange={handleRuntimeModeChange}
-        targetHost={targetHost}
+        targetHost={(status?.desiredConnection || status?.tcpConnected) ? (status?.targetHost ?? targetHost) : targetHost}
         onTargetHostChange={setTargetHost}
-        targetPort={targetPort}
+        targetPort={(status?.desiredConnection || status?.tcpConnected) ? String(status?.targetPort ?? targetPort) : targetPort}
         onTargetPortChange={setTargetPort}
         onConnect={handleConnect}
         onDisconnect={handleDisconnect}
@@ -835,7 +851,7 @@ function App() {
           await syncUnityCatalog()
         }}
         onUnitySelectionSave={applyUnitySelection}
-        onCommand={(command) => handleCommand(command, activeRuntimeMode === 'unity-sim' ? unityControlAgentId : undefined)}
+        onCommand={handleActiveCommand}
         cameraStreamUrl={activeRuntimeMode === 'unity-sim' ? cameraMjpegUrl(unityCameraAgentId) : cameraMjpegUrl()}
         driveSpeedPercent={driveSpeedPercent}
         cameraSpeedPercent={cameraSpeedPercent}
