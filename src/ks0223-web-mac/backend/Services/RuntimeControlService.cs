@@ -53,8 +53,13 @@ public sealed class RuntimeControlService
     public Task DisconnectAsync(CancellationToken cancellationToken) =>
         GetCurrentProvider().DisconnectAsync(cancellationToken);
 
-    public Task<CommandResponse> SendCommandAsync(string command, string source, string? agentId, CancellationToken cancellationToken) =>
-        GetCurrentProvider().SendCommandAsync(command, source, agentId, cancellationToken);
+    public Task<CommandResponse> SendCommandAsync(
+        string command,
+        string source,
+        string? agentId,
+        string? clientId,
+        CancellationToken cancellationToken) =>
+        GetCurrentProvider().SendCommandAsync(command, source, agentId, clientId, cancellationToken);
 
     public Task RegisterUiConnectionAsync(string connectionId) =>
         GetCurrentProvider().RegisterUiConnectionAsync(connectionId);

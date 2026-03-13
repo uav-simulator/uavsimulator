@@ -303,7 +303,12 @@ app.MapGet("/api/camera/mjpeg", async (HttpContext context, RuntimeControlServic
 
 app.MapPost("/api/command", async (CommandRequest request, RuntimeControlService runtimeControlService, CancellationToken cancellationToken) =>
 {
-    var response = await runtimeControlService.SendCommandAsync(request.Command, "ui", request.AgentId, cancellationToken);
+    var response = await runtimeControlService.SendCommandAsync(
+        request.Command,
+        "ui",
+        request.AgentId,
+        request.ClientId,
+        cancellationToken);
     return response.Sent ? Results.Ok(response) : Results.BadRequest(response);
 });
 
