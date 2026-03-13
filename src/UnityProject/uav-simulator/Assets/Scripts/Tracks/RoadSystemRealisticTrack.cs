@@ -14,6 +14,7 @@ namespace UavSimulator.Tracks
         private const string ArcadeEnvironmentMaterialPath = "Assets/ARCADE - FREE Racing Car/Materials/AFRC_Env_Mat.mat";
         private const string ArcadeRoadMeshPath = "Assets/ARCADE - FREE Racing Car/Meshes/Road.fbx";
         private const string ArcadeDaySkyboxPath = "Assets/ARCADE - FREE Racing Car/Skybox/Day/Day Skybox.mat";
+        private const string PrometeoParkingMaterialPath = "Assets/PROMETEO - Car Controller/Materials/PCC_ParkingZone_Mat.mat";
 
         [SerializeField] private float groundSize = 90f;
         [SerializeField] private float roadWidth = 3.4f;
@@ -31,6 +32,7 @@ namespace UavSimulator.Tracks
 
         private Material roadMaterial;
         private Material groundMaterial;
+        private Material serviceAreaMaterial;
         private Material laneMaterial;
         private Material shoulderMaterial;
         private Material boundaryMaterial;
@@ -85,6 +87,7 @@ namespace UavSimulator.Tracks
         {
             roadMaterial = CreateLitMaterial(new Color(0.10f, 0.10f, 0.11f), 0.30f);
             groundMaterial = TryCloneAssetMaterial(ArcadeEnvironmentMaterialPath) ?? CreateLitMaterial(new Color(0.23f, 0.31f, 0.22f), 0.07f);
+            serviceAreaMaterial = TryCloneAssetMaterial(PrometeoParkingMaterialPath) ?? CreateLitMaterial(new Color(0.28f, 0.28f, 0.30f), 0.16f);
             laneMaterial = CreateLitMaterial(new Color(0.95f, 0.95f, 0.95f), 0.08f);
             shoulderMaterial = CreateLitMaterial(new Color(0.22f, 0.20f, 0.18f), 0.10f);
             boundaryMaterial = CreateLitMaterial(new Color(0.72f, 0.74f, 0.76f), 0.20f);
@@ -104,9 +107,9 @@ namespace UavSimulator.Tracks
             ApplyMaterial(landscape, groundMaterial);
             ApplyMaterial(ground, groundMaterial);
             ApplyColor(infield, new Color(0.28f, 0.35f, 0.25f), 0.08f);
-            ApplyColor(paddock, new Color(0.24f, 0.24f, 0.26f), 0.18f);
-            ApplyColor(serviceZone, new Color(0.26f, 0.27f, 0.29f), 0.16f);
-            ApplyColor(spectatorApron, new Color(0.30f, 0.31f, 0.33f), 0.18f);
+            ApplyMaterial(paddock, serviceAreaMaterial);
+            ApplyMaterial(serviceZone, serviceAreaMaterial);
+            ApplyMaterial(spectatorApron, serviceAreaMaterial);
         }
 
         private Road BuildMainRoad(Transform parent)
@@ -400,12 +403,12 @@ namespace UavSimulator.Tracks
             CreateTree(propsRoot.transform, "TreeG", new Vector3(22f, 0f, 14f), 1.08f);
             CreateTree(propsRoot.transform, "TreeH", new Vector3(-23f, 0f, 8f), 0.98f);
 
-            CreateCone(propsRoot.transform, "ConeA", new Vector3(-11f, 0f, -12f));
-            CreateCone(propsRoot.transform, "ConeB", new Vector3(-9.5f, 0f, -12f));
+            CreateCone(propsRoot.transform, "ConeA", new Vector3(-13.0f, 0f, -12.3f));
+            CreateCone(propsRoot.transform, "ConeB", new Vector3(-8.9f, 0f, -12.3f));
             CreateCone(propsRoot.transform, "ConeC", new Vector3(9f, 0f, 4f));
             CreateCone(propsRoot.transform, "ConeD", new Vector3(10.5f, 0f, 4f));
-            CreateCone(propsRoot.transform, "ConeE", new Vector3(-13.5f, 0f, -13.2f));
-            CreateCone(propsRoot.transform, "ConeF", new Vector3(-13.5f, 0f, -11.2f));
+            CreateCone(propsRoot.transform, "ConeE", new Vector3(-14.3f, 0f, -13.2f));
+            CreateCone(propsRoot.transform, "ConeF", new Vector3(-14.3f, 0f, -11.2f));
             CreateCone(propsRoot.transform, "ConeG", new Vector3(6.5f, 0f, 7.4f));
             CreateCone(propsRoot.transform, "ConeH", new Vector3(8f, 0f, 6.6f));
 
@@ -758,7 +761,16 @@ namespace UavSimulator.Tracks
 
         private static Shader ResolveRuntimeLitShader()
         {
-            var shader = Shader.Find("Unlit/Color");
+            if (IsUrpActive())
+            {
+                var urpShader = Shader.Find("Universal Render Pipeline/Lit");
+                if (urpShader != null && urpShader.isSupported)
+                {
+                    return urpShader;
+                }
+            }
+
+            var shader = Shader.Find("Standard");
             if (shader != null && shader.isSupported)
             {
                 return shader;
@@ -770,19 +782,10 @@ namespace UavSimulator.Tracks
                 return shader;
             }
 
-            shader = Shader.Find("Standard");
+            shader = Shader.Find("Unlit/Color");
             if (shader != null && shader.isSupported)
             {
                 return shader;
-            }
-
-            if (IsUrpActive())
-            {
-                shader = Shader.Find("Universal Render Pipeline/Lit");
-                if (shader != null && shader.isSupported)
-                {
-                    return shader;
-                }
             }
 
             shader = Shader.Find("Legacy Shaders/Diffuse");
