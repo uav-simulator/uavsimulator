@@ -43,6 +43,9 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
     private int targetPort = 8000;
     private string selectedVehicleId = PreferredVehicleIds[0];
     private string selectedTrackId = PreferredTrackIds[0];
+    private string selectedCameraMode = "driver";
+    private string selectedControlAgentId = "ego";
+    private List<UnityRuntimeAgentSelectionRequest> configuredAgents = new();
     private IReadOnlyList<UnityRuntimeOptionDto> availableTracks = Array.Empty<UnityRuntimeOptionDto>();
     private IReadOnlyList<UnityRuntimeOptionDto> availableVehicles = Array.Empty<UnityRuntimeOptionDto>();
     private double? latencyMs;
@@ -132,6 +135,9 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
     public async Task<UnityRuntimeCatalogDto> SetRuntimeSelectionAsync(
         string? trackId,
         string? vehicleId,
+        string? cameraMode,
+        string? controlAgentId,
+        IReadOnlyList<UnityRuntimeAgentSelectionRequest>? agents,
         bool applyImmediately,
         CancellationToken cancellationToken)
     {
@@ -145,6 +151,27 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
             if (!string.IsNullOrWhiteSpace(vehicleId))
             {
                 selectedVehicleId = vehicleId.Trim();
+            }
+
+            if (!string.IsNullOrWhiteSpace(cameraMode))
+            {
+                selectedCameraMode = NormalizeCameraMode(cameraMode);
+            }
+
+            if (!string.IsNullOrWhiteSpace(controlAgentId))
+            {
+                selectedControlAgentId = controlAgentId.Trim();
+            }
+
+            if (agents is not null)
+            {
+                configuredAgents = agents
+                    .Where(item => item is not null && !string.IsNullOrWhiteSpace(item.VehicleId))
+                    .Select((item, index) => new UnityRuntimeAgentSelectionRequest(
+                        AgentId: string.IsNullOrWhiteSpace(item.AgentId) ? $"agent-{index + 1}" : item.AgentId!.Trim(),
+                        VehicleId: item.VehicleId!.Trim(),
+                        IsPrimary: item.IsPrimary))
+                    .ToList();
             }
         }
 
@@ -606,6 +633,8 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
             selectedTrackId = resolvedTrackId;
             availableVehicles = vehicleOptions;
             availableTracks = trackOptions;
+            configuredAgents = NormalizeConfiguredAgents(configuredAgents, resolvedVehicleId);
+            selectedControlAgentId = ResolveSelectedControlAgentId(selectedControlAgentId, configuredAgents);
             var selectedDisplayName = vehicleOptions.FirstOrDefault(option => string.Equals(option.Id, resolvedVehicleId, StringComparison.Ordinal))
                 ?.DisplayName;
             if (!string.IsNullOrWhiteSpace(selectedDisplayName))
@@ -619,6 +648,14 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
 
     private async Task<JsonDocument> ResetSimulationAsync(CancellationToken cancellationToken)
     {
+        List<UnityRuntimeAgentSelectionRequest> agentsSnapshot;
+        string cameraMode;
+        lock (stateLock)
+        {
+            agentsSnapshot = NormalizeConfiguredAgents(configuredAgents, selectedVehicleId);
+            cameraMode = selectedCameraMode;
+        }
+
         var payload = new
         {
             seed = 1,
@@ -626,8 +663,29 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
             selectedTrackId,
             selectedVehicleId,
             trackParams = Array.Empty<object>(),
-            vehicleParams = Array.Empty<object>(),
-            flags = Array.Empty<object>(),
+            vehicleParams = new object[]
+            {
+                new { key = "camera.mode", value = cameraMode },
+            },
+            flags = agentsSnapshot.Count > 1
+                ? new object[]
+                {
+                    new { key = "agents.see_each_other", value = "true" },
+                    new { key = "agents.collisions_enabled", value = "false" },
+                }
+                : Array.Empty<object>(),
+            agents = agentsSnapshot.Select((agent, index) => new
+            {
+                agentId = string.IsNullOrWhiteSpace(agent.AgentId) ? $"agent-{index + 1}" : agent.AgentId,
+                vehicleId = agent.VehicleId,
+                isPrimary = agent.IsPrimary || index == 0,
+                trackParams = Array.Empty<object>(),
+                vehicleParams = new object[]
+                {
+                    new { key = "camera.mode", value = cameraMode },
+                },
+                flags = Array.Empty<object>(),
+            }).ToArray(),
         };
 
         using var response = await SendAsync(HttpMethod.Post, "/reset", payload, cancellationToken);
@@ -643,6 +701,7 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
         float brake;
         int pan;
         int tilt;
+        string targetAgentId;
 
         lock (stateLock)
         {
@@ -651,6 +710,7 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
             brake = brakeNorm;
             pan = cameraPanDeg;
             tilt = cameraTiltDeg;
+            targetAgentId = selectedControlAgentId;
         }
 
         var payload = new
@@ -658,6 +718,7 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
             throttle = 0.0,
             steer = 0.0,
             brake,
+            targetAgentId,
             timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
             timeBase = "unix_ms",
             extensions = new object[]
@@ -789,6 +850,8 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
         flat["ultrasonic.scan_servo_angle_deg"] = ultrasonicAngleDeg.ToString(CultureInfo.InvariantCulture);
         flat["camera.pan_deg"] = cameraPanDeg.ToString(CultureInfo.InvariantCulture);
         flat["camera.tilt_deg"] = cameraTiltDeg.ToString(CultureInfo.InvariantCulture);
+        flat["camera.mode"] = selectedCameraMode;
+        flat["control.agent_id"] = selectedControlAgentId;
 
         if (flat.TryGetValue("sensor.ultrasonic.front.m", out var ultrasonicMeters) &&
             float.TryParse(ultrasonicMeters, NumberStyles.Float, CultureInfo.InvariantCulture, out var distanceM))
@@ -873,6 +936,78 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
         brakeNorm = 0f;
     }
 
+    private static string NormalizeCameraMode(string? mode)
+    {
+        var normalized = mode?.Trim().ToLowerInvariant();
+        return normalized switch
+        {
+            "bumper" => "bumper",
+            "chase" => "chase",
+            "spectator" => "spectator",
+            _ => "driver",
+        };
+    }
+
+    private static List<UnityRuntimeAgentSelectionRequest> NormalizeConfiguredAgents(
+        IReadOnlyList<UnityRuntimeAgentSelectionRequest>? configured,
+        string primaryVehicleId)
+    {
+        var result = new List<UnityRuntimeAgentSelectionRequest>();
+        var primaryAdded = false;
+
+        if (!string.IsNullOrWhiteSpace(primaryVehicleId))
+        {
+            result.Add(new UnityRuntimeAgentSelectionRequest("ego", primaryVehicleId, true));
+            primaryAdded = true;
+        }
+
+        if (configured is not null)
+        {
+            var index = 1;
+            foreach (var item in configured)
+            {
+                if (item is null || string.IsNullOrWhiteSpace(item.VehicleId))
+                {
+                    continue;
+                }
+
+                var agentId = string.IsNullOrWhiteSpace(item.AgentId) ? $"agent-{index}" : item.AgentId!.Trim();
+                var vehicleId = item.VehicleId!.Trim();
+                if (string.Equals(agentId, "ego", StringComparison.Ordinal) || item.IsPrimary)
+                {
+                    if (primaryAdded)
+                    {
+                        index++;
+                        continue;
+                    }
+
+                    result.Insert(0, new UnityRuntimeAgentSelectionRequest("ego", vehicleId, true));
+                    primaryAdded = true;
+                    index++;
+                    continue;
+                }
+
+                result.Add(new UnityRuntimeAgentSelectionRequest(agentId, vehicleId, false));
+                index++;
+            }
+        }
+
+        return result;
+    }
+
+    private static string ResolveSelectedControlAgentId(string? current, IReadOnlyList<UnityRuntimeAgentSelectionRequest> agents)
+    {
+        if (!string.IsNullOrWhiteSpace(current) &&
+            agents.Any(agent => string.Equals(agent.AgentId, current, StringComparison.Ordinal)))
+        {
+            return current!;
+        }
+
+        return agents.FirstOrDefault(agent => agent.IsPrimary)?.AgentId
+            ?? agents.FirstOrDefault()?.AgentId
+            ?? "ego";
+    }
+
     private void AdvanceAutoScan()
     {
         lock (stateLock)
@@ -940,11 +1075,25 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
     {
         lock (stateLock)
         {
+            var normalizedAgents = NormalizeConfiguredAgents(configuredAgents, selectedVehicleId);
             return new UnityRuntimeCatalogDto(
                 SelectedTrackId: selectedTrackId,
                 SelectedVehicleId: selectedVehicleId,
+                SelectedCameraMode: selectedCameraMode,
+                SelectedControlAgentId: ResolveSelectedControlAgentId(selectedControlAgentId, normalizedAgents),
                 Tracks: availableTracks,
-                Vehicles: availableVehicles);
+                Vehicles: availableVehicles,
+                Agents: normalizedAgents.Select(agent =>
+                {
+                    var displayName = availableVehicles.FirstOrDefault(option => string.Equals(option.Id, agent.VehicleId, StringComparison.Ordinal))?.DisplayName
+                        ?? agent.VehicleId
+                        ?? string.Empty;
+                    return new UnityRuntimeAgentDto(
+                        AgentId: agent.AgentId ?? string.Empty,
+                        VehicleId: agent.VehicleId ?? string.Empty,
+                        DisplayName: displayName,
+                        IsPrimary: agent.IsPrimary);
+                }).ToArray());
         }
     }
 

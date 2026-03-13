@@ -31,6 +31,7 @@ namespace UavSimulator.Vehicles
         private RenderTexture frontCameraRt;
         private Texture2D frontCameraTexture;
         private int defaultCameraCullingMask = ~0;
+        private string cameraMode = "driver";
 
         private float pitchCmd;
         private float yawCmd;
@@ -191,6 +192,15 @@ namespace UavSimulator.Vehicles
             }
         }
 
+        public override void ApplyVehicleConfig(ConfigKeyValue[] vehicleParams)
+        {
+            if (TryGetConfigValue(vehicleParams, "camera.mode", out var mode))
+            {
+                cameraMode = NormalizeCameraMode(mode);
+                ApplyCameraMode();
+            }
+        }
+
         public override void SetPeerVisibility(bool visible)
         {
             if (frontCamera == null)
@@ -285,6 +295,7 @@ namespace UavSimulator.Vehicles
             frontCamera.allowHDR = false;
             frontCamera.allowMSAA = false;
             defaultCameraCullingMask = frontCamera.cullingMask;
+            ApplyCameraMode();
 
             frontCameraRt = new RenderTexture(cameraImageWidth, cameraImageHeight, 16, RenderTextureFormat.ARGB32)
             {
@@ -297,6 +308,46 @@ namespace UavSimulator.Vehicles
             {
                 name = "SimpleDrone.FrontCameraBuffer",
             };
+        }
+
+        private void ApplyCameraMode()
+        {
+            if (frontCamera == null)
+            {
+                return;
+            }
+
+            Vector3 localPosition;
+            Vector3 localEuler;
+            float fieldOfView;
+
+            switch (cameraMode)
+            {
+                case "chase":
+                    localPosition = new Vector3(0f, 0.55f, -1.45f);
+                    localEuler = new Vector3(18f, 0f, 0f);
+                    fieldOfView = 78f;
+                    break;
+                case "spectator":
+                    localPosition = new Vector3(1.1f, 0.85f, -1.65f);
+                    localEuler = new Vector3(20f, -20f, 0f);
+                    fieldOfView = 72f;
+                    break;
+                case "bumper":
+                    localPosition = new Vector3(0f, 0.04f, 0.22f);
+                    localEuler = new Vector3(8f, 0f, 0f);
+                    fieldOfView = 84f;
+                    break;
+                default:
+                    localPosition = cameraLocalPosition;
+                    localEuler = cameraLocalEuler;
+                    fieldOfView = 78f;
+                    break;
+            }
+
+            frontCamera.transform.localPosition = localPosition;
+            frontCamera.transform.localRotation = Quaternion.Euler(localEuler);
+            frontCamera.fieldOfView = fieldOfView;
         }
 
         private void EnsureFallbackVisuals()
@@ -393,6 +444,41 @@ namespace UavSimulator.Vehicles
             }
 
             return false;
+        }
+
+        private static bool TryGetConfigValue(ConfigKeyValue[] items, string key, out string value)
+        {
+            value = string.Empty;
+            if (items == null)
+            {
+                return false;
+            }
+
+            for (var i = 0; i < items.Length; i++)
+            {
+                var kv = items[i];
+                if (!string.Equals(kv.key, key, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                value = kv.value ?? string.Empty;
+                return !string.IsNullOrWhiteSpace(value);
+            }
+
+            return false;
+        }
+
+        private static string NormalizeCameraMode(string value)
+        {
+            var normalized = value?.Trim().ToLowerInvariant();
+            return normalized switch
+            {
+                "bumper" => "bumper",
+                "chase" => "chase",
+                "spectator" => "spectator",
+                _ => "driver",
+            };
         }
 
         private static ConfigKeyValue KV(string key, float value)

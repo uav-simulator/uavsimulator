@@ -3,10 +3,15 @@
 
 ## Assumptions
 - Основной режим работы: Unity Editor (`Play`).
-- `Makefile` используется как основной runbook интерфейс.
+- `rusim` является каноническим продуктовым CLI.
+- `Makefile` используется только для developer/ROS automation.
 
 ## Decisions
 - Версия Unity: `6000.1.8f1`.
+- Основной product lifecycle:
+  - `rusim server up`
+  - `rusim server status`
+  - `rusim server down`
 - Рекомендованный старт симулятора:
   - `make sim-public`
 - Для внешних клиентов (например, ROS в Docker) использовать публичный host:
@@ -14,11 +19,17 @@
 - Отдельный старт ROS desktop:
   - `make ros-up`
   - `make ros-down`
-- Основной пользовательский слой запуска вынесен в `make demo-*` команды.
+- Основной пользовательский слой запуска вынесен в `rusim`.
+- `make demo-*` сохранены для ROS2/demo orchestration и preflight.
 
 ## Быстрые команды
 - Подготовка Python окружения:
   - `make venv`
+- Product CLI:
+  - `rusim server up --mode background --port 8000 --scenario configs/scenarios/demo.yaml`
+  - `rusim doctor --base-url http://127.0.0.1:8000`
+  - `rusim step --base-url http://127.0.0.1:8000 --throttle 0.2 --steer 0.1`
+  - `rusim server down`
 - Ежедневный флоу:
   - `make sim-public`
   - в Unity открыть `Assets/Scenes/PresentationTrack.unity` или `Assets/Scenes/RoadSystemTrack.unity`
@@ -37,7 +48,7 @@
   - `make ros-up`, `make ros-bridge-container`, `make ros-ui-container`, `make ros-topics`
   - `make ros-install-image-plugins` (если нужен `compressed` transport в `rqt_image_view`)
   - `make ros-bridge`, `make ros-mock`
-  - `make sim-health`, `make sim-step`, `make sim-reset`
+  - legacy compatibility aliases в `Makefile` оставлены только для внутренних скриптов
 
 Примечание:
 - `make demo-reset` и `make demo-proof` теперь используют единый сценарий `configs/scenarios/demo.yaml`.
@@ -65,14 +76,12 @@
 
 ## Быстрое переключение машины
 - Через demo-сценарий:
-  - `make demo-reset`
-  - `make demo-reset DEMO_SCENARIO=configs/scenarios/demo.yaml`
-- Через raw reset API/Makefile:
-  - `make sim-reset UAVSIM_VEHICLE_ID=vehicle.ks0223.v1`
-  - `make sim-reset UAVSIM_VEHICLE_ID=vehicle.ks0223.arcade.blue.v1`
-  - `make sim-reset UAVSIM_VEHICLE_ID=vehicle.ks0223.arcade.red.v1`
-  - `make sim-reset UAVSIM_VEHICLE_ID=vehicle.drone.simple.v1`
-  - `make sim-reset UAVSIM_TRACK_ID=track.roadsystem_arena.v1`
+  - `rusim scenario reset configs/scenarios/demo.yaml --base-url http://127.0.0.1:8000`
+- Через Unity simulator web UI:
+  - выбрать `track`;
+  - выбрать primary vehicle;
+  - при необходимости добавить вторую машинку;
+  - выбрать `camera mode` и `control agent`.
 
 ## Next steps
 - Добавить формальный build pipeline для standalone player.

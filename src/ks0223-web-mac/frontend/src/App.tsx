@@ -49,6 +49,9 @@ const TARGET_HOST_STORAGE_KEY_PREFIX = 'ks0223_target_host_'
 const TARGET_PORT_STORAGE_KEY_PREFIX = 'ks0223_target_port_'
 const UNITY_TRACK_STORAGE_KEY = 'ks0223_unity_track_id'
 const UNITY_VEHICLE_STORAGE_KEY = 'ks0223_unity_vehicle_id'
+const UNITY_SECONDARY_VEHICLE_STORAGE_KEY = 'ks0223_unity_secondary_vehicle_id'
+const UNITY_CAMERA_MODE_STORAGE_KEY = 'ks0223_unity_camera_mode'
+const UNITY_CONTROL_AGENT_STORAGE_KEY = 'ks0223_unity_control_agent'
 const DEFAULT_TARGET_HOST = '192.168.1.121'
 const DEFAULT_UNITY_TARGET_HOST = '127.0.0.1'
 const DRIVE_SPEED_STORAGE_KEY = 'ks0223_drive_speed_percent'
@@ -253,6 +256,9 @@ function App() {
   const [unityCatalogBusy, setUnityCatalogBusy] = useState(false)
   const [unityTrackId, setUnityTrackId] = useState(() => readStoredString(UNITY_TRACK_STORAGE_KEY))
   const [unityVehicleId, setUnityVehicleId] = useState(() => readStoredString(UNITY_VEHICLE_STORAGE_KEY))
+  const [unitySecondaryVehicleId, setUnitySecondaryVehicleId] = useState(() => readStoredString(UNITY_SECONDARY_VEHICLE_STORAGE_KEY))
+  const [unityCameraMode, setUnityCameraMode] = useState(() => readStoredString(UNITY_CAMERA_MODE_STORAGE_KEY) || 'driver')
+  const [unityControlAgentId, setUnityControlAgentId] = useState(() => readStoredString(UNITY_CONTROL_AGENT_STORAGE_KEY) || 'ego')
 
   const [driveSpeedPercent, setDriveSpeedPercent] = useState(() => readStoredNumber(DRIVE_SPEED_STORAGE_KEY, 80, 0, 100))
   const [cameraSpeedPercent, setCameraSpeedPercent] = useState(() => readStoredNumber(CAMERA_SPEED_STORAGE_KEY, 70, 0, 100))
@@ -308,6 +314,10 @@ function App() {
         setUnityCatalog(catalog)
         setUnityTrackId(catalog.selectedTrackId)
         setUnityVehicleId(catalog.selectedVehicleId)
+        setUnityCameraMode(catalog.selectedCameraMode || 'driver')
+        setUnityControlAgentId(catalog.selectedControlAgentId || 'ego')
+        const secondaryAgent = (catalog.agents ?? []).find((agent) => !agent.isPrimary)
+        setUnitySecondaryVehicleId(secondaryAgent?.vehicleId ?? '')
         return catalog
       } finally {
         setUnityCatalogBusy(false)
@@ -321,18 +331,33 @@ function App() {
       const catalog = await setUnityRuntimeSelection({
         trackId,
         vehicleId,
+        cameraMode: unityCameraMode,
+        controlAgentId: unityControlAgentId,
+        agents: unitySecondaryVehicleId
+          ? [
+              {
+                agentId: 'npc-2',
+                vehicleId: unitySecondaryVehicleId,
+                isPrimary: false,
+              },
+            ]
+          : [],
         applyImmediately,
       })
 
       setUnityCatalog(catalog)
       setUnityTrackId(catalog.selectedTrackId)
       setUnityVehicleId(catalog.selectedVehicleId)
+      setUnityCameraMode(catalog.selectedCameraMode || 'driver')
+      setUnityControlAgentId(catalog.selectedControlAgentId || 'ego')
+      const secondaryAgent = (catalog.agents ?? []).find((agent) => !agent.isPrimary)
+      setUnitySecondaryVehicleId(secondaryAgent?.vehicleId ?? '')
 
       if (applyImmediately) {
         await Promise.all([syncStatus(), syncDiagnostics()])
       }
     },
-    [syncDiagnostics, syncStatus],
+    [syncDiagnostics, syncStatus, unityCameraMode, unityControlAgentId, unitySecondaryVehicleId],
   )
 
   useEffect(() => {
@@ -416,6 +441,33 @@ function App() {
 
     window.localStorage.setItem(UNITY_VEHICLE_STORAGE_KEY, unityVehicleId)
   }, [unityVehicleId])
+
+  useEffect(() => {
+    if (!unitySecondaryVehicleId) {
+      window.localStorage.removeItem(UNITY_SECONDARY_VEHICLE_STORAGE_KEY)
+      return
+    }
+
+    window.localStorage.setItem(UNITY_SECONDARY_VEHICLE_STORAGE_KEY, unitySecondaryVehicleId)
+  }, [unitySecondaryVehicleId])
+
+  useEffect(() => {
+    if (!unityCameraMode) {
+      window.localStorage.removeItem(UNITY_CAMERA_MODE_STORAGE_KEY)
+      return
+    }
+
+    window.localStorage.setItem(UNITY_CAMERA_MODE_STORAGE_KEY, unityCameraMode)
+  }, [unityCameraMode])
+
+  useEffect(() => {
+    if (!unityControlAgentId) {
+      window.localStorage.removeItem(UNITY_CONTROL_AGENT_STORAGE_KEY)
+      return
+    }
+
+    window.localStorage.setItem(UNITY_CONTROL_AGENT_STORAGE_KEY, unityControlAgentId)
+  }, [unityControlAgentId])
 
   useEffect(() => {
     window.localStorage.setItem(DRIVE_SPEED_STORAGE_KEY, String(driveSpeedPercent))
@@ -507,6 +559,17 @@ function App() {
         await setUnityRuntimeSelection({
           trackId: unityTrackId || undefined,
           vehicleId: unityVehicleId || undefined,
+          cameraMode: unityCameraMode,
+          controlAgentId: unityControlAgentId,
+          agents: unitySecondaryVehicleId
+            ? [
+                {
+                  agentId: 'npc-2',
+                  vehicleId: unitySecondaryVehicleId,
+                  isPrimary: false,
+                },
+              ]
+            : [],
           applyImmediately: false,
         })
       }
@@ -524,7 +587,18 @@ function App() {
         await syncUnityCatalog(next.targetHost, next.targetPort)
       }
     })
-  }, [guarded, selectedRuntimeMode, syncUnityCatalog, targetHost, targetPort, unityTrackId, unityVehicleId])
+  }, [
+    guarded,
+    selectedRuntimeMode,
+    syncUnityCatalog,
+    targetHost,
+    targetPort,
+    unityCameraMode,
+    unityControlAgentId,
+    unitySecondaryVehicleId,
+    unityTrackId,
+    unityVehicleId,
+  ])
 
   const handleDisconnect = useCallback(async () => {
     await guarded(async () => {
@@ -704,6 +778,12 @@ function App() {
         onDisconnect={handleDisconnect}
         unityCatalog={unityCatalog}
         unityCatalogBusy={unityCatalogBusy}
+        unityCameraMode={unityCameraMode}
+        onUnityCameraModeChange={setUnityCameraMode}
+        unitySecondaryVehicleId={unitySecondaryVehicleId}
+        onUnitySecondaryVehicleIdChange={setUnitySecondaryVehicleId}
+        unityControlAgentId={unityControlAgentId}
+        onUnityControlAgentIdChange={setUnityControlAgentId}
         onUnityCatalogRefresh={async () => {
           await syncUnityCatalog()
         }}

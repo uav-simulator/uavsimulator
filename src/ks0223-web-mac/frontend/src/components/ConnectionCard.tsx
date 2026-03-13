@@ -35,6 +35,12 @@ type Props = {
   onDisconnect: () => Promise<void>
   unityCatalog: UnityRuntimeCatalogDto | null
   unityCatalogBusy: boolean
+  unityCameraMode: string
+  onUnityCameraModeChange: (value: string) => void
+  unitySecondaryVehicleId: string
+  onUnitySecondaryVehicleIdChange: (value: string) => void
+  unityControlAgentId: string
+  onUnityControlAgentIdChange: (value: string) => void
   onUnityCatalogRefresh: () => Promise<void>
   onUnitySelectionSave: (trackId: string, vehicleId: string, applyImmediately: boolean) => Promise<void>
 }
@@ -60,6 +66,12 @@ export function ConnectionCard({
   onDisconnect,
   unityCatalog,
   unityCatalogBusy,
+  unityCameraMode,
+  onUnityCameraModeChange,
+  unitySecondaryVehicleId,
+  onUnitySecondaryVehicleIdChange,
+  unityControlAgentId,
+  onUnityControlAgentIdChange,
   onUnityCatalogRefresh,
   onUnitySelectionSave,
 }: Props) {
@@ -78,6 +90,7 @@ export function ConnectionCard({
   const runtimeLabel = status?.runtimeLabel ?? (isUnityMode ? 'Keyestudio KS0223 (Unity Simulator)' : 'Keyestudio KS0223 (Real Robot)')
   const tracks = unityCatalog?.tracks ?? []
   const vehicles = unityCatalog?.vehicles ?? []
+  const agents = unityCatalog?.agents ?? []
 
   const hasUnityOptions = tracks.length > 0 && vehicles.length > 0
   const dialogBusy = unityDialogBusy || unityCatalogBusy
@@ -101,6 +114,28 @@ export function ConnectionCard({
     )
   }, [unityCatalog])
 
+  const selectedCameraModeTitle = useMemo(() => {
+    switch (unityCameraMode) {
+      case 'bumper':
+        return 'Bumper'
+      case 'chase':
+        return 'Chase'
+      case 'spectator':
+        return 'Spectator'
+      default:
+        return 'Driver'
+    }
+  }, [unityCameraMode])
+
+  const selectedControlAgentTitle = useMemo(() => {
+    if (!unityControlAgentId) {
+      return 'ego'
+    }
+
+    const agent = agents.find((item) => item.agentId === unityControlAgentId)
+    return agent ? `${agent.agentId} · ${agent.displayName}` : unityControlAgentId
+  }, [agents, unityControlAgentId])
+
   useEffect(() => {
     if (!unityDialogOpen) {
       return
@@ -114,6 +149,21 @@ export function ConnectionCard({
       setVehicleDraft(unityCatalog.selectedVehicleId)
     }
   }, [unityCatalog, unityDialogOpen])
+
+  useEffect(() => {
+    if (unitySecondaryVehicleId && unitySecondaryVehicleId === vehicleDraft) {
+      onUnitySecondaryVehicleIdChange('')
+      if (unityControlAgentId === 'npc-2') {
+        onUnityControlAgentIdChange('ego')
+      }
+    }
+  }, [
+    onUnityControlAgentIdChange,
+    onUnitySecondaryVehicleIdChange,
+    unityControlAgentId,
+    unitySecondaryVehicleId,
+    vehicleDraft,
+  ])
 
   const handleOpenUnityDialog = async () => {
     setUnityDialogOpen(true)
@@ -210,6 +260,8 @@ export function ConnectionCard({
               <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
                 <Chip label={`Трек: ${selectedTrackTitle}`} size="small" />
                 <Chip label={`Машинка: ${selectedVehicleTitle}`} size="small" />
+                <Chip label={`Камера: ${selectedCameraModeTitle}`} size="small" />
+                <Chip label={`Control agent: ${selectedControlAgentTitle}`} size="small" />
               </Stack>
               <Button
                 variant="outlined"
@@ -283,6 +335,63 @@ export function ConnectionCard({
                 </MenuItem>
               ))}
             </TextField>
+
+            <TextField
+              select
+              size="small"
+              label="Camera mode"
+              value={unityCameraMode}
+              onChange={(event) => onUnityCameraModeChange(event.target.value)}
+              disabled={dialogBusy}
+            >
+              <MenuItem value="driver">Driver</MenuItem>
+              <MenuItem value="bumper">Bumper</MenuItem>
+              <MenuItem value="chase">Chase</MenuItem>
+              <MenuItem value="spectator">Spectator</MenuItem>
+            </TextField>
+
+            <TextField
+              select
+              size="small"
+              label="Вторая машинка"
+              value={unitySecondaryVehicleId}
+              onChange={(event) => onUnitySecondaryVehicleIdChange(event.target.value)}
+              disabled={dialogBusy || vehicles.length === 0}
+              helperText="Пусто = single-agent runtime"
+            >
+              <MenuItem value="">Не добавлять</MenuItem>
+              {vehicles
+                .filter((vehicle) => vehicle.id !== vehicleDraft)
+                .map((vehicle) => (
+                  <MenuItem key={vehicle.id} value={vehicle.id}>
+                    {vehicle.displayName}
+                  </MenuItem>
+                ))}
+            </TextField>
+
+            <TextField
+              select
+              size="small"
+              label="Управляемый agent"
+              value={unityControlAgentId}
+              onChange={(event) => onUnityControlAgentIdChange(event.target.value)}
+              disabled={dialogBusy}
+              helperText="Команды и камера будут идти через выбранный agent"
+            >
+              <MenuItem value="ego">ego</MenuItem>
+              {unitySecondaryVehicleId ? <MenuItem value="npc-2">npc-2</MenuItem> : null}
+              {agents
+                .filter((agent) => agent.agentId !== 'ego' && agent.agentId !== 'npc-2')
+                .map((agent) => (
+                  <MenuItem key={agent.agentId} value={agent.agentId}>
+                    {agent.agentId}
+                  </MenuItem>
+                ))}
+            </TextField>
+
+            <Typography variant="body2" color="text.secondary">
+              Активных машинок в текущем каталоге: {agents.length > 0 ? agents.length : unitySecondaryVehicleId ? 2 : 1}
+            </Typography>
 
             {!hasUnityOptions ? (
               <Typography variant="body2" color="warning.main">

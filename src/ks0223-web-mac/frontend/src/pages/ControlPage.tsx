@@ -31,6 +31,12 @@ type Props = {
   onDisconnect: () => Promise<void>
   unityCatalog: UnityRuntimeCatalogDto | null
   unityCatalogBusy: boolean
+  unityCameraMode: string
+  onUnityCameraModeChange: (value: string) => void
+  unitySecondaryVehicleId: string
+  onUnitySecondaryVehicleIdChange: (value: string) => void
+  unityControlAgentId: string
+  onUnityControlAgentIdChange: (value: string) => void
   onUnityCatalogRefresh: () => Promise<void>
   onUnitySelectionSave: (trackId: string, vehicleId: string, applyImmediately: boolean) => Promise<void>
   onCommand: (command: string) => Promise<void>
@@ -68,6 +74,12 @@ export function ControlPage({
   onDisconnect,
   unityCatalog,
   unityCatalogBusy,
+  unityCameraMode,
+  onUnityCameraModeChange,
+  unitySecondaryVehicleId,
+  onUnitySecondaryVehicleIdChange,
+  unityControlAgentId,
+  onUnityControlAgentIdChange,
   onUnityCatalogRefresh,
   onUnitySelectionSave,
   onCommand,
@@ -102,6 +114,12 @@ export function ControlPage({
           onDisconnect={onDisconnect}
           unityCatalog={unityCatalog}
           unityCatalogBusy={unityCatalogBusy}
+          unityCameraMode={unityCameraMode}
+          onUnityCameraModeChange={onUnityCameraModeChange}
+          unitySecondaryVehicleId={unitySecondaryVehicleId}
+          onUnitySecondaryVehicleIdChange={onUnitySecondaryVehicleIdChange}
+          unityControlAgentId={unityControlAgentId}
+          onUnityControlAgentIdChange={onUnityControlAgentIdChange}
           onUnityCatalogRefresh={onUnityCatalogRefresh}
           onUnitySelectionSave={onUnitySelectionSave}
         />

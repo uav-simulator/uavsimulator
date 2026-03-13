@@ -122,7 +122,7 @@ def build_parser() -> argparse.ArgumentParser:
     inspect_build.set_defaults(_parser=inspect_build)
     inspect_build.add_argument("build")
 
-    run_build = runtime_sub.add_parser("run", help="Run standalone runtime by build id, latest or favorite.")
+    run_build = runtime_sub.add_parser("run", help="Deprecated alias for 'rusim server up --build ...'.")
     run_build.set_defaults(_parser=run_build)
     run_build.add_argument("--build", default="latest")
     run_build.add_argument("--mode", choices=["windowed", "background", "headless"], default="windowed")
@@ -157,7 +157,20 @@ def build_parser() -> argparse.ArgumentParser:
     server.set_defaults(_parser=server)
     server_sub = server.add_subparsers(dest="server_command")
 
-    start = server_sub.add_parser("start", help="Start Unity runtime server.")
+    up = server_sub.add_parser("up", help="Start runtime server from Unity Editor or standalone build.")
+    up.set_defaults(_parser=up)
+    up.add_argument("--mode", choices=["windowed", "background", "headless"], default="windowed")
+    up.add_argument("--unity-bin", default=os.environ.get("UNITY_BIN", DEFAULT_UNITY_BIN))
+    up.add_argument("--project-path", default=DEFAULT_PROJECT_PATH)
+    up.add_argument("--scene", default=DEFAULT_SCENE_PATH)
+    up.add_argument("--host", default="127.0.0.1")
+    up.add_argument("--port", type=int, default=8000)
+    up.add_argument("--scenario")
+    up.add_argument("--wait-seconds", type=float, default=45.0)
+    up.add_argument("--runtime-app", default="")
+    up.add_argument("--build", default="", help="Standalone build selector: latest, favorite, or build id.")
+
+    start = server_sub.add_parser("start", help="Deprecated alias for 'rusim server up'.")
     start.set_defaults(_parser=start)
     start.add_argument("--mode", choices=["windowed", "background", "headless"], default="windowed")
     start.add_argument("--unity-bin", default=os.environ.get("UNITY_BIN", DEFAULT_UNITY_BIN))
@@ -168,13 +181,18 @@ def build_parser() -> argparse.ArgumentParser:
     start.add_argument("--scenario")
     start.add_argument("--wait-seconds", type=float, default=45.0)
     start.add_argument("--runtime-app", default="")
+    start.add_argument("--build", default="", help=argparse.SUPPRESS)
 
     status = server_sub.add_parser("status", help="Show Unity runtime server status.")
     status.set_defaults(_parser=status)
     status.add_argument("--host", default="127.0.0.1")
     status.add_argument("--port", type=int, default=8000)
 
-    stop = server_sub.add_parser("stop", help="Stop Unity runtime server.")
+    down = server_sub.add_parser("down", help="Stop runtime server.")
+    down.set_defaults(_parser=down)
+    down.add_argument("--grace-seconds", type=float, default=8.0)
+
+    stop = server_sub.add_parser("stop", help="Deprecated alias for 'rusim server down'.")
     stop.set_defaults(_parser=stop)
     stop.add_argument("--grace-seconds", type=float, default=8.0)
 
@@ -579,11 +597,11 @@ def _server(args: argparse.Namespace) -> int:
     if not args.server_command:
         args._parser.print_help()
         return 0
-    if args.server_command == "start":
+    if args.server_command in ("up", "start"):
         return _server_start(args)
     if args.server_command == "status":
         return _server_status(args.host, args.port)
-    if args.server_command == "stop":
+    if args.server_command in ("down", "stop"):
         return _server_stop(args.grace_seconds)
     raise ValueError(f"Unknown server command: {args.server_command}")
 
@@ -685,8 +703,14 @@ def _server_start(args: argparse.Namespace) -> int:
     env["UAVSIM_API_PORT"] = str(args.port)
     env["RUSIM_START_SCENE"] = args.scene
 
-    if args.runtime_app:
-        runtime_app = Path(args.runtime_app).expanduser().resolve()
+    runtime_app_selector = getattr(args, "runtime_app", "") or ""
+    build_selector = getattr(args, "build", "") or ""
+    if build_selector:
+        entry = _resolve_build_selector(build_selector)
+        runtime_app_selector = str(entry["appPath"])
+
+    if runtime_app_selector:
+        runtime_app = Path(runtime_app_selector).expanduser().resolve()
         if not runtime_app.exists():
             raise FileNotFoundError(f"Runtime app not found: {runtime_app}")
         executable = _resolve_runtime_executable(runtime_app)
@@ -999,17 +1023,17 @@ def _runtime_inspect(args: argparse.Namespace) -> int:
 
 
 def _runtime_run(args: argparse.Namespace) -> int:
-    entry = _resolve_build_selector(args.build)
     run_args = argparse.Namespace(
         mode=args.mode,
         unity_bin=DEFAULT_UNITY_BIN,
         project_path=DEFAULT_PROJECT_PATH,
-        scene=entry.get("scene") or DEFAULT_SCENE_PATH,
+        scene=DEFAULT_SCENE_PATH,
         host=args.host,
         port=args.port,
         scenario=args.scenario,
         wait_seconds=args.wait_seconds,
-        runtime_app=entry["appPath"],
+        runtime_app="",
+        build=args.build,
     )
     return _server_start(run_args)
 

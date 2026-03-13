@@ -8,15 +8,32 @@ public sealed record ConnectRequest(string? Host, int? Port, string? RuntimeMode
 
 public sealed record UnityRuntimeOptionDto(string Id, string DisplayName);
 
+public sealed record UnityRuntimeAgentDto(
+    string AgentId,
+    string VehicleId,
+    string DisplayName,
+    bool IsPrimary);
+
 public sealed record UnityRuntimeCatalogDto(
     string SelectedTrackId,
     string SelectedVehicleId,
+    string SelectedCameraMode,
+    string SelectedControlAgentId,
     IReadOnlyList<UnityRuntimeOptionDto> Tracks,
-    IReadOnlyList<UnityRuntimeOptionDto> Vehicles);
+    IReadOnlyList<UnityRuntimeOptionDto> Vehicles,
+    IReadOnlyList<UnityRuntimeAgentDto> Agents);
+
+public sealed record UnityRuntimeAgentSelectionRequest(
+    string? AgentId,
+    string? VehicleId,
+    bool IsPrimary = false);
 
 public sealed record UnityRuntimeSelectionRequest(
     string? TrackId,
     string? VehicleId,
+    string? CameraMode,
+    string? ControlAgentId,
+    IReadOnlyList<UnityRuntimeAgentSelectionRequest>? Agents,
     bool ApplyImmediately = true);
 
 public sealed record ConnectionTargetDto(string Host, int Port, string RuntimeMode = "real-robot");

@@ -55,18 +55,29 @@ CLI пример CARLA-style:
   - `make demo-reset`
   - `make demo-reset DEMO_SCENARIO=configs/scenarios/demo.yaml`
   - multi-agent demo:
-    - `rusim server start --mode background --port 8000 --scenario configs/scenarios/demo-multi-agent.yaml`
-    - `rusim step --base-url http://127.0.0.1:8000 --agent-id npc-red --throttle 0.3 --steer 0.0 --brake 0.0`
+    - `rusim server up --mode background --port 8000 --scenario configs/scenarios/demo-multi-agent.yaml`
+    - `rusim step --base-url http://127.0.0.1:8000 --agent-id npc-2 --throttle 0.3 --steer 0.0 --brake 0.0`
   - для ручного override вне demo-сценария:
-    - `make sim-reset UAVSIM_VEHICLE_ID=vehicle.ks0223.arcade.red.v1`
-    - `make sim-reset UAVSIM_VEHICLE_ID=vehicle.ks0223.v1`
-    - `make sim-reset UAVSIM_VEHICLE_ID=vehicle.drone.simple.v1`
-    - `make sim-reset UAVSIM_TRACK_ID=track.roadsystem_arena.v1`
+    - `rusim reset --base-url http://127.0.0.1:8000 --vehicle-id vehicle.ks0223.arcade.red.v1`
+    - `rusim reset --base-url http://127.0.0.1:8000 --vehicle-id vehicle.ks0223.v1`
+    - `rusim reset --base-url http://127.0.0.1:8000 --vehicle-id vehicle.drone.simple.v1`
+    - `rusim reset --base-url http://127.0.0.1:8000 --track-id track.roadsystem_arena.v1`
+
+## CLI и Make
+- `rusim` является каноническим продуктовым CLI:
+  - `rusim server up/down/status`
+  - `rusim runtime build/list/inspect/remove`
+  - `rusim scenario validate/reset`
+  - `rusim step`
+- `Makefile` оставлен для developer/ROS2 automation:
+  - запуск Unity Editor в режиме `sim-public`;
+  - ROS2 desktop container;
+  - demo/preflight smoke;
+  - bridge/UI automation для показа.
 
 ## Упрощённый Make Workflow
-- `make sim-public`: запуск Unity с API для Docker/внешних клиентов.
+- `make sim-public`: запуск Unity Editor с API для Docker/ROS bridge.
 - `make demo-up`: ROS desktop + bridge + `rviz/rqt` + reset baseline.
-- `make demo-reset`: ручной reset baseline робота/трека.
 - `make demo-status`: быстрый статус API/топиков/bridge + preflight image transport plugins.
 - `make demo-proof`: строгая проверка перед презентацией (`health/reset/step-frame/camera-one-shot/odom-hz`).
 - `make demo-control`: `demo-up` + запуск `rqt_robot_steering` для ручного управления через ROS2.
