@@ -51,12 +51,14 @@ CLI пример CARLA-style:
 - По умолчанию при старте сцены транспорт **не спавнится автоматически**. Экземпляр появляется после `reset` (API/ROS/demo-reset).
 - Порог `odom hz` в `demo-proof` регулируется через `UAVSIM_ODOM_HZ_MIN` (по умолчанию `10`).
 - Переключение визуала машины (через plugin id):
-  - `make demo-reset UAVSIM_VEHICLE_ID=vehicle.ks0223.arcade.blue.v1`
-  - `make demo-reset UAVSIM_VEHICLE_ID=vehicle.ks0223.arcade.red.v1`
-  - `make demo-reset UAVSIM_VEHICLE_ID=vehicle.ks0223.v1`
-  - `make demo-reset UAVSIM_VEHICLE_ID=vehicle.drone.simple.v1`
-  - `make demo-reset UAVSIM_TRACK_ID=track.roadsystem_arena.v1`
-  - `make sim-scenario-reset SCENARIO=configs/scenarios/demo-realistic-v2.yaml`
+  - базовый demo теперь берётся только из `configs/scenarios/demo.yaml`;
+  - `make demo-reset`
+  - `make demo-reset DEMO_SCENARIO=configs/scenarios/demo.yaml`
+  - для ручного override вне demo-сценария:
+    - `make sim-reset UAVSIM_VEHICLE_ID=vehicle.ks0223.arcade.red.v1`
+    - `make sim-reset UAVSIM_VEHICLE_ID=vehicle.ks0223.v1`
+    - `make sim-reset UAVSIM_VEHICLE_ID=vehicle.drone.simple.v1`
+    - `make sim-reset UAVSIM_TRACK_ID=track.roadsystem_arena.v1`
 
 ## Упрощённый Make Workflow
 - `make sim-public`: запуск Unity с API для Docker/внешних клиентов.

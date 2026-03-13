@@ -69,6 +69,7 @@ namespace UavSimulator.Tracks
 
             road = BuildMainRoad(roadSystemRoot.transform);
             CreateShoulders(road);
+            CreateCenterAndEdgeMarkings(road);
             CreateCurbs(road);
             CreateBoundaries(road);
             CreateStartAndFinish(road);
@@ -96,10 +97,16 @@ namespace UavSimulator.Tracks
             var landscape = CreateBlock("Landscape", transform, new Vector3(0f, -0.30f, 0f), new Vector3(groundSize + 16f, 0.12f, groundSize + 16f));
             var ground = CreateBlock("Ground", transform, new Vector3(0f, -0.14f, 0f), new Vector3(groundSize, 0.28f, groundSize));
             var infield = CreateBlock("Infield", transform, new Vector3(-0.8f, -0.11f, -0.4f), new Vector3(22f, 0.05f, 22f));
+            var paddock = CreateBlock("Paddock", transform, new Vector3(-18f, -0.12f, -15f), new Vector3(16f, 0.04f, 10f));
+            var serviceZone = CreateBlock("ServiceZone", transform, new Vector3(17.5f, -0.12f, 12f), new Vector3(14f, 0.04f, 11f));
+            var spectatorApron = CreateBlock("SpectatorApron", transform, new Vector3(0f, -0.12f, 19f), new Vector3(30f, 0.04f, 9f));
 
             ApplyMaterial(landscape, groundMaterial);
             ApplyMaterial(ground, groundMaterial);
             ApplyColor(infield, new Color(0.28f, 0.35f, 0.25f), 0.08f);
+            ApplyColor(paddock, new Color(0.24f, 0.24f, 0.26f), 0.18f);
+            ApplyColor(serviceZone, new Color(0.26f, 0.27f, 0.29f), 0.16f);
+            ApplyColor(spectatorApron, new Color(0.30f, 0.31f, 0.33f), 0.18f);
         }
 
         private Road BuildMainRoad(Transform parent)
@@ -364,14 +371,14 @@ namespace UavSimulator.Tracks
             sun.transform.rotation = Quaternion.Euler(38f, -34f, 0f);
             var sunLight = sun.AddComponent<Light>();
             sunLight.type = LightType.Directional;
-            sunLight.intensity = 1.05f;
+            sunLight.intensity = 1.15f;
             sunLight.color = new Color(1.0f, 0.97f, 0.92f);
             sunLight.shadows = LightShadows.Soft;
 
             RenderSettings.ambientMode = AmbientMode.Trilight;
-            RenderSettings.ambientSkyColor = new Color(0.54f, 0.62f, 0.72f);
-            RenderSettings.ambientEquatorColor = new Color(0.34f, 0.37f, 0.40f);
-            RenderSettings.ambientGroundColor = new Color(0.22f, 0.24f, 0.25f);
+            RenderSettings.ambientSkyColor = new Color(0.58f, 0.67f, 0.77f);
+            RenderSettings.ambientEquatorColor = new Color(0.38f, 0.40f, 0.43f);
+            RenderSettings.ambientGroundColor = new Color(0.24f, 0.25f, 0.24f);
 
             CreateLamp(lightsRoot.transform, "LampA", new Vector3(-14f, 0f, -11f));
             CreateLamp(lightsRoot.transform, "LampB", new Vector3(-13f, 0f, 1f));
@@ -388,11 +395,24 @@ namespace UavSimulator.Tracks
             CreateTree(propsRoot.transform, "TreeB", new Vector3(-18f, 0f, -3f), 0.95f);
             CreateTree(propsRoot.transform, "TreeC", new Vector3(17f, 0f, 7f), 1.15f);
             CreateTree(propsRoot.transform, "TreeD", new Vector3(18f, 0f, -10f), 1.0f);
+            CreateTree(propsRoot.transform, "TreeE", new Vector3(-3f, 0f, 21f), 1.05f);
+            CreateTree(propsRoot.transform, "TreeF", new Vector3(7f, 0f, 22f), 0.92f);
+            CreateTree(propsRoot.transform, "TreeG", new Vector3(22f, 0f, 14f), 1.08f);
+            CreateTree(propsRoot.transform, "TreeH", new Vector3(-23f, 0f, 8f), 0.98f);
 
             CreateCone(propsRoot.transform, "ConeA", new Vector3(-11f, 0f, -12f));
             CreateCone(propsRoot.transform, "ConeB", new Vector3(-9.5f, 0f, -12f));
             CreateCone(propsRoot.transform, "ConeC", new Vector3(9f, 0f, 4f));
             CreateCone(propsRoot.transform, "ConeD", new Vector3(10.5f, 0f, 4f));
+            CreateCone(propsRoot.transform, "ConeE", new Vector3(-13.5f, 0f, -13.2f));
+            CreateCone(propsRoot.transform, "ConeF", new Vector3(-13.5f, 0f, -11.2f));
+            CreateCone(propsRoot.transform, "ConeG", new Vector3(6.5f, 0f, 7.4f));
+            CreateCone(propsRoot.transform, "ConeH", new Vector3(8f, 0f, 6.6f));
+
+            CreateGrandstand(propsRoot.transform, "GrandstandNorth", new Vector3(0f, 0f, 23f), 10, 4, 0f);
+            CreateGrandstand(propsRoot.transform, "GrandstandWest", new Vector3(-23f, 0f, -1f), 8, 3, 90f);
+            CreateBillboard(propsRoot.transform, "BillboardStart", new Vector3(-18f, 0f, -8f), 30f, "RUSIM DEMO");
+            CreateBillboard(propsRoot.transform, "BillboardEast", new Vector3(18f, 0f, 10f), -55f, "SIM TRACK");
         }
 
         private void CreateArcadeBackdropMeshes()
@@ -511,6 +531,60 @@ namespace UavSimulator.Tracks
             bulb.transform.localPosition = new Vector3(0f, 2.95f, 0f);
             DisableCollider(bulb);
             ApplyColor(bulb, new Color(0.95f, 0.92f, 0.62f), 0.75f);
+        }
+
+        private static void CreateGrandstand(Transform parent, string name, Vector3 localPosition, int seatsPerRow, int rowCount, float yawDeg)
+        {
+            var stand = new GameObject(name);
+            stand.transform.SetParent(parent, false);
+            stand.transform.localPosition = localPosition;
+            stand.transform.localRotation = Quaternion.Euler(0f, yawDeg, 0f);
+
+            var baseBlock = CreateBlock("Base", stand.transform, new Vector3(0f, 0.25f, 0f), new Vector3(seatsPerRow * 0.55f, 0.5f, 2.2f));
+            DisableCollider(baseBlock);
+            ApplyColor(baseBlock, new Color(0.25f, 0.27f, 0.30f), 0.18f);
+
+            for (var row = 0; row < rowCount; row++)
+            {
+                var seatRow = CreateBlock(
+                    $"Row_{row:00}",
+                    stand.transform,
+                    new Vector3(0f, 0.55f + row * 0.22f, -0.55f + row * 0.32f),
+                    new Vector3(seatsPerRow * 0.48f, 0.18f, 0.28f));
+                DisableCollider(seatRow);
+                ApplyColor(seatRow, (row % 2 == 0) ? new Color(0.75f, 0.18f, 0.16f) : new Color(0.87f, 0.87f, 0.90f), 0.14f);
+            }
+        }
+
+        private static void CreateBillboard(Transform parent, string name, Vector3 localPosition, float yawDeg, string caption)
+        {
+            var billboard = new GameObject(name);
+            billboard.transform.SetParent(parent, false);
+            billboard.transform.localPosition = localPosition;
+            billboard.transform.localRotation = Quaternion.Euler(0f, yawDeg, 0f);
+
+            var postsOffset = 1.85f;
+            var postLeft = CreateBlock("PostL", billboard.transform, new Vector3(-postsOffset, 1.4f, 0f), new Vector3(0.14f, 2.8f, 0.14f));
+            var postRight = CreateBlock("PostR", billboard.transform, new Vector3(postsOffset, 1.4f, 0f), new Vector3(0.14f, 2.8f, 0.14f));
+            var board = CreateBlock("Board", billboard.transform, new Vector3(0f, 2.55f, 0f), new Vector3(4.4f, 1.5f, 0.14f));
+            DisableCollider(postLeft);
+            DisableCollider(postRight);
+            DisableCollider(board);
+            ApplyColor(postLeft, new Color(0.42f, 0.43f, 0.46f), 0.15f);
+            ApplyColor(postRight, new Color(0.42f, 0.43f, 0.46f), 0.15f);
+            ApplyColor(board, new Color(0.10f, 0.12f, 0.18f), 0.18f);
+
+            var plateCount = Mathf.Max(3, caption.Length / 4);
+            for (var i = 0; i < plateCount; i++)
+            {
+                var plate = CreateBlock(
+                    $"CaptionPlate_{i:00}",
+                    billboard.transform,
+                    new Vector3(-1.45f + i * 0.55f, 2.55f, -0.08f),
+                    new Vector3(0.34f, 0.18f, 0.02f));
+                DisableCollider(plate);
+                ApplyColor(plate, new Color(0.88f, 0.90f, 0.94f), 0.08f);
+            }
         }
 
         private void ClearChildren()

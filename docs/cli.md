@@ -338,12 +338,6 @@ $RUSIM_HOME/runtime/
 rusim scenario validate configs/scenarios/demo.yaml
 ```
 
-Для realistic v2:
-
-```bash
-rusim scenario validate configs/scenarios/demo-realistic-v2.yaml
-```
-
 ### Печать reset payload
 
 ```bash
@@ -356,11 +350,9 @@ rusim scenario print-reset configs/scenarios/demo.yaml
 rusim scenario reset configs/scenarios/demo.yaml --base-url http://127.0.0.1:8000
 ```
 
-Для realistic v2:
-
-```bash
-rusim scenario reset configs/scenarios/demo-realistic-v2.yaml --base-url http://127.0.0.1:8000
-```
+Важно:
+- `configs/scenarios/demo.yaml` является каноническим demo-сценарием для `make demo-reset` и `make demo-proof`.
+- Для разовых экспериментов можно использовать любые другие scenario-файлы, но базовый runbook проекта опирается именно на `demo.yaml`.
 
 ## 11. Одиночный step
 

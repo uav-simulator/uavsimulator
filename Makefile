@@ -17,8 +17,8 @@ UAVSIM_ROS_NAMESPACE ?= /uavsim/ks0223
 UAVSIM_ROS_RATE_HZ ?= 15
 UAVSIM_ODOM_HZ_MIN ?= 10
 UAVSIM_ROS_RESET_ON_START ?= 0
-UAVSIM_VEHICLE_ID ?= vehicle.ks0223.v1
-UAVSIM_TRACK_ID ?= track.basic_arena.v1
+UAVSIM_VEHICLE_ID ?= vehicle.ks0223.arcade.blue.v1
+UAVSIM_TRACK_ID ?= track.roadsystem_realistic.v2
 UAVSIM_CAMERA_TOPIC ?= $(UAVSIM_ROS_NAMESPACE)/camera/front/image_raw
 UAVSIM_CMD_TOPIC ?= /cmd_vel
 UAVSIM_CMD_LINEAR ?= 0.5
@@ -38,6 +38,7 @@ ROS_BRIDGE_RESET_FLAG := $(if $(filter 1 true TRUE yes YES,$(UAVSIM_ROS_RESET_ON
 	ros-install-control-ui ros-cmd-vel ros-stop clean-pyc
 
 SCENARIO ?= $(PROJECT_ROOT)/configs/scenarios/demo.yaml
+DEMO_SCENARIO ?= $(PROJECT_ROOT)/configs/scenarios/demo.yaml
 RUNTIME_APP ?=
 RUSIM_RELEASE_REPO ?= NMGorovenko/uav-simulator
 RUSIM_RELEASE_TAG ?= latest
@@ -67,15 +68,14 @@ help:
 	@echo "  make sim-server-stop"
 	@echo "  make sim-scenario-validate SCENARIO=configs/scenarios/demo.yaml"
 	@echo "  make sim-scenario-reset SCENARIO=configs/scenarios/demo.yaml"
-	@echo "  make sim-scenario-reset SCENARIO=configs/scenarios/demo-realistic-v2.yaml"
 	@echo "  make demo-up     - start ROS desktop + bridge + RViz/rqt windows"
-	@echo "  make demo-reset  - reset simulator to baseline robot/track"
+	@echo "  make demo-reset  - reset simulator to current demo scenario"
 	@echo "  make demo-status - quick health check (API + ROS topics + bridge log)"
 	@echo "  make demo-proof  - strict pre-demo proof (health + reset + camera + ROS hz)"
 	@echo "  make demo-proof-ci - CI smoke (graceful skip if Unity/ROS not running)"
 	@echo "  make demo-control - demo-up + ROS steering UI (cmd_vel)"
-	@echo "  make demo-reset UAVSIM_TRACK_ID=track.roadsystem_arena.v1"
-	@echo "  make demo-reset UAVSIM_VEHICLE_ID=vehicle.drone.simple.v1"
+	@echo "  make demo-reset DEMO_SCENARIO=configs/scenarios/demo.yaml"
+	@echo "  make sim-reset UAVSIM_TRACK_ID=track.roadsystem_arena.v1 UAVSIM_VEHICLE_ID=vehicle.drone.simple.v1"
 	@echo "  make demo-down   - stop ROS desktop container"
 	@echo "  make demo-restart - full ROS restart (down -> up)"
 	@echo ""
@@ -198,8 +198,9 @@ demo-up: ros-up ros-bridge-container ros-ui-container demo-reset
 demo-control: demo-up ros-install-control-ui ros-control-ui-container
 	@echo "Control UI ready: Robot Steering on topic $(UAVSIM_CMD_TOPIC)"
 
-demo-reset: sim-reset
-	@echo "Simulator reset done: vehicle=$(UAVSIM_VEHICLE_ID), track=$(UAVSIM_TRACK_ID)"
+demo-reset:
+	PYTHONPATH=python $(PYTHON) -m sim_client.cli scenario reset "$(DEMO_SCENARIO)" --base-url "$(BASE_URL)"
+	@echo "Simulator reset done: scenario=$(DEMO_SCENARIO)"
 
 ros-demo-reset: demo-reset
 
@@ -218,7 +219,8 @@ demo-proof:
 	health_json="$$(curl -m 4 -fsS "$(BASE_URL)/health")"; \
 	echo "$$health_json"; \
 	echo "[2/6] simulator reset"; \
-	reset_json="$$(curl -m 10 -fsS -X POST "$(BASE_URL)/reset" -H 'Content-Type: application/json' -d '{"seed":1,"timeScale":1.0,"selectedTrackId":"$(UAVSIM_TRACK_ID)","selectedVehicleId":"$(UAVSIM_VEHICLE_ID)","trackParams":[],"vehicleParams":[],"flags":[]}')"; \
+	reset_payload="$$(PYTHONPATH=python $(PYTHON) -m sim_client.cli scenario print-reset "$(DEMO_SCENARIO)")"; \
+	reset_json="$$(curl -m 10 -fsS -X POST "$(BASE_URL)/reset" -H 'Content-Type: application/json' -d "$$reset_payload")"; \
 	echo "$$reset_json" | head -c 220; \
 	echo; \
 	echo "[3/6] simulator step + frame payload check"; \
