@@ -47,9 +47,12 @@ namespace UavSimulator.Vehicles
         [SerializeField] private float lineSensorForwardOffsetM = 0.19f;
         [SerializeField] private float lineSensorHalfSpanM = 0.08f;
         [SerializeField] private float lineSensorDetectionWidthM = 0.12f;
-        [SerializeField] private int cameraImageWidth = 640;
-        [SerializeField] private int cameraImageHeight = 480;
-        [SerializeField] [Range(20, 100)] private int cameraJpegQuality = 100;
+        [SerializeField] private int cameraImageWidth = 1280;
+        [SerializeField] private int cameraImageHeight = 720;
+        [SerializeField] [Range(20, 100)] private int cameraJpegQuality = 95;
+        [SerializeField] [Range(1, 8)] private int cameraMsaaSamples = 4;
+        [SerializeField] [Range(0, 16)] private int cameraAnisoLevel = 8;
+        [SerializeField] private bool cameraAllowHdr = true;
         [SerializeField] private Vector3 cameraLocalPosition = new Vector3(0f, 0.13f, 0.18f);
         [SerializeField] private Vector3 cameraLocalEuler = new Vector3(9f, 0f, 0f);
         [SerializeField] private Color presentationAccentColor = new Color(0.77f, 0.11f, 0.10f);
@@ -262,11 +265,58 @@ namespace UavSimulator.Vehicles
 
         public override void ApplyVehicleConfig(ConfigKeyValue[] vehicleParams)
         {
+            if (TryGetConfigValue(vehicleParams, "camera.profile", out var profile))
+            {
+                ApplyCameraProfile(profile);
+            }
+
+            var shouldRecreateTargets = false;
+            if (TryGetConfigInt(vehicleParams, "camera.width", out var width))
+            {
+                cameraImageWidth = Mathf.Clamp(width, 320, 1920);
+                shouldRecreateTargets = true;
+            }
+
+            if (TryGetConfigInt(vehicleParams, "camera.height", out var height))
+            {
+                cameraImageHeight = Mathf.Clamp(height, 240, 1080);
+                shouldRecreateTargets = true;
+            }
+
+            if (TryGetConfigInt(vehicleParams, "camera.jpeg_quality", out var quality))
+            {
+                cameraJpegQuality = Mathf.Clamp(quality, 20, 100);
+            }
+
+            if (TryGetConfigInt(vehicleParams, "camera.msaa", out var msaa))
+            {
+                cameraMsaaSamples = NormalizeMsaaSamples(msaa);
+                shouldRecreateTargets = true;
+            }
+
+            if (TryGetConfigInt(vehicleParams, "camera.aniso", out var aniso))
+            {
+                cameraAnisoLevel = Mathf.Clamp(aniso, 0, 16);
+                shouldRecreateTargets = true;
+            }
+
+            if (TryGetConfigBool(vehicleParams, "camera.hdr", out var hdr))
+            {
+                cameraAllowHdr = hdr;
+                shouldRecreateTargets = true;
+            }
+
             if (TryGetConfigValue(vehicleParams, "camera.mode", out var mode))
             {
                 cameraMode = NormalizeCameraMode(mode);
-                ApplyCameraMode();
             }
+
+            if (shouldRecreateTargets)
+            {
+                RecreateCameraTargets();
+            }
+
+            ApplyCameraMode();
         }
 
         public override void SetPeerVisibility(bool visible)
@@ -356,24 +406,13 @@ namespace UavSimulator.Vehicles
             frontCamera.clearFlags = CameraClearFlags.SolidColor;
             frontCamera.backgroundColor = new Color(0.58f, 0.75f, 0.94f);
             frontCamera.nearClipPlane = 0.03f;
-            frontCamera.farClipPlane = 40f;
+            frontCamera.farClipPlane = 120f;
             frontCamera.fieldOfView = 68f;
-            frontCamera.allowHDR = false;
-            frontCamera.allowMSAA = false;
+            frontCamera.allowHDR = cameraAllowHdr;
+            frontCamera.allowMSAA = cameraMsaaSamples > 1;
             defaultCameraCullingMask = frontCamera.cullingMask;
             ApplyCameraMode();
-
-            frontCameraRt = new RenderTexture(cameraImageWidth, cameraImageHeight, 16, RenderTextureFormat.ARGB32)
-            {
-                name = "KS0223.FrontCameraRT",
-                antiAliasing = 1,
-            };
-            frontCameraRt.Create();
-
-            frontCameraTexture = new Texture2D(cameraImageWidth, cameraImageHeight, TextureFormat.RGB24, false, false)
-            {
-                name = "KS0223.FrontCameraBuffer",
-            };
+            RecreateCameraTargets();
         }
 
         private void ApplyCameraMode()
@@ -414,6 +453,170 @@ namespace UavSimulator.Vehicles
             frontCamera.transform.localPosition = localPosition;
             frontCamera.transform.localRotation = Quaternion.Euler(localEuler);
             frontCamera.fieldOfView = fieldOfView;
+        }
+
+        private void ApplyCameraProfile(string profileRaw)
+        {
+            var profile = string.IsNullOrWhiteSpace(profileRaw) ? "high" : profileRaw.Trim().ToLowerInvariant();
+            switch (profile)
+            {
+                case "performance":
+                    cameraImageWidth = 640;
+                    cameraImageHeight = 360;
+                    cameraJpegQuality = 72;
+                    cameraMsaaSamples = 1;
+                    cameraAnisoLevel = 2;
+                    cameraAllowHdr = false;
+                    break;
+                case "balanced":
+                    cameraImageWidth = 960;
+                    cameraImageHeight = 540;
+                    cameraJpegQuality = 84;
+                    cameraMsaaSamples = 2;
+                    cameraAnisoLevel = 4;
+                    cameraAllowHdr = false;
+                    break;
+                case "ultra":
+                    cameraImageWidth = 1600;
+                    cameraImageHeight = 900;
+                    cameraJpegQuality = 96;
+                    cameraMsaaSamples = 8;
+                    cameraAnisoLevel = 12;
+                    cameraAllowHdr = true;
+                    break;
+                default:
+                    cameraImageWidth = 1280;
+                    cameraImageHeight = 720;
+                    cameraJpegQuality = 92;
+                    cameraMsaaSamples = 4;
+                    cameraAnisoLevel = 8;
+                    cameraAllowHdr = true;
+                    break;
+            }
+
+            cameraMsaaSamples = NormalizeMsaaSamples(cameraMsaaSamples);
+            RecreateCameraTargets();
+        }
+
+        private void RecreateCameraTargets()
+        {
+            if (frontCamera == null)
+            {
+                return;
+            }
+
+            if (frontCameraRt != null)
+            {
+                frontCameraRt.Release();
+                Destroy(frontCameraRt);
+                frontCameraRt = null;
+            }
+
+            if (frontCameraTexture != null)
+            {
+                Destroy(frontCameraTexture);
+                frontCameraTexture = null;
+            }
+
+            var msaa = NormalizeMsaaSamples(cameraMsaaSamples);
+            frontCamera.allowHDR = cameraAllowHdr;
+            frontCamera.allowMSAA = msaa > 1;
+            frontCameraRt = new RenderTexture(cameraImageWidth, cameraImageHeight, 24, RenderTextureFormat.ARGB32)
+            {
+                name = "KS0223.FrontCameraRT",
+                antiAliasing = msaa,
+                useMipMap = false,
+                autoGenerateMips = false,
+                filterMode = FilterMode.Bilinear,
+                anisoLevel = cameraAnisoLevel,
+            };
+            frontCameraRt.Create();
+
+            frontCameraTexture = new Texture2D(cameraImageWidth, cameraImageHeight, TextureFormat.RGB24, false, false)
+            {
+                name = "KS0223.FrontCameraBuffer",
+                filterMode = FilterMode.Bilinear,
+                anisoLevel = cameraAnisoLevel,
+            };
+        }
+
+        private static int NormalizeMsaaSamples(int requested)
+        {
+            if (requested >= 8)
+            {
+                return 8;
+            }
+
+            if (requested >= 4)
+            {
+                return 4;
+            }
+
+            if (requested >= 2)
+            {
+                return 2;
+            }
+
+            return 1;
+        }
+
+        private static bool TryGetConfigInt(ConfigKeyValue[] values, string key, out int parsed)
+        {
+            parsed = 0;
+            if (values == null || string.IsNullOrWhiteSpace(key))
+            {
+                return false;
+            }
+
+            for (var i = 0; i < values.Length; i++)
+            {
+                var item = values[i];
+                if (item == null || !string.Equals(item.key, key, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                return int.TryParse(item.value, NumberStyles.Integer, CultureInfo.InvariantCulture, out parsed);
+            }
+
+            return false;
+        }
+
+        private static bool TryGetConfigBool(ConfigKeyValue[] values, string key, out bool parsed)
+        {
+            parsed = false;
+            if (values == null || string.IsNullOrWhiteSpace(key))
+            {
+                return false;
+            }
+
+            for (var i = 0; i < values.Length; i++)
+            {
+                var item = values[i];
+                if (item == null || !string.Equals(item.key, key, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                if (bool.TryParse(item.value, out parsed))
+                {
+                    return true;
+                }
+
+                if (string.Equals(item.value?.Trim(), "1", StringComparison.Ordinal))
+                {
+                    parsed = true;
+                    return true;
+                }
+
+                if (string.Equals(item.value?.Trim(), "0", StringComparison.Ordinal))
+                {
+                    parsed = false;
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private void EnsurePresentationVisuals()

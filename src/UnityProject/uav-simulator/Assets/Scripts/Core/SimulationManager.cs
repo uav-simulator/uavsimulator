@@ -31,6 +31,7 @@ namespace UavSimulator.Core
         private const string RouteLoopKey = "route.loop";
         private const string SpawnPositionKey = "spawn.position";
         private const string SpawnYawDegKey = "spawn.yaw_deg";
+        private const string RenderQualityProfileKey = "render.quality_profile";
 
         [SerializeField] private Transform trackRoot;
         [SerializeField] private Transform vehicleRoot;
@@ -72,6 +73,7 @@ namespace UavSimulator.Core
         {
             registry = PluginRegistry.Load();
             defaultTimeScale = Time.timeScale;
+            ApplyRuntimeGraphicsProfile("high");
             BindExistingSceneObjects();
         }
 
@@ -155,6 +157,8 @@ namespace UavSimulator.Core
         {
             var validation = SimulationConfigValidator.Validate(config, registry);
             var resolvedAgents = ResolveAgentConfigs(config, validation.Vehicle);
+            var qualityProfile = ReadConfigValue(config.flags, RenderQualityProfileKey);
+            ApplyRuntimeGraphicsProfile(string.IsNullOrWhiteSpace(qualityProfile) ? "high" : qualityProfile);
 
             DestroyActiveInstances();
 
@@ -542,6 +546,89 @@ namespace UavSimulator.Core
             }
 
             return false;
+        }
+
+        private static string ReadConfigValue(ConfigKeyValue[] values, string key)
+        {
+            if (values == null || string.IsNullOrWhiteSpace(key))
+            {
+                return null;
+            }
+
+            for (var i = 0; i < values.Length; i++)
+            {
+                var item = values[i];
+                if (item == null || string.IsNullOrWhiteSpace(item.key))
+                {
+                    continue;
+                }
+
+                if (string.Equals(item.key, key, StringComparison.OrdinalIgnoreCase))
+                {
+                    return item.value;
+                }
+            }
+
+            return null;
+        }
+
+        private static void ApplyRuntimeGraphicsProfile(string rawProfile)
+        {
+            var profile = string.IsNullOrWhiteSpace(rawProfile) ? "high" : rawProfile.Trim().ToLowerInvariant();
+            var qualityNames = QualitySettings.names;
+            if (qualityNames == null || qualityNames.Length == 0)
+            {
+                return;
+            }
+
+            var explicitIndex = Array.FindIndex(qualityNames, name => string.Equals(name, rawProfile, StringComparison.OrdinalIgnoreCase));
+            if (explicitIndex >= 0)
+            {
+                QualitySettings.SetQualityLevel(explicitIndex, applyExpensiveChanges: true);
+            }
+            else
+            {
+                var targetIndex = profile switch
+                {
+                    "performance" => 0,
+                    "balanced" => Mathf.Clamp((qualityNames.Length - 1) / 2, 0, qualityNames.Length - 1),
+                    "ultra" => qualityNames.Length - 1,
+                    _ => Mathf.Clamp(qualityNames.Length - 2, 0, qualityNames.Length - 1),
+                };
+                QualitySettings.SetQualityLevel(targetIndex, applyExpensiveChanges: true);
+            }
+
+            switch (profile)
+            {
+                case "performance":
+                    QualitySettings.antiAliasing = 0;
+                    QualitySettings.shadowDistance = 35f;
+                    QualitySettings.lodBias = 0.9f;
+                    Application.targetFrameRate = 60;
+                    break;
+                case "balanced":
+                    QualitySettings.antiAliasing = 2;
+                    QualitySettings.shadowDistance = 65f;
+                    QualitySettings.lodBias = 1.3f;
+                    Application.targetFrameRate = 75;
+                    break;
+                case "ultra":
+                    QualitySettings.antiAliasing = 8;
+                    QualitySettings.shadowDistance = 140f;
+                    QualitySettings.lodBias = 2.2f;
+                    Application.targetFrameRate = 120;
+                    break;
+                default:
+                    QualitySettings.antiAliasing = 4;
+                    QualitySettings.shadowDistance = 100f;
+                    QualitySettings.lodBias = 1.8f;
+                    Application.targetFrameRate = 90;
+                    break;
+            }
+
+            QualitySettings.anisotropicFiltering = AnisotropicFiltering.ForceEnable;
+            QualitySettings.globalTextureMipmapLimit = 0;
+            QualitySettings.vSyncCount = 0;
         }
 
         private static Vector3 ToVector3(Vector3f value)

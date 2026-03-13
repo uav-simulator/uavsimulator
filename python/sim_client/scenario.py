@@ -110,6 +110,7 @@ def scenario_to_reset_config(payload: Mapping[str, Any]) -> Dict[str, Any]:
     route = _as_mapping(payload.get("route"))
     runtime = _as_mapping(payload.get("runtime"))
     agents = _as_mapping(payload.get("agents"))
+    sensors = _as_mapping(payload.get("sensors"))
 
     track_params: List[Dict[str, str]] = []
     vehicle_params: List[Dict[str, str]] = []
@@ -119,6 +120,11 @@ def scenario_to_reset_config(payload: Mapping[str, Any]) -> Dict[str, Any]:
         track_params.append(_kv(item[0], item[1]))
     for item in _mapping_items(vehicle, "params"):
         vehicle_params.append(_kv(item[0], item[1]))
+
+    camera = _as_mapping(sensors.get("camera"))
+    camera_profile = camera.get("profile")
+    if isinstance(camera_profile, str) and camera_profile.strip():
+        _upsert_param(vehicle_params, "camera.profile", camera_profile.strip())
 
     waypoints = route.get("waypoints")
     if isinstance(waypoints, list) and waypoints:
@@ -212,6 +218,14 @@ def _bool_str(value: Any) -> str:
 
 def _kv(key: str, value: str) -> Dict[str, str]:
     return {"key": key, "value": value}
+
+
+def _upsert_param(items: List[Dict[str, str]], key: str, value: str) -> None:
+    for item in items:
+        if item.get("key") == key:
+            item["value"] = value
+            return
+    items.append(_kv(key, value))
 
 
 def _build_agents_payload(
