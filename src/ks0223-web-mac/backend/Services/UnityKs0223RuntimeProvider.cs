@@ -894,6 +894,9 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
     {
         var commandState = GetAgentControlStateSnapshot(agentId);
 
+        flat["drive.left_pwm_norm"] = commandState.LeftPwmNorm.ToString("0.###", CultureInfo.InvariantCulture);
+        flat["drive.right_pwm_norm"] = commandState.RightPwmNorm.ToString("0.###", CultureInfo.InvariantCulture);
+        flat["control.brake_norm"] = commandState.BrakeNorm.ToString("0.###", CultureInfo.InvariantCulture);
         flat["config.auto_scan_enabled"] = ultrasonicAutoScanEnabled ? "true" : "false";
         flat["config.ultrasonic_servo_pin"] = ultrasonicServoPin.ToString(CultureInfo.InvariantCulture);
         flat["ultrasonic.scan_servo_angle_deg"] = ultrasonicAngleDeg.ToString(CultureInfo.InvariantCulture);
