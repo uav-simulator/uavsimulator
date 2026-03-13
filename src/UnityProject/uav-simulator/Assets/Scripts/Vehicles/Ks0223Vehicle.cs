@@ -162,9 +162,23 @@ namespace UavSimulator.Vehicles
             }
 
             var previousActiveRt = RenderTexture.active;
+            var renderers = GetComponentsInChildren<Renderer>(includeInactive: false);
+            var previousStates = new bool[renderers.Length];
 
             try
             {
+                for (var i = 0; i < renderers.Length; i++)
+                {
+                    var renderer = renderers[i];
+                    if (renderer == null)
+                    {
+                        continue;
+                    }
+
+                    previousStates[i] = renderer.enabled;
+                    renderer.enabled = false;
+                }
+
                 frontCamera.targetTexture = frontCameraRt;
                 frontCamera.Render();
 
@@ -201,6 +215,17 @@ namespace UavSimulator.Vehicles
             }
             finally
             {
+                for (var i = 0; i < renderers.Length; i++)
+                {
+                    var renderer = renderers[i];
+                    if (renderer == null)
+                    {
+                        continue;
+                    }
+
+                    renderer.enabled = previousStates[i];
+                }
+
                 RenderTexture.active = previousActiveRt;
                 if (frontCamera != null)
                 {

@@ -40,6 +40,8 @@
   - `make sim-health`, `make sim-step`, `make sim-reset`
 
 Примечание:
+- `make demo-reset` и `make demo-proof` теперь используют единый сценарий `configs/scenarios/demo.yaml`.
+- При необходимости можно подменить demo-сценарий через `DEMO_SCENARIO=...`, не меняя `Makefile`.
 - `make demo-status` теперь выводит preflight по `ros-humble-image-transport-plugins`.
 - `make demo-proof` завершится ошибкой, если не выполняется любой из шагов проверки (`health/reset/step-frame/camera-one-shot/odom-hz`).
 - Порог `odom hz` можно настроить через `UAVSIM_ODOM_HZ_MIN` (по умолчанию `10`).
@@ -62,12 +64,15 @@
 - При старте сцены транспорт не создаётся автоматически: нужен явный `reset`.
 
 ## Быстрое переключение машины
-- Через reset API/Makefile:
-  - `make demo-reset UAVSIM_VEHICLE_ID=vehicle.ks0223.v1`
-  - `make demo-reset UAVSIM_VEHICLE_ID=vehicle.ks0223.arcade.blue.v1`
-  - `make demo-reset UAVSIM_VEHICLE_ID=vehicle.ks0223.arcade.red.v1`
-  - `make demo-reset UAVSIM_VEHICLE_ID=vehicle.drone.simple.v1`
-  - `make demo-reset UAVSIM_TRACK_ID=track.roadsystem_arena.v1`
+- Через demo-сценарий:
+  - `make demo-reset`
+  - `make demo-reset DEMO_SCENARIO=configs/scenarios/demo.yaml`
+- Через raw reset API/Makefile:
+  - `make sim-reset UAVSIM_VEHICLE_ID=vehicle.ks0223.v1`
+  - `make sim-reset UAVSIM_VEHICLE_ID=vehicle.ks0223.arcade.blue.v1`
+  - `make sim-reset UAVSIM_VEHICLE_ID=vehicle.ks0223.arcade.red.v1`
+  - `make sim-reset UAVSIM_VEHICLE_ID=vehicle.drone.simple.v1`
+  - `make sim-reset UAVSIM_TRACK_ID=track.roadsystem_arena.v1`
 
 ## Next steps
 - Добавить формальный build pipeline для standalone player.
