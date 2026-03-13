@@ -1,45 +1,84 @@
-## Purpose
-Зафиксировать правила расширения симулятора (плагины/модули) без “разрастания” ядра.
+## Назначение
+Зафиксировать текущую plugin-архитектуру симулятора и правила её расширения без разрастания core-слоя.
 
-## Assumptions
-- Плагины должны быть отключаемыми и не требовать ручной правки сцен для включения/выключения.
+## Текущая схема
+- Реестр плагинов хранится в `Assets/Resources/UavSimulator/PluginRegistry.asset`.
+- Дополнительные descriptor assets автоматически подхватываются из:
+  - `Assets/Resources/UavSimulator/Plugins/Vehicles`
+  - `Assets/Resources/UavSimulator/Plugins/Tracks`
+- `PluginRegistry.Load()` объединяет:
+  - curated registry asset;
+  - auto-discovery из `Resources/UavSimulator/Plugins`.
+- Если assets отсутствуют или каталог пустой, включается runtime fallback через `BuiltinPluginFactory`.
 
-## Decisions
-- Плагины выделяются в отдельные папки и подключаются через конфигурацию.
-- Настройки плагинов хранятся в конфиг-ассетах (ScriptableObject), чтобы минимизировать кодовые изменения.
-- При отсутствии plugin assets загружается встроенный runtime fallback (`BuiltinPluginFactory`) для локальной проверки API/сцены.
-- Robot plugin включает:
-  - Unity prefab (визуал + физика + `VehicleBase`);
-  - `DeviceContractDescriptorAsset` (сенсоры/актуаторы/схемы);
-  - runtime adapter (опционально) для реального железа.
-- Для реального робота (KS0223) используется отдельный hardware adapter, который не меняет core API и может быть отключён.
-- ROS2 поддержка оформлена как отдельный bridge-plugin слой:
-  - Unity host (`Ros2BridgeProcessHost`) поднимает внешний process bridge;
-  - bridge читает/пишет через текущий HTTP API и публикует/подписывается в ROS2 топики;
-  - core контракты `SimulationConfig/ControlCommand/StepResult` не меняются.
+## Состав vehicle plugin
+- `VehiclePluginDescriptor`
+  - идентификатор машинки;
+  - человекочитаемое имя;
+  - ссылка на prefab с `VehicleBase`-совместимым runtime компонентом;
+  - ссылка на `DeviceContractDescriptorAsset`.
+- `DeviceContractDescriptorAsset`
+  - сенсоры;
+  - актуаторы;
+  - observation/action schema.
+- Runtime-реализация
+  - prefab с `Rigidbody`, collider и компонентом-наследником `VehicleBase`;
+  - либо fallback-строитель в `BuiltinPluginFactory` для встроенных профилей.
 
-## Next steps
-- Формат регистрации (runtime): `Resources` (чтобы работало в build без AssetDatabase).
-  - Опционально: `PluginRegistry` asset в `Assets/Resources/UavSimulator/PluginRegistry.asset`.
-  - Альтернатива: отдельные descriptors в `Assets/Resources/UavSimulator/Plugins/` и загрузка через `Resources.LoadAll`.
-- Добавить lifecycle hook’и для hardware adapter (`connect`, `apply`, `read`, `disconnect`) и использовать их только в plugin scope.
+## Состав track plugin
+- `TrackPluginDescriptor`
+  - `trackId`, `displayName`, `description`;
+  - optional prefab;
+  - JSON schema для `trackParams`.
 
-## Текущие vehicle plugins (runtime fallback)
-- `vehicle.ks0223.v1`:
-  - KS0223 контракт/сенсоры + визуал из `PROMETEO - Car Controller` (если ассет доступен).
+## Текущий asset-based каталог
+### Машинки
+- `vehicle.ks0223.v1`
 - `vehicle.ks0223.arcade.blue.v1`
 - `vehicle.ks0223.arcade.red.v1`
 - `vehicle.ks0223.arcade.gray.v1`
 - `vehicle.ks0223.arcade.purple.v1`
-- `vehicle.drone.simple.v1`:
-  - Базовый квадрокоптер с камерой, высотой/скоростью и thrust/pitch/yaw контролем.
+- `vehicle.drone.simple.v1`
 
-## Текущие track plugins (runtime fallback)
+### Треки
 - `track.basic_arena.v1`
-- `track.roadsystem_arena.v1` (на базе `Road System`)
-- `track.roadsystem_realistic.v2` (расширенная RoadSystem карта с бордюрами, старт/финиш зоной и окружением)
+- `track.roadsystem_arena.v1`
+- `track.roadsystem_realistic.v2`
 
-Примечание:
-- Все перечисленные `vehicleId` используют общую KS0223 физику/сенсоры (`Ks0223Vehicle`), но разные визуальные модели.
-- Встроенный fallback загрузчик визуалов использует `AssetDatabase` (Unity Editor). Для standalone/server build рекомендован `Resources`-реестр плагинов с проставленными prefab references.
-- Для диагностики источника загрузки использовать `GET /health` или `rusim doctor` и поле `pluginRegistrySource`.
+## Где лежат assets
+- Реестр: `Assets/Resources/UavSimulator/PluginRegistry.asset`
+- Контракты: `Assets/Resources/UavSimulator/Contracts`
+- Машинки: `Assets/Resources/UavSimulator/Plugins/Vehicles`
+- Треки: `Assets/Resources/UavSimulator/Plugins/Tracks`
+
+## Синхронизация built-in каталога
+Для встроенных профилей добавлен editor utility:
+
+```text
+UavSimulator/Plugins/Sync Builtin Plugin Catalog
+```
+
+Он создаёт или обновляет:
+- `PluginRegistry.asset`
+- `VehiclePluginDescriptor`
+- `TrackPluginDescriptor`
+- `DeviceContractDescriptorAsset`
+
+CLI-эквивалент:
+
+```bash
+"/Applications/Unity/Hub/Editor/6000.1.8f1/Unity.app/Contents/MacOS/Unity" \
+  -projectPath "src/UnityProject/uav-simulator" \
+  -batchmode -quit \
+  -executeMethod UavSimulator.EditorTools.PluginCatalogSeeder.SyncBuiltinPluginCatalog
+```
+
+## Диагностика
+- Проверить каталог можно через:
+  - `GET /contract`
+  - `rusim inspect vehicle`
+  - popup выбора машинки в web UI
+- Если descriptor asset создан, но машинка не появляется:
+  - проверить, что asset лежит под `Assets/Resources/UavSimulator/Plugins/...`;
+  - проверить уникальность `id`;
+  - проверить, что prefab содержит runtime компонент, наследующий `VehicleBase`.

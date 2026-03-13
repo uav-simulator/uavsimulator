@@ -1,0 +1,80 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 351819dc65d0440cc94d7ae19b9b7fcc, type: 3}
+  m_Name: vehicle_ks0223_arcade_gray_v1_contract
+  m_EditorClassIdentifier: 
+  contractVersion:
+    major: 0
+    minor: 1
+    patch: 0
+  descriptor:
+    deviceId: vehicle.ks0223.arcade.gray.v1
+    deviceType: ground_robot_differential
+    sensors:
+    - id: camera.front.rgb
+      sensorType: sensor.camera.rgb
+      format: jpeg
+      unit: pixel
+      shape: e00100008002000003000000
+      rateHz: 15
+    - id: speedometer
+      sensorType: sensor.speedometer
+      format: float32
+      unit: m/s
+      shape: 01000000
+      rateHz: 20
+    - id: ultrasonic.front
+      sensorType: sensor.range
+      format: float32
+      unit: m
+      shape: 01000000
+      rateHz: 10
+    - id: line_tracker.front
+      sensorType: sensor.line_tracker
+      format: float32
+      unit: norm
+      shape: 05000000
+      rateHz: 30
+    - id: powertrain.estimate
+      sensorType: sensor.powertrain
+      format: float32
+      unit: mixed
+      shape: 03000000
+      rateHz: 20
+    actuators:
+    - id: control.throttle_norm
+      actuatorType: vehicle_control.throttle
+      unit: norm
+      min: -1
+      max: 1
+    - id: control.steer_norm
+      actuatorType: vehicle_control.steer
+      unit: norm
+      min: -1
+      max: 1
+    - id: control.brake_norm
+      actuatorType: vehicle_control.brake
+      unit: norm
+      min: 0
+      max: 1
+    - id: drive.left_pwm_norm
+      actuatorType: vehicle_control.left_pwm
+      unit: norm
+      min: -1
+      max: 1
+    - id: drive.right_pwm_norm
+      actuatorType: vehicle_control.right_pwm
+      unit: norm
+      min: -1
+      max: 1
+    observationSchemaJson: '{"state":["pose","linearVelocity","angularVelocity","speed"],"camera":"camera/front/image_raw","telemetry":["sensor.speedometer.mps","sensor.ultrasonic.front.m","sensor.line_tracker.s1_norm","sensor.line_tracker.s2_norm","sensor.line_tracker.s3_norm","sensor.line_tracker.s4_norm","sensor.line_tracker.s5_norm","power.battery.voltage_v","power.battery.current_a","power.motor.estimated_w"]}'
+    actionSchemaJson: '{"base":["throttle","steer","brake"],"extensions":["drive.left_pwm_norm","drive.right_pwm_norm","control.throttle_norm","control.steer_norm","control.brake_norm","camera.pan_norm","camera.tilt_norm"]}'

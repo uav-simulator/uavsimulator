@@ -1,0 +1,64 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 351819dc65d0440cc94d7ae19b9b7fcc, type: 3}
+  m_Name: vehicle_drone_simple_v1_contract
+  m_EditorClassIdentifier: 
+  contractVersion:
+    major: 0
+    minor: 1
+    patch: 0
+  descriptor:
+    deviceId: vehicle.drone.simple.v1
+    deviceType: drone_quadcopter
+    sensors:
+    - id: camera.front.rgb
+      sensorType: sensor.camera.rgb
+      format: jpeg
+      unit: pixel
+      shape: 78000000a000000003000000
+      rateHz: 15
+    - id: altimeter
+      sensorType: sensor.altimeter
+      format: float32
+      unit: m
+      shape: 01000000
+      rateHz: 20
+    - id: airspeed
+      sensorType: sensor.airspeed
+      format: float32
+      unit: m/s
+      shape: 01000000
+      rateHz: 20
+    - id: powertrain.estimate
+      sensorType: sensor.powertrain
+      format: float32
+      unit: mixed
+      shape: 02000000
+      rateHz: 10
+    actuators:
+    - id: drone.pitch_norm
+      actuatorType: drone_control.pitch
+      unit: norm
+      min: -1
+      max: 1
+    - id: drone.yaw_norm
+      actuatorType: drone_control.yaw
+      unit: norm
+      min: -1
+      max: 1
+    - id: drone.thrust_norm
+      actuatorType: drone_control.thrust
+      unit: norm
+      min: -1
+      max: 1
+    observationSchemaJson: '{"state":["pose","linearVelocity","angularVelocity","speed"],"camera":"camera/front/image_raw","telemetry":["sensor.altimeter.m","sensor.airspeed.mps","sensor.vertical_speed.mps","power.battery.voltage_v","power.motor.estimated_w"]}'
+    actionSchemaJson: '{"base":["throttle","steer","brake"],"extensions":["drone.pitch_norm","drone.yaw_norm","drone.thrust_norm"]}'

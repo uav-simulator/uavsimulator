@@ -11,8 +11,10 @@
   - сенсоры: камера + численное состояние + plugin telemetry;
   - интерфейс управления: базовый (`throttle/steer/brake`) + расширения через `ControlCommand.extensions`.
 - Ассеты:
-  - префабы транспорта размещаются в `Assets/Prefabs`;
-  - параметры хранятся в конфиг-ассетах (ScriptableObject) или JSON (если принято).
+  - runtime prefab машинки размещается в обычных Unity asset folders;
+  - descriptor asset машинки хранится в `Assets/Resources/UavSimulator/Plugins/Vehicles`;
+  - контракт хранится в `Assets/Resources/UavSimulator/Contracts`;
+  - каталог подхватывается через `PluginRegistry.asset` + auto-discovery из `Resources`.
 - Профиль первого реального робота: Keyestudio KS0223.
   - Добавляется как `VehiclePluginDescriptor`, а не как исключение в ядре.
   - Для KS0223 целевой канал управления: `drive.left_pwm_norm`/`drive.right_pwm_norm` (дифференциальный привод).
@@ -26,3 +28,13 @@
 - Добавить отдельный runtime adapter для KS0223 (Raspberry Pi), который переводит контракт симулятора в GPIO/PWM команды робота.
 - Зафиксировать минимальный профиль телеметрии KS0223 в `VehicleState.telemetry`.
 - После этого провести первые тесты sim2real на малой скорости и с аварийным стопом.
+
+## Практический поток добавления новой машинки
+- Реализовать runtime-компонент, наследующий `VehicleBase`.
+- Собрать prefab с физикой и нужными дочерними объектами.
+- Создать `DeviceContractDescriptorAsset`.
+- Создать `VehiclePluginDescriptor` и положить его в `Assets/Resources/UavSimulator/Plugins/Vehicles`.
+- Проверить, что машинка появилась в `GET /contract` и в web UI.
+
+Подробный пошаговый гайд:
+- см. `docs/plugin-vehicle-guide.md`.
