@@ -12,8 +12,12 @@ namespace UavSimulator.Api
         public string pluginRegistrySource;
         public int availableVehicles;
         public int availableTracks;
+        public string activeAgentId;
         public string activeVehicleId;
         public string activeTrackId;
+        public int activeVehicleCount;
+        public string[] activeAgentIds;
+        public string[] activeVehicleIds;
     }
 
     public sealed class SimulatorApiFacade
@@ -38,26 +42,19 @@ namespace UavSimulator.Api
                 pluginRegistrySource = diagnostics.pluginRegistrySource,
                 availableVehicles = diagnostics.availableVehicles,
                 availableTracks = diagnostics.availableTracks,
+                activeAgentId = diagnostics.activeAgentId,
                 activeVehicleId = diagnostics.activeVehicleId,
                 activeTrackId = diagnostics.activeTrackId,
+                activeVehicleCount = diagnostics.activeVehicleCount,
+                activeAgentIds = diagnostics.activeAgentIds,
+                activeVehicleIds = diagnostics.activeVehicleIds,
             };
         }
 
         public StepResult Reset(SimulationConfig config)
         {
             simulationManager.ResetSimulation(config);
-            simulationManager.TryReadCameraFrame(out var frame);
-
-            var result = new StepResult
-            {
-                state = simulationManager.ReadState(),
-                reward = 0f,
-                done = false,
-                info = Array.Empty<ConfigKeyValue>(),
-                frame = frame,
-            };
-
-            return result;
+            return simulationManager.ReadSnapshot(includeFrame: true);
         }
 
         public StepResult Step(ControlCommand command) => simulationManager.Step(command);

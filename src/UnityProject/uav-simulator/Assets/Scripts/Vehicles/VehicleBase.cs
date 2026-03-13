@@ -6,6 +6,8 @@ namespace UavSimulator.Vehicles
 {
     public abstract class VehicleBase : MonoBehaviour
     {
+        public const int PeerVehicleLayer = 30;
+
         [SerializeField] private string vehicleId;
 
         public string VehicleId => vehicleId;
@@ -48,9 +50,16 @@ namespace UavSimulator.Vehicles
             return false;
         }
 
+        public virtual void ApplyVehicleConfig(ConfigKeyValue[] vehicleParams)
+        {
+        }
+
+        public virtual void SetPeerVisibility(bool visible)
+        {
+        }
+
         public virtual void ResetVehicle(int seed)
         {
         }
     }
 }
-

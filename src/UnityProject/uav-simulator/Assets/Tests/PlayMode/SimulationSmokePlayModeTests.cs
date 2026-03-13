@@ -3,6 +3,7 @@ using System.Collections;
 using System.Linq;
 using UavSimulator.Contracts;
 using UavSimulator.Core;
+using UavSimulator.Plugins;
 using UnityEngine;
 using UnityEngine.TestTools;
 
@@ -110,6 +111,79 @@ namespace UavSimulator.Tests.PlayMode
 
             Assert.That(foundVehicle, Is.True, "Expected builtin KS0223 vehicle contract in availableVehicles.");
             Assert.That(foundCameraSensor, Is.True, "Expected KS0223 contract to expose front camera sensor.");
+            Object.Destroy(root);
+        }
+
+        [UnityTest]
+        public IEnumerator FallbackScene_MultiAgentStep_TargetsRequestedAgent()
+        {
+            var root = new GameObject("PlayModeMultiAgentRoot");
+            var manager = root.AddComponent<SimulationManager>();
+
+            yield return null;
+
+            var config = new SimulationConfig
+            {
+                seed = 7,
+                timeScale = 1f,
+                selectedTrackId = BuiltinPluginFactory.BasicArenaTrackId,
+                selectedVehicleId = BuiltinPluginFactory.Ks0223ArcadeBlueVehicleId,
+                trackParams = new ConfigKeyValue[0],
+                vehicleParams = new ConfigKeyValue[0],
+                flags = new[]
+                {
+                    new ConfigKeyValue { key = "agents.see_each_other", value = "true" },
+                    new ConfigKeyValue { key = "agents.collisions_enabled", value = "false" },
+                },
+                agents = new[]
+                {
+                    new SimulationAgentConfig
+                    {
+                        agentId = "ego",
+                        vehicleId = BuiltinPluginFactory.Ks0223ArcadeBlueVehicleId,
+                        isPrimary = true,
+                        trackParams = new[]
+                        {
+                            new ConfigKeyValue { key = "spawn.position", value = "0.0,0.2,-7.5" },
+                        },
+                    },
+                    new SimulationAgentConfig
+                    {
+                        agentId = "npc-red",
+                        vehicleId = BuiltinPluginFactory.Ks0223ArcadeRedVehicleId,
+                        trackParams = new[]
+                        {
+                            new ConfigKeyValue { key = "spawn.position", value = "1.1,0.2,-7.5" },
+                        },
+                    },
+                },
+            };
+
+            manager.ResetSimulation(config);
+            var before = manager.ReadSnapshot(targetAgentId: "npc-red", includeFrame: false);
+
+            for (var i = 0; i < 30; i++)
+            {
+                manager.Step(new ControlCommand
+                {
+                    targetAgentId = "npc-red",
+                    timestamp = i,
+                    timeBase = "unix_ms",
+                    extensions = new[]
+                    {
+                        new ConfigKeyValue { key = "drive.left_pwm_norm", value = "0.75" },
+                        new ConfigKeyValue { key = "drive.right_pwm_norm", value = "0.75" },
+                    },
+                });
+                yield return new WaitForFixedUpdate();
+            }
+
+            var after = manager.ReadSnapshot(targetAgentId: "npc-red", includeFrame: false);
+            Assert.That(after.activeAgentId, Is.EqualTo("npc-red"));
+            Assert.That(after.agents, Is.Not.Null);
+            Assert.That(after.agents.Length, Is.EqualTo(2));
+            Assert.That(after.state.pose.position.z, Is.GreaterThan(before.state.pose.position.z + 0.15f));
+
             Object.Destroy(root);
         }
     }

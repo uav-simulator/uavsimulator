@@ -16,8 +16,12 @@ namespace UavSimulator.Core
         public string pluginRegistrySource;
         public int availableVehicles;
         public int availableTracks;
+        public string activeAgentId;
         public string activeVehicleId;
         public string activeTrackId;
+        public int activeVehicleCount;
+        public string[] activeAgentIds;
+        public string[] activeVehicleIds;
     }
 
     public sealed class SimulationManager : MonoBehaviour
@@ -31,15 +35,37 @@ namespace UavSimulator.Core
         [SerializeField] private Transform trackRoot;
         [SerializeField] private Transform vehicleRoot;
 
+        [Serializable]
+        private sealed class ActiveAgentRuntime
+        {
+            public string AgentId;
+            public string VehicleId;
+            public bool IsPrimary;
+            public VehicleBase Vehicle;
+            public ConfigKeyValue[] TrackParams;
+            public ConfigKeyValue[] VehicleParams;
+        }
+
+        private sealed class ResolvedAgentConfig
+        {
+            public string AgentId;
+            public bool IsPrimary;
+            public VehiclePluginDescriptor Descriptor;
+            public ConfigKeyValue[] TrackParams;
+            public ConfigKeyValue[] VehicleParams;
+        }
+
         private PluginRegistrySnapshot registry;
         private TrackBase activeTrack;
         private VehicleBase activeVehicle;
+        private readonly List<ActiveAgentRuntime> activeAgents = new List<ActiveAgentRuntime>();
         private float defaultTimeScale = 1f;
         private Vector3[] activeRouteWaypoints = Array.Empty<Vector3>();
         private int activeRouteWaypointIndex;
         private float activeRouteReachDistance = 1f;
         private bool activeRouteLoop;
         private string activeTrackId = string.Empty;
+        private string activeAgentId = string.Empty;
         private string activeVehicleId = string.Empty;
 
         private void Awake()
@@ -93,6 +119,10 @@ namespace UavSimulator.Core
                     DestroyImmediate(sceneVehicle.gameObject);
                 }
             }
+
+            activeAgents.Clear();
+            activeAgentId = string.Empty;
+            activeVehicleId = string.Empty;
         }
 
         public SimulatorContractDescriptor GetContract()
@@ -124,20 +154,45 @@ namespace UavSimulator.Core
         public void ResetSimulation(SimulationConfig config)
         {
             var validation = SimulationConfigValidator.Validate(config, registry);
+            var resolvedAgents = ResolveAgentConfigs(config, validation.Vehicle);
 
             DestroyActiveInstances();
 
             activeTrack = InstantiateTrack(validation.Track);
-            activeVehicle = InstantiateVehicle(validation.Vehicle);
             activeTrackId = validation.Track != null ? validation.Track.id ?? string.Empty : string.Empty;
-            activeVehicleId = validation.Vehicle != null ? validation.Vehicle.id ?? string.Empty : string.Empty;
-
             activeTrack.ResetTrack(config.seed);
-            activeVehicle.ResetVehicle(config.seed);
-
             Time.timeScale = validation.TimeScale;
             ConfigureRoute(config.trackParams);
-            ApplyVehicleSpawn(config.trackParams);
+
+            for (var index = 0; index < resolvedAgents.Count; index++)
+            {
+                var agent = resolvedAgents[index];
+                var vehicle = InstantiateVehicle(agent.Descriptor);
+                vehicle.ApplyVehicleConfig(agent.VehicleParams);
+                vehicle.ResetVehicle(config.seed + index);
+                ApplyVehicleSpawn(vehicle, agent.TrackParams, index);
+
+                activeAgents.Add(new ActiveAgentRuntime
+                {
+                    AgentId = agent.AgentId,
+                    VehicleId = agent.Descriptor.id ?? string.Empty,
+                    IsPrimary = agent.IsPrimary,
+                    Vehicle = vehicle,
+                    TrackParams = agent.TrackParams ?? Array.Empty<ConfigKeyValue>(),
+                    VehicleParams = agent.VehicleParams ?? Array.Empty<ConfigKeyValue>(),
+                });
+            }
+
+            var primary = activeAgents.FirstOrDefault(agent => agent.IsPrimary) ?? activeAgents.FirstOrDefault();
+            if (primary == null)
+            {
+                throw new InvalidOperationException("No active vehicles were created for the simulation.");
+            }
+
+            activeVehicle = primary.Vehicle;
+            activeAgentId = primary.AgentId ?? string.Empty;
+            activeVehicleId = primary.VehicleId ?? string.Empty;
+            ApplyAgentInteractions(config.flags);
         }
 
         public SimulationRuntimeDiagnostics GetDiagnostics()
@@ -147,33 +202,42 @@ namespace UavSimulator.Core
                 pluginRegistrySource = registry != null ? registry.Source.ToString() : PluginRegistrySource.BuiltinFactory.ToString(),
                 availableVehicles = registry?.Vehicles?.Length ?? 0,
                 availableTracks = registry?.Tracks?.Length ?? 0,
+                activeAgentId = activeAgentId ?? string.Empty,
                 activeVehicleId = activeVehicleId ?? string.Empty,
                 activeTrackId = activeTrackId ?? string.Empty,
+                activeVehicleCount = activeAgents.Count,
+                activeAgentIds = activeAgents.Select(agent => agent.AgentId ?? string.Empty).ToArray(),
+                activeVehicleIds = activeAgents.Select(agent => agent.VehicleId ?? string.Empty).ToArray(),
             };
         }
 
         public StepResult Step(ControlCommand command)
         {
-            if (activeVehicle == null)
+            var target = ResolveTargetAgent(command?.targetAgentId, command?.targetVehicleId);
+            if (target == null)
             {
                 throw new InvalidOperationException("Active vehicle is not initialized. Call ResetSimulation first.");
             }
 
-            activeVehicle.ApplyControl(command);
-            activeVehicle.TryReadCameraFrame(out var frame);
-            var state = activeVehicle.ReadState();
-            var routeCompleted = UpdateRouteProgress(state);
+            target.Vehicle.ApplyControl(command);
+            target.Vehicle.TryReadCameraFrame(out var frame);
+            var state = target.Vehicle.ReadState();
+            var routeCompleted = target.IsPrimary && UpdateRouteProgress(state);
+            return BuildStepResult(target, state, frame, routeCompleted);
+        }
 
-            var result = new StepResult
+        public StepResult ReadSnapshot(string targetAgentId = null, string targetVehicleId = null, bool includeFrame = true)
+        {
+            var target = ResolveTargetAgent(targetAgentId, targetVehicleId);
+            if (target == null)
             {
-                state = state,
-                reward = 0f,
-                done = routeCompleted,
-                info = BuildRouteInfo(state, routeCompleted),
-                frame = frame,
-            };
+                throw new InvalidOperationException("Active vehicle is not initialized. Call ResetSimulation first.");
+            }
 
-            return result;
+            var state = target.Vehicle.ReadState();
+            CameraFrame frame = null;
+            var hasFrame = includeFrame && target.Vehicle.TryReadCameraFrame(out frame);
+            return BuildStepResult(target, state, hasFrame ? frame : null, routeCompleted: false);
         }
 
         public VehicleState ReadState()
@@ -258,12 +322,15 @@ namespace UavSimulator.Core
 
         private void DestroyActiveInstances()
         {
-            if (activeVehicle != null)
+            foreach (var vehicle in activeAgents.Select(agent => agent.Vehicle).Where(vehicle => vehicle != null).Distinct())
             {
-                Destroy(activeVehicle.gameObject);
-                activeVehicle = null;
-                activeVehicleId = string.Empty;
+                Destroy(vehicle.gameObject);
             }
+
+            activeAgents.Clear();
+            activeVehicle = null;
+            activeAgentId = string.Empty;
+            activeVehicleId = string.Empty;
 
             if (activeTrack != null)
             {
@@ -496,27 +563,28 @@ namespace UavSimulator.Core
             return value.ToString("0.###", CultureInfo.InvariantCulture);
         }
 
-        private void ApplyVehicleSpawn(ConfigKeyValue[] trackParams)
+        private void ApplyVehicleSpawn(VehicleBase vehicle, ConfigKeyValue[] trackParams, int agentIndex)
         {
-            if (activeVehicle == null)
+            if (vehicle == null)
             {
                 return;
             }
 
-            var spawn = ResolveSpawnPose(trackParams);
-            activeVehicle.transform.position = spawn.position;
-            activeVehicle.transform.rotation = Quaternion.Euler(0f, spawn.yawDeg, 0f);
+            var spawn = ResolveSpawnPose(trackParams, agentIndex);
+            vehicle.transform.position = spawn.position;
+            vehicle.transform.rotation = Quaternion.Euler(0f, spawn.yawDeg, 0f);
 
-            if (activeVehicle.TryGetComponent<Rigidbody>(out var body) && body != null)
+            if (vehicle.TryGetComponent<Rigidbody>(out var body) && body != null)
             {
                 body.linearVelocity = Vector3.zero;
                 body.angularVelocity = Vector3.zero;
             }
         }
 
-        private (Vector3 position, float yawDeg) ResolveSpawnPose(ConfigKeyValue[] trackParams)
+        private (Vector3 position, float yawDeg) ResolveSpawnPose(ConfigKeyValue[] trackParams, int agentIndex)
         {
             var spawn = GetDefaultSpawnPose(activeTrackId);
+            var hasExplicitSpawn = false;
 
             if (activeRouteWaypoints.Length >= 2)
             {
@@ -535,6 +603,7 @@ namespace UavSimulator.Core
                 TryParseSpawnPosition(rawSpawnPosition, spawn.position.y, out var parsedPosition))
             {
                 spawn.position = parsedPosition;
+                hasExplicitSpawn = true;
             }
 
             if (TryReadTrackParam(trackParams, SpawnYawDegKey, out var rawYaw) &&
@@ -543,7 +612,301 @@ namespace UavSimulator.Core
                 spawn.yawDeg = parsedYaw;
             }
 
+            if (!hasExplicitSpawn && agentIndex > 0)
+            {
+                spawn = OffsetSpawnPose(spawn, agentIndex);
+            }
+
             return spawn;
+        }
+
+        private List<ResolvedAgentConfig> ResolveAgentConfigs(SimulationConfig config, VehiclePluginDescriptor defaultVehicle)
+        {
+            var result = new List<ResolvedAgentConfig>();
+            var globalTrackParams = config.trackParams ?? Array.Empty<ConfigKeyValue>();
+            var globalVehicleParams = config.vehicleParams ?? Array.Empty<ConfigKeyValue>();
+            var configuredAgents = config.agents ?? Array.Empty<SimulationAgentConfig>();
+
+            if (configuredAgents.Length == 0)
+            {
+                result.Add(new ResolvedAgentConfig
+                {
+                    AgentId = "ego",
+                    IsPrimary = true,
+                    Descriptor = defaultVehicle,
+                    TrackParams = globalTrackParams,
+                    VehicleParams = globalVehicleParams,
+                });
+                return result;
+            }
+
+            var hasPrimaryFlag = configuredAgents.Any(agent => agent != null && agent.isPrimary);
+            for (var index = 0; index < configuredAgents.Length; index++)
+            {
+                var configured = configuredAgents[index];
+                if (configured == null)
+                {
+                    continue;
+                }
+
+                var agentId = string.IsNullOrWhiteSpace(configured.agentId) ? $"agent-{index + 1}" : configured.agentId.Trim();
+                var vehicleId = string.IsNullOrWhiteSpace(configured.vehicleId) ? defaultVehicle.id : configured.vehicleId.Trim();
+                var descriptor = FindRequired(registry.Vehicles, vehicleId, "vehicle");
+
+                result.Add(new ResolvedAgentConfig
+                {
+                    AgentId = agentId,
+                    IsPrimary = hasPrimaryFlag ? configured.isPrimary : index == 0,
+                    Descriptor = descriptor,
+                    TrackParams = MergeConfig(config.trackParams, configured.trackParams),
+                    VehicleParams = MergeConfig(config.vehicleParams, configured.vehicleParams),
+                });
+            }
+
+            if (result.Count == 0)
+            {
+                throw new InvalidOperationException("Simulation config contains an empty agents list.");
+            }
+
+            if (!result.Any(agent => agent.IsPrimary))
+            {
+                result[0].IsPrimary = true;
+            }
+
+            return result;
+        }
+
+        private ActiveAgentRuntime ResolveTargetAgent(string targetAgentId, string targetVehicleId)
+        {
+            if (activeAgents.Count == 0)
+            {
+                return null;
+            }
+
+            if (!string.IsNullOrWhiteSpace(targetAgentId))
+            {
+                var matchByAgent = activeAgents.FirstOrDefault(agent =>
+                    string.Equals(agent.AgentId, targetAgentId.Trim(), StringComparison.Ordinal));
+                if (matchByAgent != null)
+                {
+                    return matchByAgent;
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(targetVehicleId))
+            {
+                var matchesByVehicle = activeAgents
+                    .Where(agent => string.Equals(agent.VehicleId, targetVehicleId.Trim(), StringComparison.Ordinal))
+                    .ToArray();
+                if (matchesByVehicle.Length == 1)
+                {
+                    return matchesByVehicle[0];
+                }
+
+                if (matchesByVehicle.Length > 1)
+                {
+                    throw new InvalidOperationException(
+                        $"Vehicle id '{targetVehicleId}' is ambiguous. Use targetAgentId to address a specific agent.");
+                }
+            }
+
+            return activeAgents.FirstOrDefault(agent => agent.IsPrimary) ?? activeAgents[0];
+        }
+
+        private StepResult BuildStepResult(ActiveAgentRuntime target, VehicleState targetState, CameraFrame targetFrame, bool routeCompleted)
+        {
+            var agentResults = new AgentStepResult[activeAgents.Count];
+            for (var index = 0; index < activeAgents.Count; index++)
+            {
+                var agent = activeAgents[index];
+                var state = ReferenceEquals(agent, target) ? targetState : agent.Vehicle.ReadState();
+                agentResults[index] = new AgentStepResult
+                {
+                    agentId = agent.AgentId,
+                    vehicleId = agent.VehicleId,
+                    state = state,
+                    frame = ReferenceEquals(agent, target) ? targetFrame : null,
+                };
+            }
+
+            return new StepResult
+            {
+                activeAgentId = target.AgentId,
+                activeVehicleId = target.VehicleId,
+                state = targetState,
+                reward = 0f,
+                done = routeCompleted,
+                info = BuildStepInfo(target, targetState, routeCompleted),
+                frame = targetFrame,
+                agents = agentResults,
+            };
+        }
+
+        private ConfigKeyValue[] BuildStepInfo(ActiveAgentRuntime target, VehicleState state, bool routeCompleted)
+        {
+            var baseInfo = target != null && target.IsPrimary
+                ? BuildRouteInfo(state, routeCompleted)
+                : Array.Empty<ConfigKeyValue>();
+
+            var extra = new[]
+            {
+                KV("agent.id", target?.AgentId ?? string.Empty),
+                KV("agent.vehicle_id", target?.VehicleId ?? string.Empty),
+                KV("agents.active_count", activeAgents.Count.ToString(CultureInfo.InvariantCulture)),
+            };
+
+            return baseInfo.Concat(extra).ToArray();
+        }
+
+        private void ApplyAgentInteractions(ConfigKeyValue[] flags)
+        {
+            var isolated = TryReadFlag(flags, "agents.isolated", out var isolatedValue) && isolatedValue;
+            var seeEachOther = TryReadFlag(flags, "agents.see_each_other", out var visibleValue)
+                ? visibleValue
+                : !isolated;
+            var collisionsEnabled = TryReadFlag(flags, "agents.collisions_enabled", out var collisionsValue)
+                ? collisionsValue
+                : !isolated;
+
+            foreach (var agent in activeAgents)
+            {
+                if (agent?.Vehicle == null)
+                {
+                    continue;
+                }
+
+                SetLayerRecursively(agent.Vehicle.gameObject, seeEachOther ? 0 : VehicleBase.PeerVehicleLayer);
+                agent.Vehicle.SetPeerVisibility(seeEachOther);
+            }
+
+            for (var i = 0; i < activeAgents.Count; i++)
+            {
+                for (var j = i + 1; j < activeAgents.Count; j++)
+                {
+                    SetCollisionPair(activeAgents[i].Vehicle, activeAgents[j].Vehicle, collisionsEnabled);
+                }
+            }
+        }
+
+        private static bool TryReadFlag(ConfigKeyValue[] flags, string key, out bool value)
+        {
+            value = false;
+            if (flags == null || flags.Length == 0)
+            {
+                return false;
+            }
+
+            foreach (var flag in flags)
+            {
+                if (flag == null || string.IsNullOrWhiteSpace(flag.key))
+                {
+                    continue;
+                }
+
+                if (!string.Equals(flag.key, key, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                return TryParseBool(flag.value, out value);
+            }
+
+            return false;
+        }
+
+        private static void SetCollisionPair(VehicleBase first, VehicleBase second, bool collisionsEnabled)
+        {
+            if (first == null || second == null)
+            {
+                return;
+            }
+
+            var firstColliders = first.GetComponentsInChildren<Collider>(includeInactive: false);
+            var secondColliders = second.GetComponentsInChildren<Collider>(includeInactive: false);
+            foreach (var firstCollider in firstColliders)
+            {
+                if (firstCollider == null)
+                {
+                    continue;
+                }
+
+                foreach (var secondCollider in secondColliders)
+                {
+                    if (secondCollider == null)
+                    {
+                        continue;
+                    }
+
+                    Physics.IgnoreCollision(firstCollider, secondCollider, !collisionsEnabled);
+                }
+            }
+        }
+
+        private static void SetLayerRecursively(GameObject root, int layer)
+        {
+            if (root == null)
+            {
+                return;
+            }
+
+            root.layer = layer;
+            foreach (Transform child in root.transform)
+            {
+                if (child == null)
+                {
+                    continue;
+                }
+
+                SetLayerRecursively(child.gameObject, layer);
+            }
+        }
+
+        private static ConfigKeyValue[] MergeConfig(ConfigKeyValue[] shared, ConfigKeyValue[] specific)
+        {
+            if ((shared == null || shared.Length == 0) && (specific == null || specific.Length == 0))
+            {
+                return Array.Empty<ConfigKeyValue>();
+            }
+
+            var items = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            void addItems(ConfigKeyValue[] source)
+            {
+                if (source == null)
+                {
+                    return;
+                }
+
+                foreach (var item in source)
+                {
+                    if (item == null || string.IsNullOrWhiteSpace(item.key))
+                    {
+                        continue;
+                    }
+
+                    items[item.key.Trim()] = item.value ?? string.Empty;
+                }
+            }
+
+            addItems(shared);
+            addItems(specific);
+
+            return items
+                .Select(item => new ConfigKeyValue
+                {
+                    key = item.Key,
+                    value = item.Value,
+                })
+                .ToArray();
+        }
+
+        private static (Vector3 position, float yawDeg) OffsetSpawnPose((Vector3 position, float yawDeg) spawn, int agentIndex)
+        {
+            var row = (agentIndex + 1) / 2;
+            var side = agentIndex % 2 == 0 ? 1f : -1f;
+            var rotation = Quaternion.Euler(0f, spawn.yawDeg, 0f);
+            var lateral = rotation * Vector3.right * (0.7f * row * side);
+            var longitudinal = rotation * Vector3.back * (1.2f * row);
+            return (spawn.position + lateral + longitudinal, spawn.yawDeg);
         }
 
         private static bool TryReadTrackParam(ConfigKeyValue[] trackParams, string key, out string value)

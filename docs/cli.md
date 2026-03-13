@@ -353,6 +353,13 @@ rusim scenario reset configs/scenarios/demo.yaml --base-url http://127.0.0.1:800
 Важно:
 - `configs/scenarios/demo.yaml` является каноническим demo-сценарием для `make demo-reset` и `make demo-proof`.
 - Для разовых экспериментов можно использовать любые другие scenario-файлы, но базовый runbook проекта опирается именно на `demo.yaml`.
+- Для multi-agent flow добавлен референсный сценарий:
+
+```bash
+rusim server start --mode background --port 8000 --scenario configs/scenarios/demo-multi-agent.yaml
+```
+
+Этот сценарий поднимает две машинки на одном треке и выставляет `agents.seeEachOther=true`, `agents.collisionsEnabled=false`.
 
 ## 11. Одиночный step
 
@@ -360,9 +367,17 @@ rusim scenario reset configs/scenarios/demo.yaml --base-url http://127.0.0.1:800
 rusim step --base-url http://127.0.0.1:8000 --throttle 0.2 --steer 0.1 --brake 0.0
 ```
 
+Для адресного управления в multi-agent runtime:
+
+```bash
+rusim step --base-url http://127.0.0.1:8000 --agent-id npc-red --throttle 0.3 --steer 0.0 --brake 0.0
+```
+
 Назначение:
 - отправить один control step в runtime;
 - получить краткий ответ по state/reward/frame.
+- при наличии нескольких машинок `--agent-id` адресует конкретный экземпляр;
+- `--vehicle-id` поддерживается как fallback, но только если такой `vehicleId` в runtime не дублируется.
 
 ## 11. Рекомендуемый smoke-test
 
