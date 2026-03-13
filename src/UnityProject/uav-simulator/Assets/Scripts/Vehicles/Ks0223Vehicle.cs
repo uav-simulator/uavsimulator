@@ -49,8 +49,8 @@ namespace UavSimulator.Vehicles
         [SerializeField] private int cameraImageWidth = 640;
         [SerializeField] private int cameraImageHeight = 480;
         [SerializeField] [Range(20, 100)] private int cameraJpegQuality = 100;
-        [SerializeField] private Vector3 cameraLocalPosition = new Vector3(0f, 0.11f, 0.20f);
-        [SerializeField] private Vector3 cameraLocalEuler = new Vector3(6f, 0f, 0f);
+        [SerializeField] private Vector3 cameraLocalPosition = new Vector3(0f, 0.13f, 0.18f);
+        [SerializeField] private Vector3 cameraLocalEuler = new Vector3(9f, 0f, 0f);
 
         private Rigidbody body;
         private Camera frontCamera;
@@ -444,7 +444,7 @@ namespace UavSimulator.Vehicles
 
         private static Shader ResolveRuntimeLitShader()
         {
-            var shader = Shader.Find("Unlit/Color");
+            var shader = Shader.Find("Standard");
             if (shader != null && shader.isSupported)
             {
                 return shader;
@@ -456,7 +456,7 @@ namespace UavSimulator.Vehicles
                 return shader;
             }
 
-            shader = Shader.Find("Standard");
+            shader = Shader.Find("Unlit/Color");
             if (shader != null && shader.isSupported)
             {
                 return shader;
