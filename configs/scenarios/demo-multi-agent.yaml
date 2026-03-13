@@ -15,7 +15,7 @@ world:
 vehicle:
   vehicleId: vehicle.ks0223.arcade.blue.v1
   params:
-    camera.profile: balanced
+    camera.profile: high
 
 route:
   params:

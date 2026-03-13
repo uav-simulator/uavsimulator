@@ -10,6 +10,9 @@ namespace Ks0223.Web.Backend.Services;
 
 public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
 {
+    private const string CameraProfile = "high";
+    private const string RenderQualityProfile = "high";
+
     private sealed class AgentControlState
     {
         public float LeftPwmNorm { get; set; }
@@ -747,14 +750,19 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
             vehicleParams = new object[]
             {
                 new { key = "camera.mode", value = cameraMode },
+                new { key = "camera.profile", value = CameraProfile },
             },
             flags = agentsSnapshot.Count > 1
                 ? new object[]
                 {
+                    new { key = "render.quality_profile", value = RenderQualityProfile },
                     new { key = "agents.see_each_other", value = "true" },
                     new { key = "agents.collisions_enabled", value = "false" },
                 }
-                : Array.Empty<object>(),
+                : new object[]
+                {
+                    new { key = "render.quality_profile", value = RenderQualityProfile },
+                },
             agents = agentsSnapshot.Select((agent, index) => new
             {
                 agentId = string.IsNullOrWhiteSpace(agent.AgentId) ? $"agent-{index + 1}" : agent.AgentId,
@@ -764,6 +772,7 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
                 vehicleParams = new object[]
                 {
                     new { key = "camera.mode", value = cameraMode },
+                    new { key = "camera.profile", value = CameraProfile },
                 },
                 flags = Array.Empty<object>(),
             }).ToArray(),

@@ -15,12 +15,12 @@ world:
 vehicle:
   vehicleId: vehicle.ks0223.v1
   params:
-    camera.profile: balanced
+    camera.profile: high
 
 sensors:
   camera:
     enabled: true
-    profile: balanced
+    profile: high
   telemetry:
     profile: default
   lineTracker:
