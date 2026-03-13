@@ -88,9 +88,19 @@ export type UnityRuntimeOptionDto = {
   displayName: string
 }
 
+export type UnityRuntimeAgentDto = {
+  agentId: string
+  vehicleId: string
+  displayName: string
+  isPrimary: boolean
+}
+
 export type UnityRuntimeCatalogDto = {
   selectedTrackId: string
   selectedVehicleId: string
+  selectedCameraMode: string
+  selectedControlAgentId: string
   tracks: UnityRuntimeOptionDto[]
   vehicles: UnityRuntimeOptionDto[]
+  agents: UnityRuntimeAgentDto[]
 }

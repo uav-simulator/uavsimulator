@@ -57,6 +57,7 @@ namespace UavSimulator.Vehicles
         private RenderTexture frontCameraRt;
         private Texture2D frontCameraTexture;
         private int defaultCameraCullingMask = ~0;
+        private string cameraMode = "driver";
         private float speedCmd;
         private float yawCmd;
         private float brakeCmd;
@@ -168,6 +169,7 @@ namespace UavSimulator.Vehicles
 
             try
             {
+                var hideSelfGeometry = cameraMode is "driver" or "bumper";
                 for (var i = 0; i < renderers.Length; i++)
                 {
                     var renderer = renderers[i];
@@ -177,7 +179,10 @@ namespace UavSimulator.Vehicles
                     }
 
                     previousStates[i] = renderer.enabled;
-                    renderer.enabled = false;
+                    if (hideSelfGeometry)
+                    {
+                        renderer.enabled = false;
+                    }
                 }
 
                 frontCamera.targetTexture = frontCameraRt;
@@ -250,6 +255,15 @@ namespace UavSimulator.Vehicles
             {
                 body.linearVelocity = Vector3.zero;
                 body.angularVelocity = Vector3.zero;
+            }
+        }
+
+        public override void ApplyVehicleConfig(ConfigKeyValue[] vehicleParams)
+        {
+            if (TryGetConfigValue(vehicleParams, "camera.mode", out var mode))
+            {
+                cameraMode = NormalizeCameraMode(mode);
+                ApplyCameraMode();
             }
         }
 
@@ -339,6 +353,7 @@ namespace UavSimulator.Vehicles
             frontCamera.allowHDR = false;
             frontCamera.allowMSAA = false;
             defaultCameraCullingMask = frontCamera.cullingMask;
+            ApplyCameraMode();
 
             frontCameraRt = new RenderTexture(cameraImageWidth, cameraImageHeight, 16, RenderTextureFormat.ARGB32)
             {
@@ -351,6 +366,46 @@ namespace UavSimulator.Vehicles
             {
                 name = "KS0223.FrontCameraBuffer",
             };
+        }
+
+        private void ApplyCameraMode()
+        {
+            if (frontCamera == null)
+            {
+                return;
+            }
+
+            Vector3 localPosition;
+            Vector3 localEuler;
+            float fieldOfView;
+
+            switch (cameraMode)
+            {
+                case "bumper":
+                    localPosition = new Vector3(0f, 0.08f, 0.26f);
+                    localEuler = new Vector3(6f, 0f, 0f);
+                    fieldOfView = 76f;
+                    break;
+                case "chase":
+                    localPosition = new Vector3(0f, 0.62f, -1.28f);
+                    localEuler = new Vector3(18f, 0f, 0f);
+                    fieldOfView = 72f;
+                    break;
+                case "spectator":
+                    localPosition = new Vector3(1.25f, 1.0f, -1.65f);
+                    localEuler = new Vector3(20f, -20f, 0f);
+                    fieldOfView = 68f;
+                    break;
+                default:
+                    localPosition = cameraLocalPosition;
+                    localEuler = cameraLocalEuler;
+                    fieldOfView = 68f;
+                    break;
+            }
+
+            frontCamera.transform.localPosition = localPosition;
+            frontCamera.transform.localRotation = Quaternion.Euler(localEuler);
+            frontCamera.fieldOfView = fieldOfView;
         }
 
         private void EnsurePresentationVisuals()
@@ -598,6 +653,41 @@ namespace UavSimulator.Vehicles
             }
 
             return false;
+        }
+
+        private static bool TryGetConfigValue(ConfigKeyValue[] items, string key, out string value)
+        {
+            value = string.Empty;
+            if (items == null)
+            {
+                return false;
+            }
+
+            for (var i = 0; i < items.Length; i++)
+            {
+                var kv = items[i];
+                if (!string.Equals(kv.key, key, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                value = kv.value ?? string.Empty;
+                return !string.IsNullOrWhiteSpace(value);
+            }
+
+            return false;
+        }
+
+        private static string NormalizeCameraMode(string value)
+        {
+            var normalized = value?.Trim().ToLowerInvariant();
+            return normalized switch
+            {
+                "bumper" => "bumper",
+                "chase" => "chase",
+                "spectator" => "spectator",
+                _ => "driver",
+            };
         }
 
         private static ConfigKeyValue KV(string key, float value) => new ConfigKeyValue

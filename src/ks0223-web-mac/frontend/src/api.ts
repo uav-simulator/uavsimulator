@@ -60,6 +60,13 @@ export async function fetchUnityRuntimeCatalog(host?: string, port?: number): Pr
 export async function setUnityRuntimeSelection(payload: {
   trackId?: string
   vehicleId?: string
+  cameraMode?: string
+  controlAgentId?: string
+  agents?: Array<{
+    agentId?: string
+    vehicleId?: string
+    isPrimary?: boolean
+  }>
   applyImmediately?: boolean
 }): Promise<UnityRuntimeCatalogDto> {
   const response = await fetch(withBase('/api/unity/runtime-selection'), {

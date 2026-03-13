@@ -103,7 +103,14 @@ app.MapPost("/api/unity/runtime-selection", async (UnityRuntimeSelectionRequest 
 {
     try
     {
-        var catalog = await unityRuntimeProvider.SetRuntimeSelectionAsync(request.TrackId, request.VehicleId, request.ApplyImmediately, cancellationToken);
+        var catalog = await unityRuntimeProvider.SetRuntimeSelectionAsync(
+            request.TrackId,
+            request.VehicleId,
+            request.CameraMode,
+            request.ControlAgentId,
+            request.Agents,
+            request.ApplyImmediately,
+            cancellationToken);
         return Results.Ok(catalog);
     }
     catch (Exception ex)

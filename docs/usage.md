@@ -55,7 +55,7 @@ sequenceDiagram
 - `GET /api/sensors/*`
 
 ## CLI
-Минимальный продуктовый CLI-слой уже добавлен.
+`rusim` является каноническим продуктовым CLI платформы.
 
 Полная справка по командам вынесена в отдельный документ:
 - [CLI `rusim`](cli.md)
@@ -111,15 +111,19 @@ rusim inspect vehicle vehicle.ks0223.arcade.blue.v1 --base-url http://127.0.0.1:
 rusim reset --base-url http://127.0.0.1:8000 --track-id track.roadsystem_arena.v1 --vehicle-id vehicle.ks0223.arcade.blue.v1
 rusim scenario validate configs/scenarios/demo.yaml
 rusim scenario reset configs/scenarios/demo.yaml --base-url http://127.0.0.1:8000
+rusim server up --mode background --port 8000 --scenario configs/scenarios/demo.yaml
+rusim server down
 rusim step --base-url http://127.0.0.1:8000 --throttle 0.2 --steer 0.1
-rusim server start --mode background --port 8000 --scenario configs/scenarios/demo-multi-agent.yaml
-rusim step --base-url http://127.0.0.1:8000 --agent-id npc-red --throttle 0.3 --steer 0.0
+rusim server up --mode background --port 8000 --scenario configs/scenarios/demo-multi-agent.yaml
+rusim step --base-url http://127.0.0.1:8000 --agent-id npc-2 --throttle 0.3 --steer 0.0
 ```
 
 Важно:
 - `scene` в CLI является alias для track plugin;
 - к отдельной машинке в Unity не подключаются через отдельный порт;
 - подключение идёт к общему runtime, а выбор активной машинки/сцены делается через `rusim reset`.
+- основная lifecycle-модель теперь проходит через `rusim server up/down/status`;
+- `rusim runtime run` и `rusim server start/stop` сохранены как backward-compatible alias.
 - для multi-agent сценариев адресная команда идёт через `--agent-id`; `--vehicle-id` работает только если такой vehicle plugin в runtime уникален.
 - `rusim doctor` теперь показывает `pluginRegistrySource` и активные `track/vehicle`, чтобы быстро проверить, реально ли используются plugin assets или сработал builtin fallback.
 - `configs/scenarios/demo.yaml` является единственным каноническим demo entrypoint для `make demo-*` и smoke-проверок.
@@ -129,18 +133,18 @@ rusim step --base-url http://127.0.0.1:8000 --agent-id npc-red --throttle 0.3 --
 - CLI поддерживает потребление релиза (`rusim upgrade`), но не управляет публикацией release/tag lifecycle;
 - для `headless` камера не гарантируется, потому что Unity запускается с `-nographics`.
 
-Частично это уже закрыто:
-- добавлен `rusim server start/status/stop` для запуска отдельного Unity runtime instance;
+Ограничение launcher:
+- `rusim server up/status/down` уже покрывает editor/runtime lifecycle;
 - но launcher всё ещё ограничен стандартным Unity project lock.
 
 Примеры:
 
 ```bash
-rusim server start --mode windowed
-rusim server start --mode background --port 8011
-rusim server start --mode headless --port 8011
+rusim server up --mode windowed
+rusim server up --mode background --port 8011
+rusim server up --mode headless --port 8011
 rusim server status --port 8011
-rusim server stop
+rusim server down
 ```
 
 Практическое ограничение:
@@ -153,11 +157,22 @@ rusim server stop
 rusim runtime build --project-path src/UnityProject/uav-simulator
 rusim runtime list
 rusim runtime favorite set latest
-rusim runtime run --build favorite --mode background --port 8011
+rusim server up --build favorite --mode background --port 8011
 rusim runtime remove latest
 ```
 
 Именно этот путь должен стать основным для конечного пользователя.
+
+## Makefile
+`Makefile` больше не рассматривается как публичный operator interface.
+
+Он нужен для:
+- developer automation;
+- ROS2 desktop/docker orchestration;
+- smoke/preflight сценариев перед показом;
+- локальной работы с Unity Editor.
+
+Если действие является частью продуктового UX, оно должно попадать в `rusim`, а не в `make`.
 
 Рекомендуемая интерпретация режимов:
 - `windowed` — ручная визуальная работа;

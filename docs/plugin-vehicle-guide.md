@@ -97,7 +97,7 @@ Assets/Resources/UavSimulator/PluginRegistry.asset
 Проверка через runtime:
 
 ```bash
-./rusim server start --mode background --port 8000
+./rusim server up --mode background --port 8000
 curl -s http://127.0.0.1:8000/contract
 ```
 

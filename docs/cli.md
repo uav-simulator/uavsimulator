@@ -272,25 +272,34 @@ rusim runtime remove latest --keep-files
 ### Запуск через Unity project path
 
 ```bash
-rusim server start --mode windowed
-rusim server start --mode background --port 8011
-rusim server start --mode headless --port 8011
+rusim server up --mode windowed
+rusim server up --mode background --port 8011
+rusim server up --mode headless --port 8011
 ```
 
 ### Запуск через standalone runtime
 
 ```bash
-rusim server start --runtime-app build/runtime/macos/uav-simulator.app --mode windowed --port 8011
-rusim server start --runtime-app build/runtime/macos/uav-simulator.app --mode background --port 8011
-rusim server start --runtime-app build/runtime/macos/uav-simulator.app --mode headless --port 8011
+rusim server up --runtime-app build/runtime/macos/uav-simulator.app --mode windowed --port 8011
+rusim server up --runtime-app build/runtime/macos/uav-simulator.app --mode background --port 8011
+rusim server up --runtime-app build/runtime/macos/uav-simulator.app --mode headless --port 8011
 ```
 
 ### Запуск по registry id
 
 ```bash
-rusim runtime run --build latest --mode background --port 8011
-rusim runtime run --build favorite --mode windowed --port 8011
+rusim server up --build latest --mode background --port 8011
+rusim server up --build favorite --mode windowed --port 8011
 ```
+
+Каноническая lifecycle-модель:
+- `rusim server up`
+- `rusim server status`
+- `rusim server down`
+
+Совместимость:
+- `rusim server start/stop` сохранены как alias;
+- `rusim runtime run` сохранён как alias для запуска build через lifecycle-контур `server`.
 
 ### Значение режимов
 
@@ -315,7 +324,7 @@ rusim runtime run --build favorite --mode windowed --port 8011
 
 ```bash
 rusim server status --port 8011
-rusim server stop
+rusim server down
 ```
 
 Runtime state и logs хранятся в:
@@ -356,7 +365,7 @@ rusim scenario reset configs/scenarios/demo.yaml --base-url http://127.0.0.1:800
 - Для multi-agent flow добавлен референсный сценарий:
 
 ```bash
-rusim server start --mode background --port 8000 --scenario configs/scenarios/demo-multi-agent.yaml
+rusim server up --mode background --port 8000 --scenario configs/scenarios/demo-multi-agent.yaml
 ```
 
 Этот сценарий поднимает две машинки на одном треке и выставляет `agents.seeEachOther=true`, `agents.collisionsEnabled=false`.
@@ -399,5 +408,5 @@ rusim runtime list
 rusim runtime inspect latest
 rusim runtime favorite set latest
 rusim runtime favorite show
-rusim runtime run --build latest --mode background --port 8011
+rusim server up --build latest --mode background --port 8011
 ```
