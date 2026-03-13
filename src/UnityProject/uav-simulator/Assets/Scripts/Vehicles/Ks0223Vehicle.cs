@@ -84,10 +84,14 @@ namespace UavSimulator.Vehicles
             body.mass = 1.0f;
 
             EnsureFrontCamera();
-            if (transform.Find("VisualModel") == null)
+            if (!HasImportedVisualModel())
             {
                 EnsurePresentationVisuals();
                 ApplyVisualPalette();
+            }
+            else
+            {
+                RemovePresentationVisuals();
             }
         }
 
@@ -334,7 +338,10 @@ namespace UavSimulator.Vehicles
         public void SetPresentationAccentColor(Color color)
         {
             presentationAccentColor = color;
-            ApplyVisualPalette();
+            if (!HasImportedVisualModel())
+            {
+                ApplyVisualPalette();
+            }
         }
 
         private void OnDestroy()
@@ -665,6 +672,42 @@ namespace UavSimulator.Vehicles
             if (collider != null)
             {
                 UnityEngine.Object.Destroy(collider);
+            }
+        }
+
+        private bool HasImportedVisualModel()
+            => transform.Find("VisualModel") != null;
+
+        private void RemovePresentationVisuals()
+        {
+            RemoveIfExists("Hood");
+            RemoveIfExists("Cabin");
+            RemoveIfExists("RearDeck");
+            RemoveIfExists("Windshield");
+            RemoveIfExists("RearWindow");
+            RemoveIfExists("CameraPod");
+            RemoveIfExists("WheelFL");
+            RemoveIfExists("WheelFR");
+            RemoveIfExists("WheelRL");
+            RemoveIfExists("WheelRR");
+            RemoveIfExists("Body");
+        }
+
+        private void RemoveIfExists(string objectName)
+        {
+            var child = transform.Find(objectName);
+            if (child == null)
+            {
+                return;
+            }
+
+            if (Application.isPlaying)
+            {
+                Destroy(child.gameObject);
+            }
+            else
+            {
+                DestroyImmediate(child.gameObject);
             }
         }
 

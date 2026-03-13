@@ -13,7 +13,7 @@ world:
   trackId: track.roadsystem_realistic.v2
 
 vehicle:
-  vehicleId: vehicle.ks0223.arcade.blue.v1
+  vehicleId: vehicle.arcade.blue.v1
   params:
     camera.profile: high
 

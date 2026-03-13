@@ -97,7 +97,7 @@
     "trackId": "track.demo.production"
   },
   "vehicle": {
-    "vehicleId": "vehicle.ks0223.v1",
+    "vehicleId": "vehicle.prometeo.sport.v1",
     "spawnPointId": "start.main"
   },
   "sensors": {
@@ -155,7 +155,7 @@ world:
   trackId: track.roadsystem_realistic.v2
 
 vehicle:
-  vehicleId: vehicle.ks0223.arcade.blue.v1
+  vehicleId: vehicle.arcade.blue.v1
 
 agents:
   isolated: false
@@ -163,13 +163,13 @@ agents:
   collisionsEnabled: false
   vehicles:
     - agentId: ego
-      vehicleId: vehicle.ks0223.arcade.blue.v1
+      vehicleId: vehicle.arcade.blue.v1
       primary: true
       spawnPose:
         position: [-11.0, 0.2, -13.5]
         yawDeg: 3
     - agentId: npc-red
-      vehicleId: vehicle.ks0223.arcade.red.v1
+      vehicleId: vehicle.arcade.red.v1
       spawnPose:
         position: [-11.0, 0.2, -10.8]
         yawDeg: 3

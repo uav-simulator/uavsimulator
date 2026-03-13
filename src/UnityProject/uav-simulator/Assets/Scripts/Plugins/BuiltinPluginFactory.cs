@@ -13,11 +13,11 @@ namespace UavSimulator.Plugins
 {
     public static class BuiltinPluginFactory
     {
-        public const string Ks0223VehicleId = "vehicle.ks0223.v1";
-        public const string Ks0223ArcadeBlueVehicleId = "vehicle.ks0223.arcade.blue.v1";
-        public const string Ks0223ArcadeRedVehicleId = "vehicle.ks0223.arcade.red.v1";
-        public const string Ks0223ArcadeGrayVehicleId = "vehicle.ks0223.arcade.gray.v1";
-        public const string Ks0223ArcadePurpleVehicleId = "vehicle.ks0223.arcade.purple.v1";
+        public const string PrometeoSportVehicleId = "vehicle.prometeo.sport.v1";
+        public const string ArcadeBlueVehicleId = "vehicle.arcade.blue.v1";
+        public const string ArcadeRedVehicleId = "vehicle.arcade.red.v1";
+        public const string ArcadeGrayVehicleId = "vehicle.arcade.gray.v1";
+        public const string ArcadePurpleVehicleId = "vehicle.arcade.purple.v1";
         public const string SimpleDroneVehicleId = "vehicle.drone.simple.v1";
         public const string BasicArenaTrackId = "track.basic_arena.v1";
         public const string RoadSystemArenaTrackId = "track.roadsystem_arena.v1";
@@ -42,25 +42,25 @@ namespace UavSimulator.Plugins
         public static PluginRegistrySnapshot CreateSnapshot(PluginRegistrySource source = PluginRegistrySource.BuiltinFactory)
         {
             var vehicle = CreateVehicleDescriptor(
-                Ks0223VehicleId,
-                "Keyestudio KS0223 (Unity Simulator)",
-                "Built-in KS0223 simulator profile with PROMETEO car body (fallback visuals if asset is unavailable).");
+                PrometeoSportVehicleId,
+                "PROMETEO Sport Car",
+                "Ground robot profile with PROMETEO sport car body (fallback visuals if asset is unavailable).");
             var arcadeBlueVehicle = CreateVehicleDescriptor(
-                Ks0223ArcadeBlueVehicleId,
-                "Keyestudio KS0223 (Arcade Blue)",
-                "KS0223 physics profile with ARCADE blue visual body.");
+                ArcadeBlueVehicleId,
+                "Arcade Free Racing Car (Blue)",
+                "Ground robot profile with ARCADE Free Racing Car blue visual body.");
             var arcadeRedVehicle = CreateVehicleDescriptor(
-                Ks0223ArcadeRedVehicleId,
-                "Keyestudio KS0223 (Arcade Red)",
-                "KS0223 physics profile with ARCADE red visual body.");
+                ArcadeRedVehicleId,
+                "Arcade Free Racing Car (Red)",
+                "Ground robot profile with ARCADE Free Racing Car red visual body.");
             var arcadeGrayVehicle = CreateVehicleDescriptor(
-                Ks0223ArcadeGrayVehicleId,
-                "Keyestudio KS0223 (Arcade Gray)",
-                "KS0223 physics profile with ARCADE gray visual body.");
+                ArcadeGrayVehicleId,
+                "Arcade Free Racing Car (Gray)",
+                "Ground robot profile with ARCADE Free Racing Car gray visual body.");
             var arcadePurpleVehicle = CreateVehicleDescriptor(
-                Ks0223ArcadePurpleVehicleId,
-                "Keyestudio KS0223 (Arcade Purple)",
-                "KS0223 physics profile with ARCADE purple visual body.");
+                ArcadePurpleVehicleId,
+                "Arcade Free Racing Car (Purple)",
+                "Ground robot profile with ARCADE Free Racing Car purple visual body.");
             var simpleDrone = CreateVehicleDescriptor(
                 SimpleDroneVehicleId,
                 "Simple Drone (Quadcopter)",
@@ -104,7 +104,7 @@ namespace UavSimulator.Plugins
                 return false;
             }
 
-            var root = new GameObject("KS0223Vehicle");
+            var root = new GameObject("GroundRobotVehicle");
             root.transform.SetParent(parent, false);
             root.transform.position = new Vector3(0f, 0.2f, -6f);
             root.transform.rotation = Quaternion.identity;
@@ -113,15 +113,15 @@ namespace UavSimulator.Plugins
             chassisCollider.center = new Vector3(0f, 0.08f, 0f);
             chassisCollider.size = new Vector3(0.34f, 0.16f, 0.52f);
 
-            var hasCustomVisual = SupportsImportedVehicleVisual(descriptorId) &&
-                                  RuntimeMaterialCompatibility.IsUrpActive() &&
-                                  TryAttachVisual(root.transform, visualProfile);
-            var useInternalPresentation = UsesInternalVehiclePresentation(descriptorId);
-            if (!hasCustomVisual && !useInternalPresentation)
+            var hasCustomVisual = TryAttachVisual(root.transform, visualProfile);
+            if (!hasCustomVisual)
             {
                 var accentColor = GetFallbackAccentColor(descriptorId);
                 CreateFallbackVisualShell(root.transform, accentColor);
                 SanitizeRendererMaterials(root);
+                Debug.LogWarning(
+                    $"[BuiltinPluginFactory] Imported vehicle visual is unavailable for '{descriptorId}'. " +
+                    $"Fallback shell is used instead (prefab path: {visualProfile.PrefabPath}).");
             }
 
             var rb = root.AddComponent<Rigidbody>();
@@ -134,11 +134,6 @@ namespace UavSimulator.Plugins
             if (vehicle is Ks0223Vehicle ks0223Vehicle)
             {
                 ks0223Vehicle.SetPresentationAccentColor(GetFallbackAccentColor(descriptorId));
-            }
-
-            if (!useInternalPresentation)
-            {
-                ApplyVehiclePalette(root.transform, descriptorId);
             }
 
             return true;
@@ -189,17 +184,17 @@ namespace UavSimulator.Plugins
             vehicle.description = description;
             vehicle.deviceContract = string.Equals(id, SimpleDroneVehicleId, StringComparison.Ordinal)
                 ? CreateSimpleDroneContract(id)
-                : CreateKs0223Contract(id);
+                : CreateGroundRobotContract(id);
             return vehicle;
         }
 
-        private static DeviceContractDescriptorAsset CreateKs0223Contract(string deviceId)
+        private static DeviceContractDescriptorAsset CreateGroundRobotContract(string deviceId)
         {
             var asset = ScriptableObject.CreateInstance<DeviceContractDescriptorAsset>();
             asset.contractVersion = new ContractVersion(0, 1, 0);
             asset.descriptor = new DeviceContractDescriptor
             {
-                deviceId = string.IsNullOrWhiteSpace(deviceId) ? Ks0223VehicleId : deviceId,
+                deviceId = string.IsNullOrWhiteSpace(deviceId) ? PrometeoSportVehicleId : deviceId,
                 deviceType = "ground_robot_differential",
                 sensors = new[]
                 {
@@ -409,54 +404,37 @@ namespace UavSimulator.Plugins
         private static bool TryGetVehicleVisualProfile(string descriptorId, out VehicleVisualProfile profile)
         {
             profile = default;
-            if (string.Equals(descriptorId, Ks0223VehicleId, StringComparison.Ordinal))
+            if (string.Equals(descriptorId, PrometeoSportVehicleId, StringComparison.Ordinal))
             {
                 profile = new VehicleVisualProfile(PrometeoPrefabPath, 0f);
                 return true;
             }
 
-            if (string.Equals(descriptorId, Ks0223ArcadeBlueVehicleId, StringComparison.Ordinal))
+            if (string.Equals(descriptorId, ArcadeBlueVehicleId, StringComparison.Ordinal))
             {
                 profile = new VehicleVisualProfile(ArcadeBluePrefabPath, 0f);
                 return true;
             }
 
-            if (string.Equals(descriptorId, Ks0223ArcadeRedVehicleId, StringComparison.Ordinal))
+            if (string.Equals(descriptorId, ArcadeRedVehicleId, StringComparison.Ordinal))
             {
                 profile = new VehicleVisualProfile(ArcadeRedPrefabPath, 0f);
                 return true;
             }
 
-            if (string.Equals(descriptorId, Ks0223ArcadeGrayVehicleId, StringComparison.Ordinal))
+            if (string.Equals(descriptorId, ArcadeGrayVehicleId, StringComparison.Ordinal))
             {
                 profile = new VehicleVisualProfile(ArcadeGrayPrefabPath, 0f);
                 return true;
             }
 
-            if (string.Equals(descriptorId, Ks0223ArcadePurpleVehicleId, StringComparison.Ordinal))
+            if (string.Equals(descriptorId, ArcadePurpleVehicleId, StringComparison.Ordinal))
             {
                 profile = new VehicleVisualProfile(ArcadePurplePrefabPath, 0f);
                 return true;
             }
 
             return false;
-        }
-
-        private static bool SupportsImportedVehicleVisual(string descriptorId)
-        {
-            if (string.Equals(descriptorId, Ks0223ArcadeGrayVehicleId, StringComparison.Ordinal) ||
-                string.Equals(descriptorId, Ks0223ArcadePurpleVehicleId, StringComparison.Ordinal))
-            {
-                return false;
-            }
-
-            return true;
-        }
-
-        private static bool UsesInternalVehiclePresentation(string descriptorId)
-        {
-            return string.Equals(descriptorId, Ks0223ArcadeGrayVehicleId, StringComparison.Ordinal) ||
-                   string.Equals(descriptorId, Ks0223ArcadePurpleVehicleId, StringComparison.Ordinal);
         }
 
         private static bool TryAttachVisual(Transform parent, VehicleVisualProfile visualProfile)
@@ -475,9 +453,8 @@ namespace UavSimulator.Plugins
 
             FitVisualToVehicleBounds(parent, visualRoot.transform);
             StripVisualPhysicsAndScripts(visualRoot);
-            // Imported arcade materials are not stable across render pipeline setups.
-            // Force a runtime-safe material set so chase/spectator cameras never show magenta vehicles.
-            SanitizeRendererMaterials(visualRoot, forceFallback: true, copyTextures: false);
+            // Keep original style from imported assets and only replace shader-incompatible materials.
+            SanitizeRendererMaterials(visualRoot, forceFallback: false, copyTextures: true);
 
             return true;
         }
@@ -806,17 +783,17 @@ namespace UavSimulator.Plugins
 
         private static Color GetFallbackAccentColor(string descriptorId)
         {
-            if (string.Equals(descriptorId, Ks0223ArcadeRedVehicleId, StringComparison.Ordinal))
+            if (string.Equals(descriptorId, ArcadeRedVehicleId, StringComparison.Ordinal))
             {
                 return new Color(0.78f, 0.20f, 0.20f);
             }
 
-            if (string.Equals(descriptorId, Ks0223ArcadeGrayVehicleId, StringComparison.Ordinal))
+            if (string.Equals(descriptorId, ArcadeGrayVehicleId, StringComparison.Ordinal))
             {
                 return new Color(0.56f, 0.58f, 0.60f);
             }
 
-            if (string.Equals(descriptorId, Ks0223ArcadePurpleVehicleId, StringComparison.Ordinal))
+            if (string.Equals(descriptorId, ArcadePurpleVehicleId, StringComparison.Ordinal))
             {
                 return new Color(0.54f, 0.36f, 0.74f);
             }
@@ -855,81 +832,6 @@ namespace UavSimulator.Plugins
             }
 
             renderer.sharedMaterial = material;
-        }
-
-        private static void ApplyVehiclePalette(Transform vehicleRoot, string descriptorId)
-        {
-            if (vehicleRoot == null)
-            {
-                return;
-            }
-
-            var accentColor = GetFallbackAccentColor(descriptorId);
-            var windowColor = new Color(0.21f, 0.28f, 0.34f);
-            var trimColor = new Color(0.10f, 0.10f, 0.11f);
-
-            foreach (var renderer in vehicleRoot.GetComponentsInChildren<Renderer>(includeInactive: true))
-            {
-                if (renderer == null)
-                {
-                    continue;
-                }
-
-                var lowerName = renderer.name.ToLowerInvariant();
-                var color = accentColor;
-                var smoothness = 0.24f;
-
-                if (lowerName.Contains("wheel") || lowerName.Contains("tire"))
-                {
-                    color = trimColor;
-                    smoothness = 0.10f;
-                }
-                else if (lowerName.Contains("glass") || lowerName.Contains("window") || lowerName.Contains("wind"))
-                {
-                    color = windowColor;
-                    smoothness = 0.62f;
-                }
-                else if (lowerName.Contains("light") || lowerName.Contains("lamp"))
-                {
-                    color = new Color(0.90f, 0.90f, 0.82f);
-                    smoothness = 0.50f;
-                }
-
-                var material = new Material(ResolveRuntimeLitShader());
-                if (material.HasProperty("_BaseColor"))
-                {
-                    material.SetColor("_BaseColor", color);
-                }
-
-                if (material.HasProperty("_Color"))
-                {
-                    material.SetColor("_Color", color);
-                }
-
-                if (material.HasProperty("_Smoothness"))
-                {
-                    material.SetFloat("_Smoothness", smoothness);
-                }
-
-                if (material.HasProperty("_Glossiness"))
-                {
-                    material.SetFloat("_Glossiness", smoothness);
-                }
-
-                var shared = renderer.sharedMaterials;
-                if (shared == null || shared.Length == 0)
-                {
-                    renderer.sharedMaterial = material;
-                    continue;
-                }
-
-                for (var i = 0; i < shared.Length; i++)
-                {
-                    shared[i] = material;
-                }
-
-                renderer.sharedMaterials = shared;
-            }
         }
 
         private readonly struct VehicleVisualProfile

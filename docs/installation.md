@@ -210,7 +210,7 @@ python -c "from sim_client.http_client import SimClient; print(SimClient)"
 rusim doctor --base-url http://127.0.0.1:8000
 rusim list tracks --base-url http://127.0.0.1:8000
 rusim list vehicles --base-url http://127.0.0.1:8000
-rusim reset --base-url http://127.0.0.1:8000 --track-id track.roadsystem_arena.v1 --vehicle-id vehicle.ks0223.arcade.blue.v1
+rusim reset --base-url http://127.0.0.1:8000 --track-id track.roadsystem_arena.v1 --vehicle-id vehicle.arcade.blue.v1
 rusim scenario validate configs/scenarios/demo.yaml
 rusim scenario reset configs/scenarios/demo.yaml --base-url http://127.0.0.1:8000
 ```

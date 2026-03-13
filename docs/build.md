@@ -65,11 +65,11 @@
 - Если plugin assets отсутствуют, включается fallback:
   - `track.basic_arena.v1`
   - `track.roadsystem_arena.v1`
-  - `vehicle.ks0223.v1` (PROMETEO visual)
-  - `vehicle.ks0223.arcade.blue.v1`
-  - `vehicle.ks0223.arcade.red.v1`
-  - `vehicle.ks0223.arcade.gray.v1`
-  - `vehicle.ks0223.arcade.purple.v1`
+  - `vehicle.prometeo.sport.v1` (PROMETEO visual)
+  - `vehicle.arcade.blue.v1`
+  - `vehicle.arcade.red.v1`
+  - `vehicle.arcade.gray.v1`
+  - `vehicle.arcade.purple.v1`
   - `vehicle.drone.simple.v1`
 - В презентационной сцене автодрайв отключён по умолчанию.
 - При старте сцены транспорт не создаётся автоматически: нужен явный `reset`.

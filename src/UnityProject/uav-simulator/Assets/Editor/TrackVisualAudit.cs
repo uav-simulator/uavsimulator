@@ -79,7 +79,7 @@ namespace UavSimulator.EditorTools
             vehicleRoot.SetParent(root, false);
 
             BuiltinPluginFactory.TryCreateTrackInstance(BuiltinPluginFactory.RoadSystemRealisticTrackId, trackRoot, out TrackBase track);
-            BuiltinPluginFactory.TryCreateVehicleInstance(BuiltinPluginFactory.Ks0223ArcadeBlueVehicleId, vehicleRoot, out VehicleBase vehicle);
+            BuiltinPluginFactory.TryCreateVehicleInstance(BuiltinPluginFactory.ArcadeBlueVehicleId, vehicleRoot, out VehicleBase vehicle);
 
             track?.ResetTrack(seed: 1);
             vehicle?.ResetVehicle(seed: 1);

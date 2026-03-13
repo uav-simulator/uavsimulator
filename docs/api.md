@@ -84,11 +84,11 @@ Decisions:
   "availableVehicles": 6,
   "availableTracks": 3,
   "activeAgentId": "ego",
-  "activeVehicleId": "vehicle.ks0223.arcade.blue.v1",
+  "activeVehicleId": "vehicle.arcade.blue.v1",
   "activeTrackId": "track.roadsystem_realistic.v2",
   "activeVehicleCount": 2,
   "activeAgentIds": ["ego", "npc-red"],
-  "activeVehicleIds": ["vehicle.ks0223.arcade.blue.v1", "vehicle.ks0223.arcade.red.v1"]
+  "activeVehicleIds": ["vehicle.arcade.blue.v1", "vehicle.arcade.red.v1"]
 }
 ```
 
