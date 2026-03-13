@@ -112,8 +112,11 @@ namespace UavSimulator.Plugins
             chassisCollider.center = new Vector3(0f, 0.08f, 0f);
             chassisCollider.size = new Vector3(0.34f, 0.16f, 0.52f);
 
-            var hasCustomVisual = TryAttachVisual(root.transform, visualProfile);
-            if (!hasCustomVisual)
+            var hasCustomVisual = SupportsImportedVehicleVisual(descriptorId) &&
+                                  IsUrpActive() &&
+                                  TryAttachVisual(root.transform, visualProfile);
+            var useInternalPresentation = UsesInternalVehiclePresentation(descriptorId);
+            if (!hasCustomVisual && !useInternalPresentation)
             {
                 var accentColor = GetFallbackAccentColor(descriptorId);
                 CreateFallbackVisualShell(root.transform, accentColor);
@@ -127,6 +130,16 @@ namespace UavSimulator.Plugins
             rb.constraints = RigidbodyConstraints.FreezeRotationX | RigidbodyConstraints.FreezeRotationZ;
 
             vehicle = root.AddComponent<Ks0223Vehicle>();
+            if (vehicle is Ks0223Vehicle ks0223Vehicle)
+            {
+                ks0223Vehicle.SetPresentationAccentColor(GetFallbackAccentColor(descriptorId));
+            }
+
+            if (!useInternalPresentation)
+            {
+                ApplyVehiclePalette(root.transform, descriptorId);
+            }
+
             return true;
         }
 
@@ -428,6 +441,23 @@ namespace UavSimulator.Plugins
             return false;
         }
 
+        private static bool SupportsImportedVehicleVisual(string descriptorId)
+        {
+            if (string.Equals(descriptorId, Ks0223ArcadeGrayVehicleId, StringComparison.Ordinal) ||
+                string.Equals(descriptorId, Ks0223ArcadePurpleVehicleId, StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        private static bool UsesInternalVehiclePresentation(string descriptorId)
+        {
+            return string.Equals(descriptorId, Ks0223ArcadeGrayVehicleId, StringComparison.Ordinal) ||
+                   string.Equals(descriptorId, Ks0223ArcadePurpleVehicleId, StringComparison.Ordinal);
+        }
+
         private static bool TryAttachVisual(Transform parent, VehicleVisualProfile visualProfile)
         {
             var prefab = LoadVisualPrefab(visualProfile.PrefabPath);
@@ -444,7 +474,9 @@ namespace UavSimulator.Plugins
 
             FitVisualToVehicleBounds(parent, visualRoot.transform);
             StripVisualPhysicsAndScripts(visualRoot);
-            SanitizeRendererMaterials(visualRoot);
+            // Imported arcade materials are not stable across render pipeline setups.
+            // Force a runtime-safe material set so chase/spectator cameras never show magenta vehicles.
+            SanitizeRendererMaterials(visualRoot, forceFallback: true, copyTextures: false);
 
             return true;
         }
@@ -574,7 +606,7 @@ namespace UavSimulator.Plugins
             }
         }
 
-        private static void SanitizeRendererMaterials(GameObject visualRoot)
+        private static void SanitizeRendererMaterials(GameObject visualRoot, bool forceFallback = false, bool copyTextures = true)
         {
             var renderers = visualRoot.GetComponentsInChildren<Renderer>(includeInactive: true);
             foreach (var renderer in renderers)
@@ -597,12 +629,12 @@ namespace UavSimulator.Plugins
                     var shader = source.shader;
                     var unsupported = shader == null || !shader.isSupported;
                     var builtinIncompatible = !IsUrpActive() && !IsBuiltinCompatibleShader(shader);
-                    if (!unsupported && !builtinIncompatible)
+                    if (!forceFallback && !unsupported && !builtinIncompatible)
                     {
                         continue;
                     }
 
-                    sharedMaterials[i] = CreateFallbackMaterial(source);
+                    sharedMaterials[i] = CreateFallbackMaterial(source, copyTextures);
                     changed = true;
                 }
 
@@ -613,7 +645,7 @@ namespace UavSimulator.Plugins
             }
         }
 
-        private static Material CreateFallbackMaterial(Material source)
+        private static Material CreateFallbackMaterial(Material source, bool copyTextures)
         {
             var shader = ResolveRuntimeLitShader();
             var fallback = new Material(shader)
@@ -621,7 +653,7 @@ namespace UavSimulator.Plugins
                 color = ReadSourceColor(source)
             };
 
-            var sourceTexture = ReadSourceTexture(source);
+            var sourceTexture = copyTextures ? ReadSourceTexture(source) : null;
             if (sourceTexture != null)
             {
                 if (fallback.HasProperty("_MainTex"))
@@ -695,19 +727,19 @@ namespace UavSimulator.Plugins
 
         private static Shader ResolveRuntimeLitShader()
         {
-            var shader = Shader.Find("Unlit/Color");
+            var shader = Shader.Find("Standard");
+            if (shader != null && shader.isSupported)
+            {
+                return shader;
+            }
+
+            shader = Shader.Find("Unlit/Color");
             if (shader != null && shader.isSupported)
             {
                 return shader;
             }
 
             shader = Shader.Find("Unlit/Texture");
-            if (shader != null && shader.isSupported)
-            {
-                return shader;
-            }
-
-            shader = Shader.Find("Standard");
             if (shader != null && shader.isSupported)
             {
                 return shader;
@@ -959,6 +991,81 @@ namespace UavSimulator.Plugins
             }
 
             renderer.sharedMaterial = material;
+        }
+
+        private static void ApplyVehiclePalette(Transform vehicleRoot, string descriptorId)
+        {
+            if (vehicleRoot == null)
+            {
+                return;
+            }
+
+            var accentColor = GetFallbackAccentColor(descriptorId);
+            var windowColor = new Color(0.21f, 0.28f, 0.34f);
+            var trimColor = new Color(0.10f, 0.10f, 0.11f);
+
+            foreach (var renderer in vehicleRoot.GetComponentsInChildren<Renderer>(includeInactive: true))
+            {
+                if (renderer == null)
+                {
+                    continue;
+                }
+
+                var lowerName = renderer.name.ToLowerInvariant();
+                var color = accentColor;
+                var smoothness = 0.24f;
+
+                if (lowerName.Contains("wheel") || lowerName.Contains("tire"))
+                {
+                    color = trimColor;
+                    smoothness = 0.10f;
+                }
+                else if (lowerName.Contains("glass") || lowerName.Contains("window") || lowerName.Contains("wind"))
+                {
+                    color = windowColor;
+                    smoothness = 0.62f;
+                }
+                else if (lowerName.Contains("light") || lowerName.Contains("lamp"))
+                {
+                    color = new Color(0.90f, 0.90f, 0.82f);
+                    smoothness = 0.50f;
+                }
+
+                var material = new Material(ResolveRuntimeLitShader());
+                if (material.HasProperty("_BaseColor"))
+                {
+                    material.SetColor("_BaseColor", color);
+                }
+
+                if (material.HasProperty("_Color"))
+                {
+                    material.SetColor("_Color", color);
+                }
+
+                if (material.HasProperty("_Smoothness"))
+                {
+                    material.SetFloat("_Smoothness", smoothness);
+                }
+
+                if (material.HasProperty("_Glossiness"))
+                {
+                    material.SetFloat("_Glossiness", smoothness);
+                }
+
+                var shared = renderer.sharedMaterials;
+                if (shared == null || shared.Length == 0)
+                {
+                    renderer.sharedMaterial = material;
+                    continue;
+                }
+
+                for (var i = 0; i < shared.Length; i++)
+                {
+                    shared[i] = material;
+                }
+
+                renderer.sharedMaterials = shared;
+            }
         }
 
         private readonly struct VehicleVisualProfile

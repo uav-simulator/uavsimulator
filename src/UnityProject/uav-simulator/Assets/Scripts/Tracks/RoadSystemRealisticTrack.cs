@@ -11,7 +11,6 @@ namespace UavSimulator.Tracks
 {
     public sealed class RoadSystemRealisticTrack : TrackBase
     {
-        private const string ArcadeEnvironmentMaterialPath = "Assets/ARCADE - FREE Racing Car/Materials/AFRC_Env_Mat.mat";
         private const string ArcadeRoadMeshPath = "Assets/ARCADE - FREE Racing Car/Meshes/Road.fbx";
         private const string ArcadeDaySkyboxPath = "Assets/ARCADE - FREE Racing Car/Skybox/Day/Day Skybox.mat";
         private const string PrometeoParkingMaterialPath = "Assets/PROMETEO - Car Controller/Materials/PCC_ParkingZone_Mat.mat";
@@ -89,7 +88,7 @@ namespace UavSimulator.Tracks
         private void BuildMaterials()
         {
             roadMaterial = CreateLitMaterial(new Color(0.10f, 0.10f, 0.11f), 0.30f);
-            groundMaterial = TryCloneAssetMaterial(ArcadeEnvironmentMaterialPath) ?? CreateLitMaterial(new Color(0.23f, 0.31f, 0.22f), 0.07f);
+            groundMaterial = CreateLitMaterial(new Color(0.23f, 0.31f, 0.22f), 0.07f);
             serviceAreaMaterial = TryCloneAssetMaterial(PrometeoParkingMaterialPath) ?? CreateLitMaterial(new Color(0.28f, 0.28f, 0.30f), 0.16f);
             laneMaterial = CreateLitMaterial(new Color(0.95f, 0.95f, 0.95f), 0.08f);
             shoulderMaterial = CreateLitMaterial(new Color(0.22f, 0.20f, 0.18f), 0.10f);
@@ -433,18 +432,20 @@ namespace UavSimulator.Tracks
         private void CreateArcadeBackdropMeshes()
         {
 #if UNITY_EDITOR
-            var roadPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(ArcadeRoadMeshPath);
-            if (roadPrefab == null)
-            {
-                return;
-            }
-
             var backdropRoot = new GameObject("ArcadeBackdrop");
             backdropRoot.transform.SetParent(transform, false);
 
-            CreateArcadeRoadCopy(backdropRoot.transform, roadPrefab, "BackdropRoadA", new Vector3(-23f, 0f, -18f), new Vector3(8f, 1f, 8f), Quaternion.Euler(0f, 0f, 0f));
-            CreateArcadeRoadCopy(backdropRoot.transform, roadPrefab, "BackdropRoadB", new Vector3(24f, 0f, 16f), new Vector3(8f, 1f, 8f), Quaternion.Euler(0f, 180f, 0f));
-            CreateArcadeRoadCopy(backdropRoot.transform, roadPrefab, "BackdropRoadC", new Vector3(0f, 0f, 25f), new Vector3(10f, 1f, 10f), Quaternion.Euler(0f, 90f, 0f));
+            var roadPrefab = IsUrpActive() ? AssetDatabase.LoadAssetAtPath<GameObject>(ArcadeRoadMeshPath) : null;
+            if (roadPrefab != null)
+            {
+                CreateArcadeRoadCopy(backdropRoot.transform, roadPrefab, "BackdropRoadA", new Vector3(-23f, 0f, -18f), new Vector3(8f, 1f, 8f), Quaternion.Euler(0f, 0f, 0f));
+                CreateArcadeRoadCopy(backdropRoot.transform, roadPrefab, "BackdropRoadB", new Vector3(24f, 0f, 16f), new Vector3(8f, 1f, 8f), Quaternion.Euler(0f, 180f, 0f));
+                CreateArcadeRoadCopy(backdropRoot.transform, roadPrefab, "BackdropRoadC", new Vector3(0f, 0f, 25f), new Vector3(10f, 1f, 10f), Quaternion.Euler(0f, 90f, 0f));
+            }
+
+            CreateBackdropBlock(backdropRoot.transform, "BackdropMoundWest", new Vector3(-28f, 0.55f, -3f), new Vector3(10f, 1.1f, 18f), new Color(0.35f, 0.37f, 0.40f));
+            CreateBackdropBlock(backdropRoot.transform, "BackdropMoundEast", new Vector3(28f, 0.55f, 8f), new Vector3(10f, 1.1f, 16f), new Color(0.35f, 0.37f, 0.40f));
+            CreateBackdropBlock(backdropRoot.transform, "BackdropMoundNorth", new Vector3(0f, 0.50f, 29f), new Vector3(28f, 1.0f, 8f), new Color(0.34f, 0.36f, 0.39f));
 #endif
         }
 
@@ -467,6 +468,23 @@ namespace UavSimulator.Tracks
             {
                 DisableCollider(collider.gameObject);
             }
+
+            foreach (var renderer in instance.GetComponentsInChildren<Renderer>(true))
+            {
+                if (renderer == null)
+                {
+                    continue;
+                }
+
+                var safeMaterial = CreateLitMaterial(ReadSourceColor(renderer.sharedMaterial), 0.16f);
+                var shared = renderer.sharedMaterials;
+                for (var i = 0; i < shared.Length; i++)
+                {
+                    shared[i] = safeMaterial;
+                }
+
+                renderer.sharedMaterials = shared;
+            }
         }
 
         private void CreateArcadeRoadCopy(Transform parent, GameObject prefab, string name, Vector3 localPosition, Vector3 localScale, Quaternion localRotation)
@@ -482,15 +500,20 @@ namespace UavSimulator.Tracks
                 DisableCollider(collider.gameObject);
             }
 
-            var materialOverride = TryCloneAssetMaterial(ArcadeEnvironmentMaterialPath);
-            if (materialOverride == null)
-            {
-                return;
-            }
+            var materialOverride = CreateLitMaterial(new Color(0.30f, 0.31f, 0.34f), 0.14f);
 
             foreach (var renderer in instance.GetComponentsInChildren<Renderer>(true))
             {
-                renderer.sharedMaterial = materialOverride;
+                if (renderer != null)
+                {
+                    var slots = renderer.sharedMaterials;
+                    for (var i = 0; i < slots.Length; i++)
+                    {
+                        slots[i] = materialOverride;
+                    }
+
+                    renderer.sharedMaterials = slots;
+                }
             }
         }
 #endif
@@ -661,6 +684,13 @@ namespace UavSimulator.Tracks
             DisableCollider(accent);
             ApplyColor(back, new Color(0.90f, 0.90f, 0.92f), 0.08f);
             ApplyColor(accent, accentColor, 0.12f);
+        }
+
+        private static void CreateBackdropBlock(Transform parent, string name, Vector3 localPosition, Vector3 localScale, Color color)
+        {
+            var block = CreateBlock(name, parent, localPosition, localScale);
+            DisableCollider(block);
+            ApplyColor(block, color, 0.08f);
         }
 
         private void CreateDecorativeCars()

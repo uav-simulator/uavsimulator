@@ -51,6 +51,7 @@ namespace UavSimulator.Vehicles
         [SerializeField] [Range(20, 100)] private int cameraJpegQuality = 100;
         [SerializeField] private Vector3 cameraLocalPosition = new Vector3(0f, 0.13f, 0.18f);
         [SerializeField] private Vector3 cameraLocalEuler = new Vector3(9f, 0f, 0f);
+        [SerializeField] private Color presentationAccentColor = new Color(0.77f, 0.11f, 0.10f);
 
         private Rigidbody body;
         private Camera frontCamera;
@@ -169,7 +170,7 @@ namespace UavSimulator.Vehicles
 
             try
             {
-                var hideSelfGeometry = cameraMode is "driver" or "bumper";
+                var hideSelfGeometry = cameraMode is "driver" or "bumper" or "chase" or "spectator";
                 for (var i = 0; i < renderers.Length; i++)
                 {
                     var renderer = renderers[i];
@@ -277,6 +278,12 @@ namespace UavSimulator.Vehicles
             frontCamera.cullingMask = visible
                 ? defaultCameraCullingMask
                 : defaultCameraCullingMask & ~(1 << PeerVehicleLayer);
+        }
+
+        public void SetPresentationAccentColor(Color color)
+        {
+            presentationAccentColor = color;
+            ApplyVisualPalette();
         }
 
         private void OnDestroy()
@@ -459,10 +466,10 @@ namespace UavSimulator.Vehicles
 
         private void ApplyVisualPalette()
         {
-            ApplyColor("Body", new Color(0.77f, 0.11f, 0.10f), 0.34f);
-            ApplyColor("Hood", new Color(0.77f, 0.11f, 0.10f), 0.34f);
+            ApplyColor("Body", presentationAccentColor, 0.34f);
+            ApplyColor("Hood", presentationAccentColor, 0.34f);
             ApplyColor("Cabin", new Color(0.10f, 0.10f, 0.11f), 0.28f);
-            ApplyColor("RearDeck", new Color(0.77f, 0.11f, 0.10f), 0.33f);
+            ApplyColor("RearDeck", presentationAccentColor, 0.33f);
             ApplyColor("Windshield", new Color(0.23f, 0.32f, 0.38f), 0.7f);
             ApplyColor("RearWindow", new Color(0.21f, 0.29f, 0.35f), 0.68f);
             ApplyColor("CameraPod", new Color(0.82f, 0.82f, 0.85f), 0.2f);
