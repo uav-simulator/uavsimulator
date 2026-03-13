@@ -55,6 +55,11 @@
 - сценарную конфигурацию;
 - понятную quickstart-инструкцию.
 
+Что уже закрыто в этом этапе:
+- lifecycle вокруг runtime канонизирован через `rusim server up/down/status`;
+- `Makefile` выведен из роли публичного интерфейса;
+- web UI уже умеет выбирать `camera mode`, вторую машинку и `control agent` для Unity runtime.
+
 ### Этап 4. Sim-to-real workflow
 Статус: `частично сделано`
 
@@ -81,7 +86,7 @@ MVP считается собранным, когда одновременно �
 5. Документация опубликована и поддерживается как источник правды.
 
 ## Что делаем следующим
-1. Доводим `Autopilot Integration Contract v1`.
-2. Доводим `Simulator Scenario Config Contract v1`.
-3. Поднимаем готовый docs-layer через GitHub Pages.
-4. После этого идем в реализацию CLI/server-headless path.
+1. Делаем более удобный multi-agent UX в основном dashboard.
+2. Чистим visual/material проблемы realistic track.
+3. Доводим `Autopilot Integration Contract v1`.
+4. После этого углубляем standalone/runtime distribution path.
