@@ -77,11 +77,11 @@ export async function setUnityRuntimeSelection(payload: {
   return handleJson<UnityRuntimeCatalogDto>(response)
 }
 
-export async function sendCommand(command: string): Promise<CommandResponse> {
+export async function sendCommand(command: string, agentId?: string): Promise<CommandResponse> {
   const response = await fetch(withBase('/api/command'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ command }),
+    body: JSON.stringify({ command, agentId }),
   })
 
   return handleJson<CommandResponse>(response)
@@ -200,8 +200,12 @@ export async function ledClear(): Promise<SensorBridgeResponse> {
   return handleJson<SensorBridgeResponse>(response)
 }
 
-export function cameraMjpegUrl(): string {
-  return withBase('/api/camera/mjpeg')
+export function cameraMjpegUrl(agentId?: string): string {
+  if (!agentId?.trim()) {
+    return withBase('/api/camera/mjpeg')
+  }
+
+  return withBase(`/api/camera/mjpeg?agentId=${encodeURIComponent(agentId.trim())}`)
 }
 
 export function resolveHubUrl(): string {

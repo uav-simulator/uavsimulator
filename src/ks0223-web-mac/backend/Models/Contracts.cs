@@ -1,6 +1,6 @@
 namespace Ks0223.Web.Backend.Models;
 
-public sealed record CommandRequest(string Command);
+public sealed record CommandRequest(string Command, string? AgentId = null);
 
 public sealed record CommandResponse(bool Sent, string? Error = null);
 

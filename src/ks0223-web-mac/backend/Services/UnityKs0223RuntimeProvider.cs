@@ -10,6 +10,22 @@ namespace Ks0223.Web.Backend.Services;
 
 public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
 {
+    private sealed class AgentControlState
+    {
+        public float LeftPwmNorm { get; set; }
+        public float RightPwmNorm { get; set; }
+        public float BrakeNorm { get; set; }
+        public int CameraPanDeg { get; set; } = 90;
+        public int CameraTiltDeg { get; set; } = 90;
+    }
+
+    private sealed class AgentFrameState
+    {
+        public byte[]? Bytes { get; set; }
+        public DateTimeOffset? Timestamp { get; set; }
+        public long Version { get; set; }
+    }
+
     private static readonly string[] PreferredVehicleIds =
     {
         "vehicle.ks0223.arcade.blue.v1",
@@ -72,6 +88,8 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
     private float leftPwmNorm;
     private float rightPwmNorm;
     private float brakeNorm;
+    private readonly Dictionary<string, AgentControlState> agentControlStates = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, AgentFrameState> agentFrameStates = new(StringComparer.Ordinal);
     private CancellationTokenSource? loopCts;
     private Task? loopTask;
     private string? lastSourceUrl;
@@ -173,6 +191,8 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
                         IsPrimary: item.IsPrimary))
                     .ToList();
             }
+
+            SyncAgentStateDictionariesLocked(NormalizeConfiguredAgents(configuredAgents, selectedVehicleId));
         }
 
         if (!applyImmediately)
@@ -193,7 +213,7 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
 
         var catalog = await ProbeContractAsync(cancellationToken);
         using var initial = await ResetSimulationAsync(cancellationToken);
-        UpdateFromStepResult(initial);
+        UpdateFromStepResult(initial, selectedControlAgentId, updateSharedState: true);
         await BroadcastStatusAsync(cancellationToken);
         return catalog;
     }
@@ -219,7 +239,7 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
         }
     }
 
-    public async Task<CommandResponse> SendCommandAsync(string command, string source, CancellationToken cancellationToken)
+    public async Task<CommandResponse> SendCommandAsync(string command, string source, string? agentId, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (string.IsNullOrWhiteSpace(command))
@@ -227,8 +247,8 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
             return new CommandResponse(false, "Command is empty");
         }
 
-        ApplyCommand(command);
-        await sessionLogger.WriteAsync("command.outgoing", new { command, source, mode = Mode }, cancellationToken);
+        ApplyCommand(command, agentId);
+        await sessionLogger.WriteAsync("command.outgoing", new { command, source, mode = Mode, agentId }, cancellationToken);
         await BroadcastStatusAsync(cancellationToken);
         return new CommandResponse(true);
     }
@@ -292,10 +312,24 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
         }
     }
 
-    public bool TryGetLatestFrame(out byte[] frame, out string contentType, out long version, out DateTimeOffset? timestamp)
+    public bool TryGetLatestFrame(out byte[] frame, out string contentType, out long version, out DateTimeOffset? timestamp) =>
+        TryGetLatestFrame(null, out frame, out contentType, out version, out timestamp);
+
+    public bool TryGetLatestFrame(string? agentId, out byte[] frame, out string contentType, out long version, out DateTimeOffset? timestamp)
     {
         lock (stateLock)
         {
+            if (!string.IsNullOrWhiteSpace(agentId) &&
+                agentFrameStates.TryGetValue(agentId.Trim(), out var agentFrame) &&
+                agentFrame.Bytes is { Length: > 0 })
+            {
+                frame = agentFrame.Bytes.ToArray();
+                contentType = "image/jpeg";
+                version = agentFrame.Version;
+                timestamp = agentFrame.Timestamp;
+                return true;
+            }
+
             if (latestFrame is null)
             {
                 frame = Array.Empty<byte>();
@@ -434,7 +468,7 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
             await ProbeHealthAsync(cancellationToken);
             await ProbeContractAsync(cancellationToken);
             var initial = await ResetSimulationAsync(cancellationToken);
-            UpdateFromStepResult(initial);
+            UpdateFromStepResult(initial, selectedControlAgentId, updateSharedState: true);
 
             lock (stateLock)
             {
@@ -498,8 +532,21 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
             try
             {
                 AdvanceAutoScan();
-                var result = await StepSimulationAsync(cancellationToken);
-                UpdateFromStepResult(result);
+                var agentsSnapshot = GetLoopAgentsSnapshot();
+                if (agentsSnapshot.Count == 0)
+                {
+                    await Task.Delay(80, cancellationToken);
+                    continue;
+                }
+
+                foreach (var agent in agentsSnapshot)
+                {
+                    var commandState = GetAgentControlStateSnapshot(agent.AgentId);
+                    var captureFrame = string.Equals(agent.AgentId, selectedControlAgentId, StringComparison.Ordinal);
+                    var result = await StepSimulationAsync(agent.AgentId, commandState, cancellationToken);
+                    UpdateFromStepResult(result, agent.AgentId, captureFrame);
+                }
+
                 await hubContext.Clients.All.SendAsync("sensorTelemetry", GetLatestSensorTelemetry(), cancellationToken);
                 await hubContext.Clients.All.SendAsync("sensorStatus", GetSensorStatus(), cancellationToken);
                 await BroadcastStatusAsync(cancellationToken);
@@ -634,6 +681,7 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
             availableVehicles = vehicleOptions;
             availableTracks = trackOptions;
             configuredAgents = NormalizeConfiguredAgents(configuredAgents, resolvedVehicleId);
+            SyncAgentStateDictionariesLocked(configuredAgents);
             selectedControlAgentId = ResolveSelectedControlAgentId(selectedControlAgentId, configuredAgents);
             var selectedDisplayName = vehicleOptions.FirstOrDefault(option => string.Equals(option.Id, resolvedVehicleId, StringComparison.Ordinal))
                 ?.DisplayName;
@@ -694,39 +742,25 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
         return await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
     }
 
-    private async Task<JsonDocument> StepSimulationAsync(CancellationToken cancellationToken)
+    private async Task<JsonDocument> StepSimulationAsync(
+        string agentId,
+        AgentControlState commandState,
+        CancellationToken cancellationToken)
     {
-        float left;
-        float right;
-        float brake;
-        int pan;
-        int tilt;
-        string targetAgentId;
-
-        lock (stateLock)
-        {
-            left = leftPwmNorm;
-            right = rightPwmNorm;
-            brake = brakeNorm;
-            pan = cameraPanDeg;
-            tilt = cameraTiltDeg;
-            targetAgentId = selectedControlAgentId;
-        }
-
         var payload = new
         {
             throttle = 0.0,
             steer = 0.0,
-            brake,
-            targetAgentId,
+            brake = commandState.BrakeNorm,
+            targetAgentId = agentId,
             timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
             timeBase = "unix_ms",
             extensions = new object[]
             {
-                new { key = "drive.left_pwm_norm", value = left.ToString("0.000000", CultureInfo.InvariantCulture) },
-                new { key = "drive.right_pwm_norm", value = right.ToString("0.000000", CultureInfo.InvariantCulture) },
-                new { key = "camera.pan_norm", value = NormalizeServo(pan).ToString("0.000000", CultureInfo.InvariantCulture) },
-                new { key = "camera.tilt_norm", value = NormalizeServo(tilt).ToString("0.000000", CultureInfo.InvariantCulture) },
+                new { key = "drive.left_pwm_norm", value = commandState.LeftPwmNorm.ToString("0.000000", CultureInfo.InvariantCulture) },
+                new { key = "drive.right_pwm_norm", value = commandState.RightPwmNorm.ToString("0.000000", CultureInfo.InvariantCulture) },
+                new { key = "camera.pan_norm", value = NormalizeServo(commandState.CameraPanDeg).ToString("0.000000", CultureInfo.InvariantCulture) },
+                new { key = "camera.tilt_norm", value = NormalizeServo(commandState.CameraTiltDeg).ToString("0.000000", CultureInfo.InvariantCulture) },
             },
         };
 
@@ -774,7 +808,7 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
         return await client.SendAsync(request, cancellationToken);
     }
 
-    private void UpdateFromStepResult(JsonDocument document)
+    private void UpdateFromStepResult(JsonDocument document, string agentId, bool updateSharedState)
     {
         var now = DateTimeOffset.UtcNow;
         var root = document.RootElement;
@@ -802,19 +836,23 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
             }
         }
 
-        AddUiFriendlyTelemetry(flat);
+        AddUiFriendlyTelemetry(flat, agentId);
         var telemetryDto = new SensorTelemetryDto(now, lastSourceUrl ?? string.Empty, root.GetRawText(), flat);
 
         lock (stateLock)
         {
-            latestTelemetry = telemetryDto;
-            lastTelemetryAt = now;
             lastSuccessAt = now;
             lastLoopAt = now;
-            hasTelemetry = flat.Count > 0;
             unityConnected = true;
             consecutiveFailures = 0;
             lastError = null;
+
+            if (updateSharedState)
+            {
+                latestTelemetry = telemetryDto;
+                lastTelemetryAt = now;
+                hasTelemetry = flat.Count > 0;
+            }
         }
 
         if (root.TryGetProperty("frame", out var frame) &&
@@ -828,11 +866,19 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
                     var bytes = Convert.FromBase64String(dataBase64);
                     lock (stateLock)
                     {
-                        latestFrame = bytes;
-                        lastFrameAt = now;
-                        frameVersion++;
+                        var frameState = GetOrCreateAgentFrameStateLocked(agentId);
+                        frameState.Bytes = bytes;
+                        frameState.Timestamp = now;
+                        frameState.Version++;
                         framesReceived++;
                         bytesReceived += bytes.Length;
+
+                        if (updateSharedState)
+                        {
+                            latestFrame = bytes;
+                            lastFrameAt = now;
+                            frameVersion++;
+                        }
                     }
                 }
                 catch
@@ -843,15 +889,17 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
         }
     }
 
-    private void AddUiFriendlyTelemetry(IDictionary<string, string> flat)
+    private void AddUiFriendlyTelemetry(IDictionary<string, string> flat, string agentId)
     {
+        var commandState = GetAgentControlStateSnapshot(agentId);
+
         flat["config.auto_scan_enabled"] = ultrasonicAutoScanEnabled ? "true" : "false";
         flat["config.ultrasonic_servo_pin"] = ultrasonicServoPin.ToString(CultureInfo.InvariantCulture);
         flat["ultrasonic.scan_servo_angle_deg"] = ultrasonicAngleDeg.ToString(CultureInfo.InvariantCulture);
-        flat["camera.pan_deg"] = cameraPanDeg.ToString(CultureInfo.InvariantCulture);
-        flat["camera.tilt_deg"] = cameraTiltDeg.ToString(CultureInfo.InvariantCulture);
+        flat["camera.pan_deg"] = commandState.CameraPanDeg.ToString(CultureInfo.InvariantCulture);
+        flat["camera.tilt_deg"] = commandState.CameraTiltDeg.ToString(CultureInfo.InvariantCulture);
         flat["camera.mode"] = selectedCameraMode;
-        flat["control.agent_id"] = selectedControlAgentId;
+        flat["control.agent_id"] = agentId;
 
         if (flat.TryGetValue("sensor.ultrasonic.front.m", out var ultrasonicMeters) &&
             float.TryParse(ultrasonicMeters, NumberStyles.Float, CultureInfo.InvariantCulture, out var distanceM))
@@ -879,61 +927,174 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
         return value >= 0.5f ? "1" : "0";
     }
 
-    private void ApplyCommand(string command)
+    private void ApplyCommand(string command, string? targetAgentId)
     {
         var driveNorm = Math.Clamp(driveSpeedPercent / 100f, 0f, 1f);
         var cameraStep = Math.Max(1, cameraSpeedPercent / 20);
 
         lock (stateLock)
         {
+            var resolvedAgentId = ResolveCommandTargetAgentId(targetAgentId);
+            var commandState = GetOrCreateAgentControlStateLocked(resolvedAgentId);
             switch (command)
             {
                 case "DirForward":
-                    leftPwmNorm = driveNorm;
-                    rightPwmNorm = driveNorm;
-                    brakeNorm = 0f;
+                    commandState.LeftPwmNorm = driveNorm;
+                    commandState.RightPwmNorm = driveNorm;
+                    commandState.BrakeNorm = 0f;
                     break;
                 case "DirBack":
-                    leftPwmNorm = -driveNorm;
-                    rightPwmNorm = -driveNorm;
-                    brakeNorm = 0f;
+                    commandState.LeftPwmNorm = -driveNorm;
+                    commandState.RightPwmNorm = -driveNorm;
+                    commandState.BrakeNorm = 0f;
                     break;
                 case "DirLeft":
-                    leftPwmNorm = driveNorm;
-                    rightPwmNorm = -driveNorm;
-                    brakeNorm = 0f;
+                    commandState.LeftPwmNorm = driveNorm;
+                    commandState.RightPwmNorm = -driveNorm;
+                    commandState.BrakeNorm = 0f;
                     break;
                 case "DirRight":
-                    leftPwmNorm = -driveNorm;
-                    rightPwmNorm = driveNorm;
-                    brakeNorm = 0f;
+                    commandState.LeftPwmNorm = -driveNorm;
+                    commandState.RightPwmNorm = driveNorm;
+                    commandState.BrakeNorm = 0f;
                     break;
                 case "DirStop":
-                    ResetDriveState();
+                    ResetDriveStateLocked(resolvedAgentId);
                     break;
                 case "CamUp":
-                    cameraTiltDeg = Math.Clamp(cameraTiltDeg - cameraStep, 0, 180);
+                    commandState.CameraTiltDeg = Math.Clamp(commandState.CameraTiltDeg - cameraStep, 0, 180);
                     break;
                 case "CamDown":
-                    cameraTiltDeg = Math.Clamp(cameraTiltDeg + cameraStep, 0, 180);
+                    commandState.CameraTiltDeg = Math.Clamp(commandState.CameraTiltDeg + cameraStep, 0, 180);
                     break;
                 case "CamLeft":
-                    cameraPanDeg = Math.Clamp(cameraPanDeg + cameraStep, 0, 180);
+                    commandState.CameraPanDeg = Math.Clamp(commandState.CameraPanDeg + cameraStep, 0, 180);
                     break;
                 case "CamRight":
-                    cameraPanDeg = Math.Clamp(cameraPanDeg - cameraStep, 0, 180);
+                    commandState.CameraPanDeg = Math.Clamp(commandState.CameraPanDeg - cameraStep, 0, 180);
                     break;
                 case "CamStop":
                     break;
+            }
+
+            if (string.Equals(resolvedAgentId, selectedControlAgentId, StringComparison.Ordinal))
+            {
+                leftPwmNorm = commandState.LeftPwmNorm;
+                rightPwmNorm = commandState.RightPwmNorm;
+                brakeNorm = commandState.BrakeNorm;
+                cameraPanDeg = commandState.CameraPanDeg;
+                cameraTiltDeg = commandState.CameraTiltDeg;
             }
         }
     }
 
     private void ResetDriveState()
     {
-        leftPwmNorm = 0f;
-        rightPwmNorm = 0f;
-        brakeNorm = 0f;
+        lock (stateLock)
+        {
+            foreach (var agentId in agentControlStates.Keys.ToArray())
+            {
+                ResetDriveStateLocked(agentId);
+            }
+
+            leftPwmNorm = 0f;
+            rightPwmNorm = 0f;
+            brakeNorm = 0f;
+        }
+    }
+
+    private List<UnityRuntimeAgentSelectionRequest> GetLoopAgentsSnapshot()
+    {
+        lock (stateLock)
+        {
+            return NormalizeConfiguredAgents(configuredAgents, selectedVehicleId);
+        }
+    }
+
+    private AgentControlState GetAgentControlStateSnapshot(string agentId)
+    {
+        lock (stateLock)
+        {
+            var state = GetOrCreateAgentControlStateLocked(agentId);
+            return new AgentControlState
+            {
+                LeftPwmNorm = state.LeftPwmNorm,
+                RightPwmNorm = state.RightPwmNorm,
+                BrakeNorm = state.BrakeNorm,
+                CameraPanDeg = state.CameraPanDeg,
+                CameraTiltDeg = state.CameraTiltDeg,
+            };
+        }
+    }
+
+    private string ResolveCommandTargetAgentId(string? targetAgentId)
+    {
+        if (!string.IsNullOrWhiteSpace(targetAgentId))
+        {
+            return targetAgentId.Trim();
+        }
+
+        return string.IsNullOrWhiteSpace(selectedControlAgentId) ? "ego" : selectedControlAgentId;
+    }
+
+    private AgentControlState GetOrCreateAgentControlStateLocked(string agentId)
+    {
+        var normalizedAgentId = string.IsNullOrWhiteSpace(agentId) ? "ego" : agentId.Trim();
+        if (!agentControlStates.TryGetValue(normalizedAgentId, out var state))
+        {
+            state = new AgentControlState
+            {
+                CameraPanDeg = cameraPanDeg,
+                CameraTiltDeg = cameraTiltDeg,
+            };
+            agentControlStates[normalizedAgentId] = state;
+        }
+
+        return state;
+    }
+
+    private AgentFrameState GetOrCreateAgentFrameStateLocked(string agentId)
+    {
+        var normalizedAgentId = string.IsNullOrWhiteSpace(agentId) ? "ego" : agentId.Trim();
+        if (!agentFrameStates.TryGetValue(normalizedAgentId, out var state))
+        {
+            state = new AgentFrameState();
+            agentFrameStates[normalizedAgentId] = state;
+        }
+
+        return state;
+    }
+
+    private void ResetDriveStateLocked(string agentId)
+    {
+        var state = GetOrCreateAgentControlStateLocked(agentId);
+        state.LeftPwmNorm = 0f;
+        state.RightPwmNorm = 0f;
+        state.BrakeNorm = 0f;
+    }
+
+    private void SyncAgentStateDictionariesLocked(IReadOnlyList<UnityRuntimeAgentSelectionRequest> agents)
+    {
+        var normalizedAgentIds = new HashSet<string>(
+            (agents ?? Array.Empty<UnityRuntimeAgentSelectionRequest>())
+                .Select(agent => string.IsNullOrWhiteSpace(agent.AgentId) ? "ego" : agent.AgentId!.Trim()),
+            StringComparer.Ordinal);
+
+        foreach (var agentId in normalizedAgentIds)
+        {
+            _ = GetOrCreateAgentControlStateLocked(agentId);
+            _ = GetOrCreateAgentFrameStateLocked(agentId);
+        }
+
+        foreach (var staleAgentId in agentControlStates.Keys.Where(id => !normalizedAgentIds.Contains(id)).ToArray())
+        {
+            agentControlStates.Remove(staleAgentId);
+        }
+
+        foreach (var staleAgentId in agentFrameStates.Keys.Where(id => !normalizedAgentIds.Contains(id)).ToArray())
+        {
+            agentFrameStates.Remove(staleAgentId);
+        }
     }
 
     private static string NormalizeCameraMode(string? mode)
@@ -1038,8 +1199,11 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
             ResetDriveState();
             if (!string.IsNullOrWhiteSpace(targetHost))
             {
-                using var result = await StepSimulationAsync(cancellationToken);
-                _ = result;
+                foreach (var agent in GetLoopAgentsSnapshot())
+                {
+                    using var result = await StepSimulationAsync(agent.AgentId, GetAgentControlStateSnapshot(agent.AgentId), cancellationToken);
+                    _ = result;
+                }
             }
         }
         catch
