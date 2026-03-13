@@ -140,7 +140,9 @@ npm run dev
 ```
 
 ### 3. Dockerized web-controller
-Использовать команды из `Makefile` и каталога `src/ks0223-web-mac`.
+Для продуктового сценария использовать `rusim`.
+
+`Makefile` оставлен только для developer/ROS2 automation и внутренних smoke/demo задач.
 
 Если нужен контейнерный запуск:
 
@@ -185,7 +187,7 @@ rusim version
 rusim install
 rusim doctor
 rusim runtime build
-rusim runtime run --build latest --mode background
+rusim server up --build latest --mode background
 rusim web open
 ```
 
@@ -213,23 +215,17 @@ rusim scenario validate configs/scenarios/demo.yaml
 rusim scenario reset configs/scenarios/demo.yaml --base-url http://127.0.0.1:8000
 ```
 
-Через `Makefile` это же доступно короче:
-
-```bash
-make sim-scenario-validate
-make sim-scenario-print
-make sim-scenario-reset
-```
+Через `Makefile` остались только compatibility aliases для внутренних скриптов, но канонический путь проходит через `rusim scenario ...`.
 
 ## Launcher runtime
 CLI также поддерживает первый launcher Unity runtime:
 
 ```bash
-rusim server start --mode windowed
-rusim server start --mode background --port 8011
-rusim server start --mode headless --port 8011
+rusim server up --mode windowed
+rusim server up --mode background --port 8011
+rusim server up --mode headless --port 8011
 rusim server status --port 8011
-rusim server stop
+rusim server down
 ```
 
 Ограничение Unity:
@@ -248,7 +244,7 @@ rusim runtime build --project-path src/UnityProject/uav-simulator
 ```bash
 rusim runtime list
 rusim runtime favorite set latest
-rusim runtime run --build favorite --mode background --port 8011
+rusim server up --build favorite --mode background --port 8011
 rusim runtime remove latest
 ```
 

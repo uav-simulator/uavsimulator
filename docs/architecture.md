@@ -134,7 +134,8 @@ sequenceDiagram
 | RViz2 | 3D/2D визуализация ROS данных | Odom + camera topic visualization |
 | rqt (`image_view`, `publisher`, `robot_steering`) | Оперативный UI для камеры/команд | Тест ручного управления и потоков сенсоров |
 | Docker ROS2 Desktop | Изоляция ROS2 среды на macOS | `make ros-up` + `make ros-ui-container` |
-| Makefile | Единый операторский интерфейс запуска | Раздельный старт Simulator и ROS контуров |
+| Makefile | Developer automation и ROS2/demo orchestration | Локальный инженерный workflow, smoke и bridge-контур |
+| `rusim` CLI | Канонический product lifecycle и runtime tooling | `server up/down/status`, `scenario`, `runtime`, `step` |
 
 ## 7) Границы ответственности
 - Unity Core: симуляция, физика, plugin runtime, HTTP API.
