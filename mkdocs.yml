@@ -66,6 +66,10 @@ nav:
       - Definition of Done MVP: definition-of-done-mvp.md
       - API: api.md
   - Архитектура: architecture.md
+  - Плагины:
+      - Обзор: plugins.md
+      - Машинки: vehicles.md
+      - Как добавить новую машинку: plugin-vehicle-guide.md
   - Roadmap: roadmap.md
   - CI/CD: ci.md
   - Research:

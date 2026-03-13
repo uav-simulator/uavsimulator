@@ -22,25 +22,25 @@ namespace UavSimulator.Plugins
         public static PluginRegistrySnapshot Load()
         {
             var registryAsset = Resources.Load<PluginRegistryAsset>(RegistryAssetPath);
-            if (registryAsset != null)
-            {
-                var snapshot = PluginRegistrySnapshot.FromAsset(registryAsset, PluginRegistrySource.RegistryAsset);
-                return snapshot.IsEmpty
-                    ? BuiltinPluginFactory.CreateSnapshot(PluginRegistrySource.BuiltinFallbackFromEmptyRegistryAsset)
-                    : snapshot;
-            }
-
             var vehicles = Resources.LoadAll<VehiclePluginDescriptor>(DescriptorsFolderPath) ?? new VehiclePluginDescriptor[0];
             var tracks = Resources.LoadAll<TrackPluginDescriptor>(DescriptorsFolderPath) ?? new TrackPluginDescriptor[0];
-
-            var loadedSnapshot = new PluginRegistrySnapshot(
+            var resourceSnapshot = new PluginRegistrySnapshot(
                 vehicles: vehicles.Where(v => v != null).ToArray(),
                 tracks: tracks.Where(t => t != null).ToArray(),
-                source: PluginRegistrySource.ResourcesDescriptorsFolder
-            );
-            return loadedSnapshot.IsEmpty
+                source: PluginRegistrySource.ResourcesDescriptorsFolder);
+
+            if (registryAsset != null)
+            {
+                var registrySnapshot = PluginRegistrySnapshot.FromAsset(registryAsset, PluginRegistrySource.RegistryAsset);
+                var mergedSnapshot = PluginRegistrySnapshot.MergePreferPrimary(registrySnapshot, resourceSnapshot, PluginRegistrySource.RegistryAsset);
+                return mergedSnapshot.IsEmpty
+                    ? BuiltinPluginFactory.CreateSnapshot(PluginRegistrySource.BuiltinFallbackFromEmptyRegistryAsset)
+                    : mergedSnapshot;
+            }
+
+            return resourceSnapshot.IsEmpty
                 ? BuiltinPluginFactory.CreateSnapshot(PluginRegistrySource.BuiltinFallbackFromEmptyResources)
-                : loadedSnapshot;
+                : resourceSnapshot;
         }
     }
 
@@ -78,6 +78,48 @@ namespace UavSimulator.Plugins
                 tracks: tracks.Where(t => t != null).ToArray(),
                 source: source
             );
+        }
+
+        public static PluginRegistrySnapshot MergePreferPrimary(
+            PluginRegistrySnapshot primary,
+            PluginRegistrySnapshot secondary,
+            PluginRegistrySource source)
+        {
+            var vehicles = MergeById(
+                primary != null ? primary.Vehicles : Array.Empty<VehiclePluginDescriptor>(),
+                secondary != null ? secondary.Vehicles : Array.Empty<VehiclePluginDescriptor>());
+            var tracks = MergeById(
+                primary != null ? primary.Tracks : Array.Empty<TrackPluginDescriptor>(),
+                secondary != null ? secondary.Tracks : Array.Empty<TrackPluginDescriptor>());
+
+            return new PluginRegistrySnapshot(vehicles, tracks, source);
+        }
+
+        private static T[] MergeById<T>(IEnumerable<T> primary, IEnumerable<T> secondary) where T : PluginDescriptorBase
+        {
+            var merged = new Dictionary<string, T>(StringComparer.Ordinal);
+
+            foreach (var item in primary ?? Array.Empty<T>())
+            {
+                if (item == null || string.IsNullOrWhiteSpace(item.id))
+                {
+                    continue;
+                }
+
+                merged[item.id] = item;
+            }
+
+            foreach (var item in secondary ?? Array.Empty<T>())
+            {
+                if (item == null || string.IsNullOrWhiteSpace(item.id) || merged.ContainsKey(item.id))
+                {
+                    continue;
+                }
+
+                merged[item.id] = item;
+            }
+
+            return merged.Values.OrderBy(item => item.id, StringComparer.Ordinal).ToArray();
         }
 
         public IReadOnlyList<VehiclePluginDescriptor> VehiclesList => Vehicles;

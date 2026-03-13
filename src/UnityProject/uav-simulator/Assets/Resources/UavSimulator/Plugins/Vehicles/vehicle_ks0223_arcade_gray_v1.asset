@@ -1,0 +1,23 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b7166dcab92fb4f0fa25d7c155340a81, type: 3}
+  m_Name: vehicle_ks0223_arcade_gray_v1
+  m_EditorClassIdentifier: 
+  id: vehicle.ks0223.arcade.gray.v1
+  displayName: Keyestudio KS0223 (Arcade Gray)
+  version:
+    major: 0
+    minor: 0
+    patch: 0
+  description: KS0223 physics profile with ARCADE gray visual body.
+  prefab: {fileID: 0}
+  deviceContract: {fileID: 11400000, guid: e1fcbe61526f340a59aec7fc3f894d5f, type: 2}
