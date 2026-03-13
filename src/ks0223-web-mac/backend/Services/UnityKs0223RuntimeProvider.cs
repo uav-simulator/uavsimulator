@@ -541,10 +541,11 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
 
                 foreach (var agent in agentsSnapshot)
                 {
-                    var commandState = GetAgentControlStateSnapshot(agent.AgentId);
-                    var captureFrame = string.Equals(agent.AgentId, selectedControlAgentId, StringComparison.Ordinal);
-                    var result = await StepSimulationAsync(agent.AgentId, commandState, cancellationToken);
-                    UpdateFromStepResult(result, agent.AgentId, captureFrame);
+                    var agentId = ResolveCommandTargetAgentId(agent.AgentId);
+                    var commandState = GetAgentControlStateSnapshot(agentId);
+                    var captureFrame = string.Equals(agentId, selectedControlAgentId, StringComparison.Ordinal);
+                    var result = await StepSimulationAsync(agentId, commandState, cancellationToken);
+                    UpdateFromStepResult(result, agentId, captureFrame);
                 }
 
                 await hubContext.Clients.All.SendAsync("sensorTelemetry", GetLatestSensorTelemetry(), cancellationToken);
@@ -1201,7 +1202,8 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
             {
                 foreach (var agent in GetLoopAgentsSnapshot())
                 {
-                    using var result = await StepSimulationAsync(agent.AgentId, GetAgentControlStateSnapshot(agent.AgentId), cancellationToken);
+                    var agentId = ResolveCommandTargetAgentId(agent.AgentId);
+                    using var result = await StepSimulationAsync(agentId, GetAgentControlStateSnapshot(agentId), cancellationToken);
                     _ = result;
                 }
             }
