@@ -40,6 +40,9 @@ Decisions:
   - `steer` в диапазоне `[-1..1]`;
   - `brake` в диапазоне `[0..1]`.
 - Добавлено поле `ControlCommand.extensions[]` (массив `key/value`) для robot-specific каналов.
+- Для multi-agent runtime добавлены адресные поля:
+  - `targetAgentId`;
+  - `targetVehicleId`.
 - Добавлено поле `VehicleState.telemetry[]` (массив `key/value`) для robot-specific телеметрии.
 - Для KS0223 (CARLA/ROS2-friendly naming) используются ключи:
   - actions: `drive.left_pwm_norm`, `drive.right_pwm_norm`, `control.throttle_norm`, `control.steer_norm`, `control.brake_norm`.
@@ -79,9 +82,13 @@ Decisions:
   "status": "ok",
   "pluginRegistrySource": "BuiltinFallbackFromEmptyResources",
   "availableVehicles": 6,
-  "availableTracks": 2,
+  "availableTracks": 3,
+  "activeAgentId": "ego",
   "activeVehicleId": "vehicle.ks0223.arcade.blue.v1",
-  "activeTrackId": "track.roadsystem_arena.v1"
+  "activeTrackId": "track.roadsystem_realistic.v2",
+  "activeVehicleCount": 2,
+  "activeAgentIds": ["ego", "npc-red"],
+  "activeVehicleIds": ["vehicle.ks0223.arcade.blue.v1", "vehicle.ks0223.arcade.red.v1"]
 }
 ```
 
@@ -96,6 +103,12 @@ Decisions:
 - Смена карты/машины делается через существующий `POST /reset`:
   - `SimulationConfig.selectedTrackId` = id карты (`track.*`);
   - `SimulationConfig.selectedVehicleId` = id машинки (`vehicle.*`).
+- Для multi-agent сценариев `SimulationConfig.agents[]` позволяет поднять несколько машинок в одном runtime:
+  - `agentId`;
+  - `vehicleId`;
+  - `isPrimary`;
+  - `trackParams`;
+  - `vehicleParams`.
 - Маршрут обучения (waypoints) задаётся через `SimulationConfig.trackParams`:
   - `route.waypoints` = строка `x,y,z;x,y,z;...` (поддерживается также формат `x,z`);
   - `route.reach_distance_m` = порог достижения waypoint в метрах;
@@ -108,6 +121,10 @@ Decisions:
   - `route.loop`
   - `route.completed`
   - `route.distance_to_target_m`
+- Для multi-agent ответа дополнительно возвращаются:
+  - `StepResult.activeAgentId`;
+  - `StepResult.activeVehicleId`;
+  - `StepResult.agents[]` с состоянием всех активных машинок.
 
 Rationale:
 - Не добавляем новый транспорт/протокол и сохраняем обратную совместимость API.

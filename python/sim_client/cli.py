@@ -198,6 +198,8 @@ def build_parser() -> argparse.ArgumentParser:
     step = subparsers.add_parser("step", help="Send a single control step.")
     step.set_defaults(_parser=step)
     step.add_argument("--base-url", default="http://127.0.0.1:8000")
+    step.add_argument("--agent-id", default="")
+    step.add_argument("--vehicle-id", default="")
     step.add_argument("--throttle", type=float, default=0.0)
     step.add_argument("--steer", type=float, default=0.0)
     step.add_argument("--brake", type=float, default=0.0)
@@ -246,7 +248,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "scenario":
             return _scenario(args)
         if args.command == "step":
-            return _step(args.base_url, args.throttle, args.steer, args.brake)
+            return _step(args.base_url, args.throttle, args.steer, args.brake, args.agent_id, args.vehicle_id)
     except Exception as exc:  # pragma: no cover - CLI boundary
         print(f"error: {exc}", file=sys.stderr)
         return 1
@@ -626,6 +628,7 @@ def _scenario(args: argparse.Namespace) -> int:
                 "scenarioId": payload.get("scenarioId"),
                 "selectedTrackId": reset_payload.get("selectedTrackId"),
                 "selectedVehicleId": reset_payload.get("selectedVehicleId"),
+                "agentsConfigured": len(reset_payload.get("agents") or []),
                 "done": response.get("done"),
                 "hasFrame": bool(response.get("frame")),
             },
@@ -636,12 +639,14 @@ def _scenario(args: argparse.Namespace) -> int:
     return 0
 
 
-def _step(base_url: str, throttle: float, steer: float, brake: float) -> int:
+def _step(base_url: str, throttle: float, steer: float, brake: float, agent_id: str, vehicle_id: str) -> int:
     client = SimClient(base_url=base_url)
     payload: Dict[str, Any] = {
         "throttle": throttle,
         "steer": steer,
         "brake": brake,
+        "targetAgentId": agent_id or None,
+        "targetVehicleId": vehicle_id or None,
         "timestamp": 0,
         "timeBase": "unix_ms",
         "extensions": [],
@@ -650,6 +655,9 @@ def _step(base_url: str, throttle: float, steer: float, brake: float) -> int:
     print(
         json.dumps(
             {
+                "activeAgentId": response.get("activeAgentId"),
+                "activeVehicleId": response.get("activeVehicleId"),
+                "agents": len(response.get("agents") or []),
                 "speed": (response.get("state") or {}).get("speed"),
                 "reward": response.get("reward"),
                 "done": response.get("done"),

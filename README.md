@@ -54,6 +54,9 @@ CLI пример CARLA-style:
   - базовый demo теперь берётся только из `configs/scenarios/demo.yaml`;
   - `make demo-reset`
   - `make demo-reset DEMO_SCENARIO=configs/scenarios/demo.yaml`
+  - multi-agent demo:
+    - `rusim server start --mode background --port 8000 --scenario configs/scenarios/demo-multi-agent.yaml`
+    - `rusim step --base-url http://127.0.0.1:8000 --agent-id npc-red --throttle 0.3 --steer 0.0 --brake 0.0`
   - для ручного override вне demo-сценария:
     - `make sim-reset UAVSIM_VEHICLE_ID=vehicle.ks0223.arcade.red.v1`
     - `make sim-reset UAVSIM_VEHICLE_ID=vehicle.ks0223.v1`

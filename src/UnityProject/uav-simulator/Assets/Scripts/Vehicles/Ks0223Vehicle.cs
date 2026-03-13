@@ -56,6 +56,7 @@ namespace UavSimulator.Vehicles
         private Camera frontCamera;
         private RenderTexture frontCameraRt;
         private Texture2D frontCameraTexture;
+        private int defaultCameraCullingMask = ~0;
         private float speedCmd;
         private float yawCmd;
         private float brakeCmd;
@@ -252,6 +253,18 @@ namespace UavSimulator.Vehicles
             }
         }
 
+        public override void SetPeerVisibility(bool visible)
+        {
+            if (frontCamera == null)
+            {
+                return;
+            }
+
+            frontCamera.cullingMask = visible
+                ? defaultCameraCullingMask
+                : defaultCameraCullingMask & ~(1 << PeerVehicleLayer);
+        }
+
         private void OnDestroy()
         {
             if (frontCameraRt != null)
@@ -325,6 +338,7 @@ namespace UavSimulator.Vehicles
             frontCamera.fieldOfView = 68f;
             frontCamera.allowHDR = false;
             frontCamera.allowMSAA = false;
+            defaultCameraCullingMask = frontCamera.cullingMask;
 
             frontCameraRt = new RenderTexture(cameraImageWidth, cameraImageHeight, 16, RenderTextureFormat.ARGB32)
             {

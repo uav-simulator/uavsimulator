@@ -112,14 +112,18 @@ rusim reset --base-url http://127.0.0.1:8000 --track-id track.roadsystem_arena.v
 rusim scenario validate configs/scenarios/demo.yaml
 rusim scenario reset configs/scenarios/demo.yaml --base-url http://127.0.0.1:8000
 rusim step --base-url http://127.0.0.1:8000 --throttle 0.2 --steer 0.1
+rusim server start --mode background --port 8000 --scenario configs/scenarios/demo-multi-agent.yaml
+rusim step --base-url http://127.0.0.1:8000 --agent-id npc-red --throttle 0.3 --steer 0.0
 ```
 
 Важно:
 - `scene` в CLI является alias для track plugin;
 - к отдельной машинке в Unity не подключаются через отдельный порт;
 - подключение идёт к общему runtime, а выбор активной машинки/сцены делается через `rusim reset`.
+- для multi-agent сценариев адресная команда идёт через `--agent-id`; `--vehicle-id` работает только если такой vehicle plugin в runtime уникален.
 - `rusim doctor` теперь показывает `pluginRegistrySource` и активные `track/vehicle`, чтобы быстро проверить, реально ли используются plugin assets или сработал builtin fallback.
 - `configs/scenarios/demo.yaml` является единственным каноническим demo entrypoint для `make demo-*` и smoke-проверок.
+- `configs/scenarios/demo-multi-agent.yaml` является референсным примером для запуска нескольких машинок на одном треке.
 
 Ограничение текущего среза:
 - CLI поддерживает потребление релиза (`rusim upgrade`), но не управляет публикацией release/tag lifecycle;

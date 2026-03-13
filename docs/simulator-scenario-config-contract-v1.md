@@ -69,6 +69,13 @@
 - `agents.count`
 - `agents.isolated`
 - `agents.seeEachOther`
+- `agents.collisionsEnabled`
+- `agents.vehicles[]`
+  - `agentId`
+  - `vehicleId`
+  - `primary`
+  - `spawnPose`
+  - `params`
 
 ### 8. Logging / outputs
 - `logging.enabled`
@@ -114,6 +121,58 @@
     "tag": "demo"
   }
 }
+```
+
+## Реализованный multi-agent срез
+В текущем коде уже поддерживается практический subset этого контракта:
+
+- `agents.count > 1`
+  - быстрый способ заспавнить несколько одинаковых машинок с автосмещением по стартовой позиции;
+- `agents.vehicles[]`
+  - явная конфигурация нескольких машинок;
+  - каждая машинка получает собственный `agentId`;
+  - можно задать свой `vehicleId`;
+  - можно задать `spawnPose.position` и `spawnPose.yawDeg`;
+- `agents.seeEachOther`
+  - управляет видимостью других машинок в vehicle camera;
+- `agents.collisionsEnabled`
+  - включает или выключает физические столкновения между машинками;
+- `agents.isolated`
+  - shorthand для режима без взаимной видимости и без столкновений.
+
+Адресное управление выполняется через `ControlCommand.targetAgentId`.
+
+## Пример multi-agent YAML
+```yaml
+scenarioId: demo-multi-agent
+runtime:
+  runtimeMode: unity-sim
+  headless: false
+  timeScale: 1.0
+  seed: 42
+
+world:
+  trackId: track.roadsystem_realistic.v2
+
+vehicle:
+  vehicleId: vehicle.ks0223.arcade.blue.v1
+
+agents:
+  isolated: false
+  seeEachOther: true
+  collisionsEnabled: false
+  vehicles:
+    - agentId: ego
+      vehicleId: vehicle.ks0223.arcade.blue.v1
+      primary: true
+      spawnPose:
+        position: [-11.0, 0.2, -13.5]
+        yawDeg: 3
+    - agentId: npc-red
+      vehicleId: vehicle.ks0223.arcade.red.v1
+      spawnPose:
+        position: [-11.0, 0.2, -10.8]
+        yawDeg: 3
 ```
 
 ## Связь с текущим API

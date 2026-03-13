@@ -18,6 +18,17 @@ namespace UavSimulator.Tests.EditMode
                 trackParams = new[] { new ConfigKeyValue { key = "k", value = "v" } },
                 vehicleParams = new[] { new ConfigKeyValue { key = "k2", value = "v2" } },
                 flags = new[] { new ConfigKeyValue { key = "flag", value = "1" } },
+                agents = new[]
+                {
+                    new SimulationAgentConfig
+                    {
+                        agentId = "ego",
+                        vehicleId = "vehicle-01",
+                        isPrimary = true,
+                        trackParams = new[] { new ConfigKeyValue { key = "spawn.position", value = "1,0,2" } },
+                        vehicleParams = new[] { new ConfigKeyValue { key = "camera.mode", value = "driver" } },
+                    },
+                },
             };
 
             var json = JsonUtility.ToJson(config);
@@ -27,6 +38,9 @@ namespace UavSimulator.Tests.EditMode
             Assert.That(parsed.selectedTrackId, Is.EqualTo("track-01"));
             Assert.That(parsed.trackParams, Is.Not.Null);
             Assert.That(parsed.trackParams.Length, Is.EqualTo(1));
+            Assert.That(parsed.agents, Is.Not.Null);
+            Assert.That(parsed.agents.Length, Is.EqualTo(1));
+            Assert.That(parsed.agents[0].agentId, Is.EqualTo("ego"));
         }
 
         [Test]
@@ -37,6 +51,8 @@ namespace UavSimulator.Tests.EditMode
                 throttle = 0.5f,
                 steer = -0.1f,
                 brake = 0.0f,
+                targetAgentId = "ego",
+                targetVehicleId = "vehicle-01",
                 timestamp = 42,
                 timeBase = "unix_ms",
                 extensions = new[]
@@ -51,6 +67,7 @@ namespace UavSimulator.Tests.EditMode
 
             Assert.That(parsed.timeBase, Is.EqualTo("unix_ms"));
             Assert.That(parsed.throttle, Is.EqualTo(0.5f));
+            Assert.That(parsed.targetAgentId, Is.EqualTo("ego"));
             Assert.That(parsed.extensions, Is.Not.Null);
             Assert.That(parsed.extensions.Length, Is.EqualTo(2));
         }

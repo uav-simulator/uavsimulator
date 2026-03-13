@@ -70,6 +70,9 @@ namespace UavSimulator.Contracts
         public float steer;
         public float brake;
 
+        public string targetAgentId;
+        public string targetVehicleId;
+
         public long timestamp;
         public string timeBase;
 
@@ -97,17 +100,42 @@ namespace UavSimulator.Contracts
         public ConfigKeyValue[] trackParams;
         public ConfigKeyValue[] vehicleParams;
         public ConfigKeyValue[] flags;
+        public SimulationAgentConfig[] agents;
+    }
+
+    [Serializable]
+    public sealed class SimulationAgentConfig
+    {
+        public string agentId;
+        public string vehicleId;
+        public bool isPrimary;
+
+        public ConfigKeyValue[] trackParams;
+        public ConfigKeyValue[] vehicleParams;
+        public ConfigKeyValue[] flags;
+    }
+
+    [Serializable]
+    public sealed class AgentStepResult
+    {
+        public string agentId;
+        public string vehicleId;
+        public VehicleState state;
+        public CameraFrame frame;
     }
 
     [Serializable]
     public sealed class StepResult
     {
+        public string activeAgentId;
+        public string activeVehicleId;
         public VehicleState state;
         public float reward;
         public bool done;
 
         public ConfigKeyValue[] info;
         public CameraFrame frame;
+        public AgentStepResult[] agents;
     }
 
     [Serializable]
