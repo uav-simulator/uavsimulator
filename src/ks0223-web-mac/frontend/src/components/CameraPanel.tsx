@@ -25,7 +25,6 @@ import {
   Typography,
 } from '@mui/material'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { cameraMjpegUrl } from '../api'
 import type { CameraStatusDto, HealthDto, SensorTelemetryDto, StatusDto } from '../types'
 
 type OverlayCorner = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
@@ -56,6 +55,7 @@ type OverlaySettings = {
 }
 
 type Props = {
+  cameraStreamUrl: string
   health: HealthDto | null
   camera: CameraStatusDto | null
   status: StatusDto | null
@@ -183,6 +183,7 @@ function repeatMsForCamera(speedPercent: number): number {
 }
 
 export function CameraPanel({
+  cameraStreamUrl,
   health,
   camera,
   status,
@@ -468,7 +469,7 @@ export function CameraPanel({
             >
               <Box
                 component="img"
-                src={cameraMjpegUrl()}
+                src={cameraStreamUrl}
                 alt="KS0223 camera"
                 sx={{
                   width: '100%',

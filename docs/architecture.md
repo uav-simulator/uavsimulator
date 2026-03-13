@@ -137,6 +137,37 @@ sequenceDiagram
 | Makefile | Developer automation и ROS2/demo orchestration | Локальный инженерный workflow, smoke и bridge-контур |
 | `rusim` CLI | Канонический product lifecycle и runtime tooling | `server up/down/status`, `scenario`, `runtime`, `step` |
 
+## 8) Multi-agent operator path
+В текущем product-срезе backend для Unity runtime больше не держит только одну «скрытую вторую машинку». Вместо этого:
+
+- runtime selection принимает список `agents[]`;
+- `POST /api/command` может адресовать конкретный `agentId`;
+- `GET /api/camera/*` может вернуть кадр конкретного `agentId`;
+- Web UI хранит `control agent` и `camera agent` на уровне вкладки браузера.
+
+Это даёт практический эффект:
+
+- один runtime поднимает несколько машинок на одном треке;
+- разные вкладки UI могут смотреть разные камеры;
+- команды не обязаны идти в один глобальный active agent.
+
+```mermaid
+sequenceDiagram
+    participant TabA as "Web UI tab A"
+    participant TabB as "Web UI tab B"
+    participant Backend as "Operator backend"
+    participant Unity as "Unity runtime"
+
+    TabA->>Backend: POST /api/command { command, agentId: "ego" }
+    TabB->>Backend: POST /api/command { command, agentId: "npc-2" }
+    Backend->>Unity: POST /step targetAgentId=ego
+    Backend->>Unity: POST /step targetAgentId=npc-2
+    Unity-->>Backend: StepResult + frame(ego)
+    Unity-->>Backend: StepResult + frame(npc-2)
+    TabA->>Backend: GET /api/camera/mjpeg?agentId=ego
+    TabB->>Backend: GET /api/camera/mjpeg?agentId=npc-2
+```
+
 ## 7) Границы ответственности
 - Unity Core: симуляция, физика, plugin runtime, HTTP API.
 - Python Tools: эксперименты, датасеты, презентации.

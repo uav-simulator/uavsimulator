@@ -1,4 +1,5 @@
 import { Stack } from '@mui/material'
+import { cameraMjpegUrl } from '../api'
 import { CameraPanel } from '../components/CameraPanel'
 import { SensorInventoryPanel } from '../components/SensorInventoryPanel'
 import { TelemetryPanel } from '../components/TelemetryPanel'
@@ -24,6 +25,7 @@ export function TelemetryPage({ status, incoming, camera, health, sensorStatus, 
   return (
     <Stack spacing={2}>
       <CameraPanel
+        cameraStreamUrl={cameraMjpegUrl()}
         camera={camera}
         health={health}
         status={status}

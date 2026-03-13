@@ -95,6 +95,11 @@ export type UnityRuntimeAgentDto = {
   isPrimary: boolean
 }
 
+export type UnityRuntimeAgentSelectionDraft = {
+  agentId: string
+  vehicleId: string
+}
+
 export type UnityRuntimeCatalogDto = {
   selectedTrackId: string
   selectedVehicleId: string

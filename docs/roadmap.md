@@ -58,7 +58,7 @@
 Что уже закрыто в этом этапе:
 - lifecycle вокруг runtime канонизирован через `rusim server up/down/status`;
 - `Makefile` выведен из роли публичного интерфейса;
-- web UI уже умеет выбирать `camera mode`, вторую машинку и `control agent` для Unity runtime.
+- web UI уже умеет выбирать `camera mode`, набор машинок на трассе, `control agent` и `camera agent` для Unity runtime.
 
 ### Этап 4. Sim-to-real workflow
 Статус: `частично сделано`
@@ -87,6 +87,7 @@ MVP считается собранным, когда одновременно �
 
 ## Что делаем следующим
 1. Делаем более удобный multi-agent UX в основном dashboard.
-2. Чистим visual/material проблемы realistic track.
-3. Доводим `Autopilot Integration Contract v1`.
-4. После этого углубляем standalone/runtime distribution path.
+2. Доводим полноценный session/operator UX для multi-agent сценариев.
+3. Чистим visual/material проблемы realistic track.
+4. Доводим `Autopilot Integration Contract v1`.
+5. После этого углубляем standalone/runtime distribution path.

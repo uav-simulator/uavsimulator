@@ -24,7 +24,7 @@ public sealed class RealKs0223RuntimeProvider : IKs0223RuntimeProvider
     public Task DisconnectAsync(CancellationToken cancellationToken) =>
         piTcpClientService.DisconnectAsync(cancellationToken);
 
-    public Task<CommandResponse> SendCommandAsync(string command, string source, CancellationToken cancellationToken) =>
+    public Task<CommandResponse> SendCommandAsync(string command, string source, string? agentId, CancellationToken cancellationToken) =>
         piTcpClientService.SendCommandAsync(command, source, cancellationToken);
 
     public Task RegisterUiConnectionAsync(string connectionId) =>

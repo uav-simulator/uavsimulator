@@ -20,7 +20,7 @@ import {
   Typography,
 } from '@mui/material'
 import { useEffect, useMemo, useState } from 'react'
-import type { StatusDto, UnityRuntimeCatalogDto } from '../types'
+import type { StatusDto, UnityRuntimeAgentSelectionDraft, UnityRuntimeCatalogDto } from '../types'
 
 type Props = {
   status: StatusDto | null
@@ -37,10 +37,12 @@ type Props = {
   unityCatalogBusy: boolean
   unityCameraMode: string
   onUnityCameraModeChange: (value: string) => void
-  unitySecondaryVehicleId: string
-  onUnitySecondaryVehicleIdChange: (value: string) => void
+  unityExtraAgents: UnityRuntimeAgentSelectionDraft[]
+  onUnityExtraAgentsChange: (value: UnityRuntimeAgentSelectionDraft[]) => void
   unityControlAgentId: string
   onUnityControlAgentIdChange: (value: string) => void
+  unityCameraAgentId: string
+  onUnityCameraAgentIdChange: (value: string) => void
   onUnityCatalogRefresh: () => Promise<void>
   onUnitySelectionSave: (trackId: string, vehicleId: string, applyImmediately: boolean) => Promise<void>
 }
@@ -68,10 +70,12 @@ export function ConnectionCard({
   unityCatalogBusy,
   unityCameraMode,
   onUnityCameraModeChange,
-  unitySecondaryVehicleId,
-  onUnitySecondaryVehicleIdChange,
+  unityExtraAgents,
+  onUnityExtraAgentsChange,
   unityControlAgentId,
   onUnityControlAgentIdChange,
+  unityCameraAgentId,
+  onUnityCameraAgentIdChange,
   onUnityCatalogRefresh,
   onUnitySelectionSave,
 }: Props) {
@@ -136,6 +140,15 @@ export function ConnectionCard({
     return agent ? `${agent.agentId} · ${agent.displayName}` : unityControlAgentId
   }, [agents, unityControlAgentId])
 
+  const selectedCameraAgentTitle = useMemo(() => {
+    if (!unityCameraAgentId) {
+      return 'ego'
+    }
+
+    const agent = agents.find((item) => item.agentId === unityCameraAgentId)
+    return agent ? `${agent.agentId} · ${agent.displayName}` : unityCameraAgentId
+  }, [agents, unityCameraAgentId])
+
   useEffect(() => {
     if (!unityDialogOpen) {
       return
@@ -150,20 +163,23 @@ export function ConnectionCard({
     }
   }, [unityCatalog, unityDialogOpen])
 
-  useEffect(() => {
-    if (unitySecondaryVehicleId && unitySecondaryVehicleId === vehicleDraft) {
-      onUnitySecondaryVehicleIdChange('')
-      if (unityControlAgentId === 'npc-2') {
-        onUnityControlAgentIdChange('ego')
+  const effectiveAgentOptions = useMemo(() => {
+    const draftMap = new Map<string, string>()
+    draftMap.set('ego', vehicleDraft || unityCatalog?.selectedVehicleId || '')
+    unityExtraAgents.forEach((agent) => {
+      if (agent.agentId.trim() && agent.vehicleId.trim()) {
+        draftMap.set(agent.agentId.trim(), agent.vehicleId.trim())
       }
-    }
-  }, [
-    onUnityControlAgentIdChange,
-    onUnitySecondaryVehicleIdChange,
-    unityControlAgentId,
-    unitySecondaryVehicleId,
-    vehicleDraft,
-  ])
+    })
+
+    return Array.from(draftMap.entries()).map(([agentId, vehicleId]) => {
+      const displayName =
+        vehicles.find((vehicle) => vehicle.id === vehicleId)?.displayName ??
+        unityCatalog?.agents.find((agent) => agent.agentId === agentId)?.displayName ??
+        vehicleId
+      return { agentId, vehicleId, displayName }
+    })
+  }, [unityCatalog, unityExtraAgents, vehicleDraft, vehicles])
 
   const handleOpenUnityDialog = async () => {
     setUnityDialogOpen(true)
@@ -261,6 +277,7 @@ export function ConnectionCard({
                 <Chip label={`Трек: ${selectedTrackTitle}`} size="small" />
                 <Chip label={`Машинка: ${selectedVehicleTitle}`} size="small" />
                 <Chip label={`Камера: ${selectedCameraModeTitle}`} size="small" />
+                <Chip label={`Camera agent: ${selectedCameraAgentTitle}`} size="small" />
                 <Chip label={`Control agent: ${selectedControlAgentTitle}`} size="small" />
               </Stack>
               <Button
@@ -350,24 +367,85 @@ export function ConnectionCard({
               <MenuItem value="spectator">Spectator</MenuItem>
             </TextField>
 
-            <TextField
-              select
-              size="small"
-              label="Вторая машинка"
-              value={unitySecondaryVehicleId}
-              onChange={(event) => onUnitySecondaryVehicleIdChange(event.target.value)}
-              disabled={dialogBusy || vehicles.length === 0}
-              helperText="Пусто = single-agent runtime"
-            >
-              <MenuItem value="">Не добавлять</MenuItem>
-              {vehicles
-                .filter((vehicle) => vehicle.id !== vehicleDraft)
-                .map((vehicle) => (
-                  <MenuItem key={vehicle.id} value={vehicle.id}>
-                    {vehicle.displayName}
-                  </MenuItem>
-                ))}
-            </TextField>
+            <Stack spacing={1}>
+              <Typography variant="subtitle2">Машинки на трассе</Typography>
+              <TextField size="small" label="ego" value={selectedVehicleTitle} disabled helperText="Primary agent берётся из поля «Машинка»" />
+              {unityExtraAgents.map((agent, index) => (
+                <Stack key={`${agent.agentId}-${index}`} direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                  <TextField
+                    size="small"
+                    label="Agent id"
+                    value={agent.agentId}
+                    onChange={(event) => {
+                      const next = [...unityExtraAgents]
+                      next[index] = { ...next[index], agentId: event.target.value.trim() || `npc-${index + 2}` }
+                      onUnityExtraAgentsChange(next)
+                    }}
+                    disabled={dialogBusy}
+                  />
+                  <TextField
+                    select
+                    size="small"
+                    label="Машинка"
+                    value={agent.vehicleId}
+                    onChange={(event) => {
+                      const next = [...unityExtraAgents]
+                      next[index] = { ...next[index], vehicleId: event.target.value }
+                      onUnityExtraAgentsChange(next)
+                    }}
+                    disabled={dialogBusy || vehicles.length === 0}
+                    sx={{ minWidth: { sm: 260 } }}
+                  >
+                    {vehicles
+                      .filter((vehicle) => vehicle.id !== vehicleDraft || agent.vehicleId === vehicle.id)
+                      .map((vehicle) => (
+                        <MenuItem key={vehicle.id} value={vehicle.id}>
+                          {vehicle.displayName}
+                        </MenuItem>
+                      ))}
+                  </TextField>
+                  <Button
+                    variant="outlined"
+                    color="warning"
+                    onClick={() => {
+                      const next = unityExtraAgents.filter((_, currentIndex) => currentIndex !== index)
+                      onUnityExtraAgentsChange(next)
+                      if (unityControlAgentId === agent.agentId) {
+                        onUnityControlAgentIdChange('ego')
+                      }
+                      if (unityCameraAgentId === agent.agentId) {
+                        onUnityCameraAgentIdChange('ego')
+                      }
+                    }}
+                    disabled={dialogBusy}
+                  >
+                    Удалить
+                  </Button>
+                </Stack>
+              ))}
+              <Button
+                variant="outlined"
+                onClick={() => {
+                  const usedIds = new Set(['ego', ...unityExtraAgents.map((agent) => agent.agentId.trim()).filter(Boolean)])
+                  let nextIndex = unityExtraAgents.length + 2
+                  let candidate = `npc-${nextIndex}`
+                  while (usedIds.has(candidate)) {
+                    nextIndex += 1
+                    candidate = `npc-${nextIndex}`
+                  }
+
+                  const fallbackVehicleId = vehicles.find((vehicle) => vehicle.id !== vehicleDraft)?.id ?? vehicles[0]?.id ?? ''
+                  if (!fallbackVehicleId) {
+                    return
+                  }
+
+                  onUnityExtraAgentsChange([...unityExtraAgents, { agentId: candidate, vehicleId: fallbackVehicleId }])
+                }}
+                disabled={dialogBusy || vehicles.length === 0}
+              >
+                Добавить машинку
+              </Button>
+            </Stack>
 
             <TextField
               select
@@ -376,21 +454,33 @@ export function ConnectionCard({
               value={unityControlAgentId}
               onChange={(event) => onUnityControlAgentIdChange(event.target.value)}
               disabled={dialogBusy}
-              helperText="Команды и камера будут идти через выбранный agent"
+              helperText="Команды этой вкладки будут идти через выбранный agent"
             >
-              <MenuItem value="ego">ego</MenuItem>
-              {unitySecondaryVehicleId ? <MenuItem value="npc-2">npc-2</MenuItem> : null}
-              {agents
-                .filter((agent) => agent.agentId !== 'ego' && agent.agentId !== 'npc-2')
-                .map((agent) => (
-                  <MenuItem key={agent.agentId} value={agent.agentId}>
-                    {agent.agentId}
-                  </MenuItem>
-                ))}
+              {effectiveAgentOptions.map((agent) => (
+                <MenuItem key={agent.agentId} value={agent.agentId}>
+                  {agent.agentId} · {agent.displayName}
+                </MenuItem>
+              ))}
+            </TextField>
+
+            <TextField
+              select
+              size="small"
+              label="Camera agent"
+              value={unityCameraAgentId}
+              onChange={(event) => onUnityCameraAgentIdChange(event.target.value)}
+              disabled={dialogBusy}
+              helperText="Эта вкладка будет смотреть камеру выбранного agent"
+            >
+              {effectiveAgentOptions.map((agent) => (
+                <MenuItem key={agent.agentId} value={agent.agentId}>
+                  {agent.agentId} · {agent.displayName}
+                </MenuItem>
+              ))}
             </TextField>
 
             <Typography variant="body2" color="text.secondary">
-              Активных машинок в текущем каталоге: {agents.length > 0 ? agents.length : unitySecondaryVehicleId ? 2 : 1}
+              Машинок в конфигурации: {effectiveAgentOptions.length}
             </Typography>
 
             {!hasUnityOptions ? (

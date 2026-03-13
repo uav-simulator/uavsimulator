@@ -129,6 +129,29 @@ rusim step --base-url http://127.0.0.1:8000 --agent-id npc-2 --throttle 0.3 --st
 - `configs/scenarios/demo.yaml` является единственным каноническим demo entrypoint для `make demo-*` и smoke-проверок.
 - `configs/scenarios/demo-multi-agent.yaml` является референсным примером для запуска нескольких машинок на одном треке.
 
+## Multi-agent в Web UI
+Для `unity-sim` вкладка управления теперь может настраивать:
+
+- основной `vehicle` и `track`;
+- список дополнительных `agents[]`;
+- `control agent` для команд текущей вкладки;
+- `camera agent` для MJPEG/camera snapshot текущей вкладки;
+- `camera mode` (`driver`, `bumper`, `chase`, `spectator`).
+
+Практический смысл:
+
+- один runtime обслуживает несколько машинок на трассе;
+- две вкладки браузера могут смотреть разные камеры;
+- команды из вкладок больше не обязаны конфликтовать через скрытый global secondary vehicle.
+
+Backend-контур для этого расширен адресным `agentId`:
+
+- `POST /api/command { command, agentId }`
+- `GET /api/camera/mjpeg?agentId=...`
+- `GET /api/camera/snapshot?agentId=...`
+
+Старый скрытый cache-ключ `ks0223_unity_secondary_vehicle_id` больше не используется. Вместо него UI хранит явный список `ks0223_unity_extra_agents_v1`, а при старте удаляет legacy secondary-key, чтобы не resurrect-ить фиолетовую машинку из старого localStorage.
+
 Ограничение текущего среза:
 - CLI поддерживает потребление релиза (`rusim upgrade`), но не управляет публикацией release/tag lifecycle;
 - для `headless` камера не гарантируется, потому что Unity запускается с `-nographics`.

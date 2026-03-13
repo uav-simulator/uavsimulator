@@ -241,9 +241,10 @@ app.MapPost("/api/led/clear", async (SensorBridgeService service, CancellationTo
 });
 app.MapGet("/api/camera/snapshot", async (HttpContext context, RuntimeControlService runtimeControlService, CameraStreamService service, UnityKs0223RuntimeProvider unityRuntimeProvider) =>
 {
+    var requestedAgentId = context.Request.Query["agentId"].ToString();
     var mode = runtimeControlService.GetCurrentMode();
     var hasFrame = mode == RuntimeModes.UnitySim
-        ? unityRuntimeProvider.TryGetLatestFrame(out var frame, out var contentType, out _, out var timestamp)
+        ? unityRuntimeProvider.TryGetLatestFrame(requestedAgentId, out var frame, out var contentType, out _, out var timestamp)
         : service.TryGetLatestFrame(out frame, out contentType, out _, out timestamp);
 
     if (!hasFrame)
@@ -268,6 +269,7 @@ app.MapGet("/api/camera/snapshot", async (HttpContext context, RuntimeControlSer
 app.MapGet("/api/camera/mjpeg", async (HttpContext context, RuntimeControlService runtimeControlService, CameraStreamService service, UnityKs0223RuntimeProvider unityRuntimeProvider) =>
 {
     const string boundary = "frame";
+    var requestedAgentId = context.Request.Query["agentId"].ToString();
     context.Response.StatusCode = StatusCodes.Status200OK;
     context.Response.Headers.ContentType = $"multipart/x-mixed-replace; boundary={boundary}";
     context.Response.Headers.CacheControl = "no-store, no-cache, must-revalidate";
@@ -282,7 +284,7 @@ app.MapGet("/api/camera/mjpeg", async (HttpContext context, RuntimeControlServic
     while (!token.IsCancellationRequested)
     {
         var hasFrame = runtimeControlService.GetCurrentMode() == RuntimeModes.UnitySim
-            ? unityRuntimeProvider.TryGetLatestFrame(out var frame, out _, out var version, out _)
+            ? unityRuntimeProvider.TryGetLatestFrame(requestedAgentId, out var frame, out _, out var version, out _)
             : service.TryGetLatestFrame(out frame, out _, out version, out _);
 
         if (hasFrame && version != sentVersion)
@@ -301,7 +303,7 @@ app.MapGet("/api/camera/mjpeg", async (HttpContext context, RuntimeControlServic
 
 app.MapPost("/api/command", async (CommandRequest request, RuntimeControlService runtimeControlService, CancellationToken cancellationToken) =>
 {
-    var response = await runtimeControlService.SendCommandAsync(request.Command, "ui", cancellationToken);
+    var response = await runtimeControlService.SendCommandAsync(request.Command, "ui", request.AgentId, cancellationToken);
     return response.Sent ? Results.Ok(response) : Results.BadRequest(response);
 });
 

@@ -10,6 +10,7 @@ import type {
   SensorBridgeStatusDto,
   SensorTelemetryDto,
   StatusDto,
+  UnityRuntimeAgentSelectionDraft,
   UnityRuntimeCatalogDto,
 } from '../types'
 
@@ -33,13 +34,16 @@ type Props = {
   unityCatalogBusy: boolean
   unityCameraMode: string
   onUnityCameraModeChange: (value: string) => void
-  unitySecondaryVehicleId: string
-  onUnitySecondaryVehicleIdChange: (value: string) => void
+  unityExtraAgents: UnityRuntimeAgentSelectionDraft[]
+  onUnityExtraAgentsChange: (value: UnityRuntimeAgentSelectionDraft[]) => void
   unityControlAgentId: string
   onUnityControlAgentIdChange: (value: string) => void
+  unityCameraAgentId: string
+  onUnityCameraAgentIdChange: (value: string) => void
   onUnityCatalogRefresh: () => Promise<void>
   onUnitySelectionSave: (trackId: string, vehicleId: string, applyImmediately: boolean) => Promise<void>
   onCommand: (command: string) => Promise<void>
+  cameraStreamUrl: string
   driveSpeedPercent: number
   cameraSpeedPercent: number
   onDriveSpeedPercentChange: (value: number) => void
@@ -76,13 +80,16 @@ export function ControlPage({
   unityCatalogBusy,
   unityCameraMode,
   onUnityCameraModeChange,
-  unitySecondaryVehicleId,
-  onUnitySecondaryVehicleIdChange,
+  unityExtraAgents,
+  onUnityExtraAgentsChange,
   unityControlAgentId,
   onUnityControlAgentIdChange,
+  unityCameraAgentId,
+  onUnityCameraAgentIdChange,
   onUnityCatalogRefresh,
   onUnitySelectionSave,
   onCommand,
+  cameraStreamUrl,
   driveSpeedPercent,
   cameraSpeedPercent,
   onDriveSpeedPercentChange,
@@ -116,10 +123,12 @@ export function ControlPage({
           unityCatalogBusy={unityCatalogBusy}
           unityCameraMode={unityCameraMode}
           onUnityCameraModeChange={onUnityCameraModeChange}
-          unitySecondaryVehicleId={unitySecondaryVehicleId}
-          onUnitySecondaryVehicleIdChange={onUnitySecondaryVehicleIdChange}
+          unityExtraAgents={unityExtraAgents}
+          onUnityExtraAgentsChange={onUnityExtraAgentsChange}
           unityControlAgentId={unityControlAgentId}
           onUnityControlAgentIdChange={onUnityControlAgentIdChange}
+          unityCameraAgentId={unityCameraAgentId}
+          onUnityCameraAgentIdChange={onUnityCameraAgentIdChange}
           onUnityCatalogRefresh={onUnityCatalogRefresh}
           onUnitySelectionSave={onUnitySelectionSave}
         />
@@ -147,6 +156,7 @@ export function ControlPage({
 
       <Grid size={{ xs: 12 }}>
         <CameraPanel
+          cameraStreamUrl={cameraStreamUrl}
           camera={camera}
           health={health}
           status={status}
