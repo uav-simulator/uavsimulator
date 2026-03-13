@@ -15,6 +15,9 @@ namespace UavSimulator.Tracks
         private const string ArcadeRoadMeshPath = "Assets/ARCADE - FREE Racing Car/Meshes/Road.fbx";
         private const string ArcadeDaySkyboxPath = "Assets/ARCADE - FREE Racing Car/Skybox/Day/Day Skybox.mat";
         private const string PrometeoParkingMaterialPath = "Assets/PROMETEO - Car Controller/Materials/PCC_ParkingZone_Mat.mat";
+        private const string ArcadeBlueCarPrefabPath = "Assets/ARCADE - FREE Racing Car/Prefabs (Meshes Only)/Free Racing Car Blue Variant.prefab";
+        private const string ArcadeRedCarPrefabPath = "Assets/ARCADE - FREE Racing Car/Prefabs (Meshes Only)/Free Racing Car Red Variant.prefab";
+        private const string ArcadeGrayCarPrefabPath = "Assets/ARCADE - FREE Racing Car/Prefabs (Meshes Only)/Free Racing Car Gray Variant.prefab";
 
         [SerializeField] private float groundSize = 90f;
         [SerializeField] private float roadWidth = 3.4f;
@@ -110,6 +113,10 @@ namespace UavSimulator.Tracks
             ApplyMaterial(paddock, serviceAreaMaterial);
             ApplyMaterial(serviceZone, serviceAreaMaterial);
             ApplyMaterial(spectatorApron, serviceAreaMaterial);
+            CreatePaintStripe("PaddockLineA", transform, new Vector3(-18f, -0.095f, -12.5f), new Vector3(14.5f, 0.01f, 0.18f), 0f);
+            CreatePaintStripe("PaddockLineB", transform, new Vector3(-18f, -0.095f, -17.3f), new Vector3(14.5f, 0.01f, 0.18f), 0f);
+            CreatePaintStripe("ServiceLineA", transform, new Vector3(17.5f, -0.095f, 7.4f), new Vector3(12.0f, 0.01f, 0.18f), 0f);
+            CreatePaintStripe("ServiceLineB", transform, new Vector3(17.5f, -0.095f, 16.2f), new Vector3(12.0f, 0.01f, 0.18f), 0f);
         }
 
         private Road BuildMainRoad(Transform parent)
@@ -416,6 +423,11 @@ namespace UavSimulator.Tracks
             CreateGrandstand(propsRoot.transform, "GrandstandWest", new Vector3(-23f, 0f, -1f), 8, 3, 90f);
             CreateBillboard(propsRoot.transform, "BillboardStart", new Vector3(-18f, 0f, -8f), 30f, "RUSIM DEMO");
             CreateBillboard(propsRoot.transform, "BillboardEast", new Vector3(18f, 0f, 10f), -55f, "SIM TRACK");
+            CreateMarshalPost(propsRoot.transform, "MarshalPostA", new Vector3(-21f, 0f, -14f), 12f);
+            CreateMarshalPost(propsRoot.transform, "MarshalPostB", new Vector3(16f, 0f, 4f), -90f);
+            CreateSponsorPanel(propsRoot.transform, "SponsorPanelStartRight", new Vector3(13.8f, 0f, -0.6f), -92f, new Color(0.80f, 0.18f, 0.16f));
+            CreateSponsorPanel(propsRoot.transform, "SponsorPanelStartLeft", new Vector3(-15.8f, 0f, -8.8f), 86f, new Color(0.12f, 0.23f, 0.62f));
+            CreateDecorativeCars();
         }
 
         private void CreateArcadeBackdropMeshes()
@@ -437,6 +449,26 @@ namespace UavSimulator.Tracks
         }
 
 #if UNITY_EDITOR
+        private void CreateDecorativeCarCopy(string assetPath, string name, Vector3 localPosition, Quaternion localRotation, float scale)
+        {
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(assetPath);
+            if (prefab == null)
+            {
+                return;
+            }
+
+            var instance = UnityEngine.Object.Instantiate(prefab, transform, false);
+            instance.name = name;
+            instance.transform.localPosition = localPosition;
+            instance.transform.localRotation = localRotation;
+            instance.transform.localScale = Vector3.one * scale;
+
+            foreach (var collider in instance.GetComponentsInChildren<Collider>(true))
+            {
+                DisableCollider(collider.gameObject);
+            }
+        }
+
         private void CreateArcadeRoadCopy(Transform parent, GameObject prefab, string name, Vector3 localPosition, Vector3 localScale, Quaternion localRotation)
         {
             var instance = UnityEngine.Object.Instantiate(prefab, parent, false);
@@ -536,6 +568,14 @@ namespace UavSimulator.Tracks
             ApplyColor(bulb, new Color(0.95f, 0.92f, 0.62f), 0.75f);
         }
 
+        private void CreatePaintStripe(string name, Transform parent, Vector3 localPosition, Vector3 localScale, float yawDeg)
+        {
+            var stripe = CreateBlock(name, parent, localPosition, localScale);
+            stripe.transform.localRotation = Quaternion.Euler(0f, yawDeg, 0f);
+            DisableCollider(stripe);
+            ApplyMaterial(stripe, laneMaterial);
+        }
+
         private static void CreateGrandstand(Transform parent, string name, Vector3 localPosition, int seatsPerRow, int rowCount, float yawDeg)
         {
             var stand = new GameObject(name);
@@ -588,6 +628,49 @@ namespace UavSimulator.Tracks
                 DisableCollider(plate);
                 ApplyColor(plate, new Color(0.88f, 0.90f, 0.94f), 0.08f);
             }
+        }
+
+        private static void CreateMarshalPost(Transform parent, string name, Vector3 localPosition, float yawDeg)
+        {
+            var post = new GameObject(name);
+            post.transform.SetParent(parent, false);
+            post.transform.localPosition = localPosition;
+            post.transform.localRotation = Quaternion.Euler(0f, yawDeg, 0f);
+
+            var baseBlock = CreateBlock("Base", post.transform, new Vector3(0f, 0.12f, 0f), new Vector3(1.4f, 0.24f, 1.2f));
+            var cabin = CreateBlock("Cabin", post.transform, new Vector3(0f, 0.72f, 0f), new Vector3(1.2f, 0.85f, 1.0f));
+            var roof = CreateBlock("Roof", post.transform, new Vector3(0f, 1.22f, 0f), new Vector3(1.5f, 0.12f, 1.3f));
+            DisableCollider(baseBlock);
+            DisableCollider(cabin);
+            DisableCollider(roof);
+            ApplyColor(baseBlock, new Color(0.18f, 0.19f, 0.20f), 0.16f);
+            ApplyColor(cabin, new Color(0.75f, 0.20f, 0.18f), 0.16f);
+            ApplyColor(roof, new Color(0.88f, 0.88f, 0.90f), 0.08f);
+        }
+
+        private static void CreateSponsorPanel(Transform parent, string name, Vector3 localPosition, float yawDeg, Color accentColor)
+        {
+            var panel = new GameObject(name);
+            panel.transform.SetParent(parent, false);
+            panel.transform.localPosition = localPosition;
+            panel.transform.localRotation = Quaternion.Euler(0f, yawDeg, 0f);
+
+            var back = CreateBlock("Back", panel.transform, new Vector3(0f, 1.05f, 0f), new Vector3(2.8f, 1.2f, 0.12f));
+            var accent = CreateBlock("Accent", panel.transform, new Vector3(0f, 1.05f, -0.05f), new Vector3(2.25f, 0.25f, 0.02f));
+            DisableCollider(back);
+            DisableCollider(accent);
+            ApplyColor(back, new Color(0.90f, 0.90f, 0.92f), 0.08f);
+            ApplyColor(accent, accentColor, 0.12f);
+        }
+
+        private void CreateDecorativeCars()
+        {
+#if UNITY_EDITOR
+            CreateDecorativeCarCopy(ArcadeBlueCarPrefabPath, "StartSectorCarBlue", new Vector3(-16.8f, 0f, -10.8f), Quaternion.Euler(0f, 22f, 0f), 1.05f);
+            CreateDecorativeCarCopy(ArcadeBlueCarPrefabPath, "PaddockCarBlue", new Vector3(-20.5f, 0f, -15.8f), Quaternion.Euler(0f, 18f, 0f), 1.05f);
+            CreateDecorativeCarCopy(ArcadeRedCarPrefabPath, "PaddockCarRed", new Vector3(-15.4f, 0f, -15.6f), Quaternion.Euler(0f, -6f, 0f), 1.05f);
+            CreateDecorativeCarCopy(ArcadeGrayCarPrefabPath, "ServiceCarGray", new Vector3(16.8f, 0f, 11.6f), Quaternion.Euler(0f, -102f, 0f), 1.05f);
+#endif
         }
 
         private void ClearChildren()
