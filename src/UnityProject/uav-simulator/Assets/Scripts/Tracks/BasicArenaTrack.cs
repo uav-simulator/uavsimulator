@@ -1,4 +1,5 @@
 using System;
+using UavSimulator.Core;
 using UnityEngine;
 using UnityEngine.Rendering;
 
@@ -373,55 +374,10 @@ namespace UavSimulator.Tracks
         }
 
         private static Shader ResolveRuntimeLitShader()
-        {
-            var shader = Shader.Find("Unlit/Color");
-            if (shader != null && shader.isSupported)
-            {
-                return shader;
-            }
-
-            shader = Shader.Find("Unlit/Texture");
-            if (shader != null && shader.isSupported)
-            {
-                return shader;
-            }
-
-            shader = Shader.Find("Standard");
-            if (shader != null && shader.isSupported)
-            {
-                return shader;
-            }
-
-            if (IsUrpActive())
-            {
-                shader = Shader.Find("Universal Render Pipeline/Lit");
-                if (shader != null && shader.isSupported)
-                {
-                    return shader;
-                }
-            }
-
-            shader = Shader.Find("Legacy Shaders/Diffuse");
-            if (shader != null)
-            {
-                return shader;
-            }
-
-            throw new MissingReferenceException("Unable to resolve a supported lit shader for runtime track materials.");
-        }
+            => RuntimeMaterialCompatibility.ResolveCompatibleLitShader();
 
         private static bool IsUrpActive()
-        {
-            var pipeline = GraphicsSettings.currentRenderPipeline;
-            if (pipeline == null)
-            {
-                return false;
-            }
-
-            var name = pipeline.GetType().Name;
-            return name.Contains("UniversalRenderPipeline", StringComparison.Ordinal) ||
-                   name.Contains("URP", StringComparison.Ordinal);
-        }
+            => RuntimeMaterialCompatibility.IsUrpActive();
 
         private static void MarkStatic(params GameObject[] objects)
         {

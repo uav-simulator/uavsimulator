@@ -89,12 +89,6 @@ namespace UavSimulator.Core
                 return;
             }
 
-            var fallbackShader = Shader.Find("Standard") ?? Shader.Find("Legacy Shaders/Diffuse");
-            if (fallbackShader == null)
-            {
-                return;
-            }
-
             var replacements = new System.Collections.Generic.Dictionary<Material, Material>();
             var roots = scene.GetRootGameObjects();
             for (var r = 0; r < roots.Length; r++)
@@ -118,41 +112,15 @@ namespace UavSimulator.Core
                             continue;
                         }
 
-                        var shader = source.shader;
-                        var unsupported = shader == null || !shader.isSupported;
-                        var builtinIncompatible = !IsUrpActive() && !IsBuiltinCompatibleShader(shader);
-                        if (!unsupported && !builtinIncompatible)
+                        if (!RuntimeMaterialCompatibility.NeedsReplacement(source))
                         {
                             continue;
                         }
 
                         if (!replacements.TryGetValue(source, out var replacement))
                         {
-                            replacement = new Material(fallbackShader)
-                            {
-                                name = $"{source.name}_BuiltinFallback",
-                                color = ReadSourceColor(source),
-                            };
-
-                            var sourceTexture = ReadSourceTexture(source);
-                            if (sourceTexture != null)
-                            {
-                                if (replacement.HasProperty("_MainTex"))
-                                {
-                                    replacement.SetTexture("_MainTex", sourceTexture);
-                                }
-
-                                if (replacement.HasProperty("_BaseMap"))
-                                {
-                                    replacement.SetTexture("_BaseMap", sourceTexture);
-                                }
-                            }
-
-                            if (replacement.HasProperty("_Smoothness"))
-                            {
-                                var smoothness = source.HasProperty("_Smoothness") ? source.GetFloat("_Smoothness") : 0.2f;
-                                replacement.SetFloat("_Smoothness", smoothness);
-                            }
+                            replacement = RuntimeMaterialCompatibility.CreateReplacementMaterial(source);
+                            replacement.name = $"{source.name}_BuiltinFallback";
 
                             replacements[source] = replacement;
                         }
@@ -167,90 +135,6 @@ namespace UavSimulator.Core
                     }
                 }
             }
-        }
-
-        private static Texture ReadSourceTexture(Material source)
-        {
-            if (source == null)
-            {
-                return null;
-            }
-
-            if (source.mainTexture != null)
-            {
-                return source.mainTexture;
-            }
-
-            if (source.HasProperty("_BaseMap"))
-            {
-                return source.GetTexture("_BaseMap");
-            }
-
-            if (source.HasProperty("_MainTex"))
-            {
-                return source.GetTexture("_MainTex");
-            }
-
-            return null;
-        }
-
-        private static Color ReadSourceColor(Material source)
-        {
-            if (source == null)
-            {
-                return Color.white;
-            }
-
-            if (source.HasProperty("_BaseColor"))
-            {
-                return source.GetColor("_BaseColor");
-            }
-
-            if (source.HasProperty("_Color"))
-            {
-                return source.GetColor("_Color");
-            }
-
-            return source.color;
-        }
-
-        private static bool IsUrpActive()
-        {
-            var pipeline = GraphicsSettings.currentRenderPipeline;
-            if (pipeline == null)
-            {
-                return false;
-            }
-
-            var name = pipeline.GetType().Name;
-            return name.Contains("UniversalRenderPipeline", System.StringComparison.Ordinal) ||
-                   name.Contains("URP", System.StringComparison.Ordinal);
-        }
-
-        private static bool IsUrpShader(Shader shader)
-        {
-            var name = shader != null ? shader.name : string.Empty;
-            return name.StartsWith("Universal Render Pipeline/", System.StringComparison.OrdinalIgnoreCase);
-        }
-
-        private static bool IsBuiltinCompatibleShader(Shader shader)
-        {
-            if (shader == null)
-            {
-                return false;
-            }
-
-            var name = shader.name ?? string.Empty;
-            if (name.StartsWith("Standard", System.StringComparison.OrdinalIgnoreCase) ||
-                name.StartsWith("Legacy Shaders/", System.StringComparison.OrdinalIgnoreCase) ||
-                name.StartsWith("Unlit/", System.StringComparison.OrdinalIgnoreCase) ||
-                name.StartsWith("Mobile/", System.StringComparison.OrdinalIgnoreCase) ||
-                name.StartsWith("Particles/", System.StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-
-            return false;
         }
 
         private static void DisableLegacySceneGround(Scene scene)

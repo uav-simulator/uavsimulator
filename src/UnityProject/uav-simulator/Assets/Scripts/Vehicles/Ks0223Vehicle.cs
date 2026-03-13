@@ -1,6 +1,7 @@
 using System;
 using System.Globalization;
 using UavSimulator.Contracts;
+using UavSimulator.Core;
 using UnityEngine;
 using UnityEngine.Rendering;
 
@@ -519,33 +520,7 @@ namespace UavSimulator.Vehicles
         }
 
         private static Shader ResolveRuntimeLitShader()
-        {
-            var shader = Shader.Find("Standard");
-            if (shader != null && shader.isSupported)
-            {
-                return shader;
-            }
-
-            shader = Shader.Find("Unlit/Texture");
-            if (shader != null && shader.isSupported)
-            {
-                return shader;
-            }
-
-            shader = Shader.Find("Unlit/Color");
-            if (shader != null && shader.isSupported)
-            {
-                return shader;
-            }
-
-            shader = Shader.Find("Legacy Shaders/Diffuse");
-            if (shader != null)
-            {
-                return shader;
-            }
-
-            throw new MissingReferenceException("Unable to resolve runtime shader for KS0223 visuals.");
-        }
+            => RuntimeMaterialCompatibility.ResolveCompatibleLitShader();
 
         private float[] ReadLineSensors()
         {

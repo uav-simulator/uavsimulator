@@ -1,4 +1,5 @@
 using System;
+using UavSimulator.Core;
 using UavSimulator.Contracts;
 using UavSimulator.Tracks;
 using UavSimulator.Vehicles;
@@ -113,7 +114,7 @@ namespace UavSimulator.Plugins
             chassisCollider.size = new Vector3(0.34f, 0.16f, 0.52f);
 
             var hasCustomVisual = SupportsImportedVehicleVisual(descriptorId) &&
-                                  IsUrpActive() &&
+                                  RuntimeMaterialCompatibility.IsUrpActive() &&
                                   TryAttachVisual(root.transform, visualProfile);
             var useInternalPresentation = UsesInternalVehiclePresentation(descriptorId);
             if (!hasCustomVisual && !useInternalPresentation)
@@ -626,10 +627,7 @@ namespace UavSimulator.Plugins
                         continue;
                     }
 
-                    var shader = source.shader;
-                    var unsupported = shader == null || !shader.isSupported;
-                    var builtinIncompatible = !IsUrpActive() && !IsBuiltinCompatibleShader(shader);
-                    if (!forceFallback && !unsupported && !builtinIncompatible)
+                    if (!forceFallback && !RuntimeMaterialCompatibility.NeedsReplacement(source))
                     {
                         continue;
                     }
@@ -647,154 +645,20 @@ namespace UavSimulator.Plugins
 
         private static Material CreateFallbackMaterial(Material source, bool copyTextures)
         {
-            var shader = ResolveRuntimeLitShader();
-            var fallback = new Material(shader)
-            {
-                color = ReadSourceColor(source)
-            };
-
-            var sourceTexture = copyTextures ? ReadSourceTexture(source) : null;
-            if (sourceTexture != null)
-            {
-                if (fallback.HasProperty("_MainTex"))
-                {
-                    fallback.SetTexture("_MainTex", sourceTexture);
-                }
-
-                if (fallback.HasProperty("_BaseMap"))
-                {
-                    fallback.SetTexture("_BaseMap", sourceTexture);
-                }
-            }
-
-            if (fallback.HasProperty("_Smoothness"))
-            {
-                fallback.SetFloat("_Smoothness", 0.2f);
-            }
-
-            if (fallback.HasProperty("_Glossiness"))
-            {
-                fallback.SetFloat("_Glossiness", 0.2f);
-            }
+            var fallback = RuntimeMaterialCompatibility.CreateReplacementMaterial(source, defaultSmoothness: 0.2f, copyTextures: copyTextures);
+            fallback.color = RuntimeMaterialCompatibility.ReadSourceColor(source);
 
             return fallback;
         }
 
-        private static Texture ReadSourceTexture(Material source)
-        {
-            if (source == null)
-            {
-                return null;
-            }
-
-            if (source.mainTexture != null)
-            {
-                return source.mainTexture;
-            }
-
-            if (source.HasProperty("_BaseMap"))
-            {
-                return source.GetTexture("_BaseMap");
-            }
-
-            if (source.HasProperty("_MainTex"))
-            {
-                return source.GetTexture("_MainTex");
-            }
-
-            return null;
-        }
-
-        private static Color ReadSourceColor(Material source)
-        {
-            if (source == null)
-            {
-                return Color.white;
-            }
-
-            if (source.HasProperty("_BaseColor"))
-            {
-                return source.GetColor("_BaseColor");
-            }
-
-            if (source.HasProperty("_Color"))
-            {
-                return source.GetColor("_Color");
-            }
-
-            return source.color;
-        }
-
         private static Shader ResolveRuntimeLitShader()
-        {
-            var shader = Shader.Find("Standard");
-            if (shader != null && shader.isSupported)
-            {
-                return shader;
-            }
-
-            shader = Shader.Find("Unlit/Color");
-            if (shader != null && shader.isSupported)
-            {
-                return shader;
-            }
-
-            shader = Shader.Find("Unlit/Texture");
-            if (shader != null && shader.isSupported)
-            {
-                return shader;
-            }
-
-            if (IsUrpActive())
-            {
-                shader = Shader.Find("Universal Render Pipeline/Lit");
-                if (shader != null && shader.isSupported)
-                {
-                    return shader;
-                }
-            }
-
-            shader = Shader.Find("Legacy Shaders/Diffuse");
-            if (shader != null)
-            {
-                return shader;
-            }
-
-            throw new MissingReferenceException("Unable to resolve a supported shader for vehicle fallback materials.");
-        }
+            => RuntimeMaterialCompatibility.ResolveCompatibleLitShader();
 
         private static bool IsUrpActive()
-        {
-            var pipeline = GraphicsSettings.currentRenderPipeline;
-            if (pipeline == null)
-            {
-                return false;
-            }
-
-            var name = pipeline.GetType().Name;
-            return name.Contains("UniversalRenderPipeline", StringComparison.Ordinal) ||
-                   name.Contains("URP", StringComparison.Ordinal);
-        }
+            => RuntimeMaterialCompatibility.IsUrpActive();
 
         private static bool IsBuiltinCompatibleShader(Shader shader)
-        {
-            if (shader == null)
-            {
-                return false;
-            }
-
-            var name = shader.name ?? string.Empty;
-            if (name.StartsWith("Standard", StringComparison.OrdinalIgnoreCase) ||
-                name.StartsWith("Legacy Shaders/", StringComparison.OrdinalIgnoreCase) ||
-                name.StartsWith("Unlit/", StringComparison.OrdinalIgnoreCase) ||
-                name.StartsWith("Mobile/", StringComparison.OrdinalIgnoreCase) ||
-                name.StartsWith("Particles/", StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-
-            return false;
-        }
+            => RuntimeMaterialCompatibility.IsShaderCompatibleForCurrentPipeline(shader);
 
         private static void CreateFallbackVisualShell(Transform parent, Color accentColor)
         {

@@ -1,6 +1,7 @@
 using System;
 using Barmetler.RoadSystem;
 using Barmetler.RoadSystem.Util;
+using UavSimulator.Core;
 using UnityEngine;
 using UnityEngine.Rendering;
 
@@ -447,84 +448,16 @@ namespace UavSimulator.Tracks
         }
 
         private static Shader ResolveRuntimeLitShader()
-        {
-            var shader = Shader.Find("Unlit/Color");
-            if (shader != null && shader.isSupported)
-            {
-                return shader;
-            }
-
-            shader = Shader.Find("Unlit/Texture");
-            if (shader != null && shader.isSupported)
-            {
-                return shader;
-            }
-
-            shader = Shader.Find("Standard");
-            if (shader != null && shader.isSupported)
-            {
-                return shader;
-            }
-
-            if (IsUrpActive())
-            {
-                shader = Shader.Find("Universal Render Pipeline/Lit");
-                if (shader != null && shader.isSupported)
-                {
-                    return shader;
-                }
-            }
-
-            shader = Shader.Find("Legacy Shaders/Diffuse");
-            if (shader != null)
-            {
-                return shader;
-            }
-
-            throw new MissingReferenceException("Unable to resolve a supported lit shader for runtime track materials.");
-        }
+            => RuntimeMaterialCompatibility.ResolveCompatibleLitShader();
 
         private static bool IsUrpActive()
-        {
-            var pipeline = GraphicsSettings.currentRenderPipeline;
-            if (pipeline == null)
-            {
-                return false;
-            }
-
-            var name = pipeline.GetType().Name;
-            return name.Contains("UniversalRenderPipeline", StringComparison.Ordinal) ||
-                   name.Contains("URP", StringComparison.Ordinal);
-        }
+            => RuntimeMaterialCompatibility.IsUrpActive();
 
         private static bool IsBuiltinCompatibleShader(Shader shader)
-        {
-            if (shader == null)
-            {
-                return false;
-            }
-
-            var name = shader.name ?? string.Empty;
-            if (name.StartsWith("Standard", StringComparison.OrdinalIgnoreCase) ||
-                name.StartsWith("Legacy Shaders/", StringComparison.OrdinalIgnoreCase) ||
-                name.StartsWith("Unlit/", StringComparison.OrdinalIgnoreCase) ||
-                name.StartsWith("Mobile/", StringComparison.OrdinalIgnoreCase) ||
-                name.StartsWith("Particles/", StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-
-            return false;
-        }
+            => RuntimeMaterialCompatibility.IsShaderCompatibleForCurrentPipeline(shader);
 
         private void SanitizeTrackMaterials()
         {
-            var fallbackShader = Shader.Find("Standard") ?? Shader.Find("Legacy Shaders/Diffuse");
-            if (fallbackShader == null)
-            {
-                return;
-            }
-
             var replacements = new System.Collections.Generic.Dictionary<Material, Material>();
             var renderers = GetComponentsInChildren<Renderer>(includeInactive: true);
             for (var i = 0; i < renderers.Length; i++)
@@ -545,39 +478,14 @@ namespace UavSimulator.Tracks
                         continue;
                     }
 
-                    var shader = source.shader;
-                    var unsupported = shader == null || !shader.isSupported;
-                    var builtinIncompatible = !IsUrpActive() && !IsBuiltinCompatibleShader(shader);
-                    if (!unsupported && !builtinIncompatible)
+                    if (!RuntimeMaterialCompatibility.NeedsReplacement(source))
                     {
                         continue;
                     }
 
                     if (!replacements.TryGetValue(source, out var replacement))
                     {
-                        replacement = new Material(fallbackShader)
-                        {
-                            color = ReadSourceColor(source),
-                        };
-
-                        var sourceTexture = ReadSourceTexture(source);
-                        if (sourceTexture != null)
-                        {
-                            if (replacement.HasProperty("_MainTex"))
-                            {
-                                replacement.SetTexture("_MainTex", sourceTexture);
-                            }
-
-                            if (replacement.HasProperty("_BaseMap"))
-                            {
-                                replacement.SetTexture("_BaseMap", sourceTexture);
-                            }
-                        }
-
-                        if (replacement.HasProperty("_Smoothness"))
-                        {
-                            replacement.SetFloat("_Smoothness", 0.16f);
-                        }
+                        replacement = RuntimeMaterialCompatibility.CreateReplacementMaterial(source, defaultSmoothness: 0.16f);
 
                         replacements[source] = replacement;
                     }
@@ -594,48 +502,9 @@ namespace UavSimulator.Tracks
         }
 
         private static Texture ReadSourceTexture(Material source)
-        {
-            if (source == null)
-            {
-                return null;
-            }
-
-            if (source.mainTexture != null)
-            {
-                return source.mainTexture;
-            }
-
-            if (source.HasProperty("_BaseMap"))
-            {
-                return source.GetTexture("_BaseMap");
-            }
-
-            if (source.HasProperty("_MainTex"))
-            {
-                return source.GetTexture("_MainTex");
-            }
-
-            return null;
-        }
+            => RuntimeMaterialCompatibility.ReadSourceTexture(source);
 
         private static Color ReadSourceColor(Material source)
-        {
-            if (source == null)
-            {
-                return Color.white;
-            }
-
-            if (source.HasProperty("_BaseColor"))
-            {
-                return source.GetColor("_BaseColor");
-            }
-
-            if (source.HasProperty("_Color"))
-            {
-                return source.GetColor("_Color");
-            }
-
-            return source.color;
-        }
+            => RuntimeMaterialCompatibility.ReadSourceColor(source);
     }
 }
