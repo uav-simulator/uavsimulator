@@ -29,7 +29,7 @@ namespace UavSimulator.EditorTools
             vehicleRoot.transform.SetParent(root.transform, false);
 
             BuiltinPluginFactory.TryCreateTrackInstance(BuiltinPluginFactory.BasicArenaTrackId, trackRoot.transform, out TrackBase track);
-            BuiltinPluginFactory.TryCreateVehicleInstance(BuiltinPluginFactory.Ks0223VehicleId, vehicleRoot.transform, out VehicleBase vehicle);
+            BuiltinPluginFactory.TryCreateVehicleInstance(BuiltinPluginFactory.PrometeoSportVehicleId, vehicleRoot.transform, out VehicleBase vehicle);
 
             if (track != null)
             {

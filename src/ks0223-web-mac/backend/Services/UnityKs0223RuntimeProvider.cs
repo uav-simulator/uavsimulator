@@ -38,8 +38,8 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
 
     private static readonly string[] PreferredVehicleIds =
     {
-        "vehicle.ks0223.arcade.blue.v1",
-        "vehicle.ks0223.v1",
+        "vehicle.arcade.blue.v1",
+        "vehicle.prometeo.sport.v1",
     };
 
     private static readonly string[] PreferredTrackIds =
@@ -66,7 +66,7 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
     private bool desiredConnection;
     private bool unityConnected;
     private int uiConnectedClients;
-    private string runtimeLabel = "Keyestudio KS0223 (Unity Simulator)";
+    private string runtimeLabel = "Arcade Free Racing Car (Blue)";
     private string targetHost = "127.0.0.1";
     private int targetPort = 8000;
     private string selectedVehicleId = PreferredVehicleIds[0];
@@ -705,7 +705,8 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
         }
 
         var resolvedVehicleId = ResolveSelected(availableVehicleIds, selectedVehicleId, PreferredVehicleIds)
-            ?? availableVehicleIds.FirstOrDefault(id => id.StartsWith("vehicle.ks0223", StringComparison.Ordinal))
+            ?? availableVehicleIds.FirstOrDefault(id => id.StartsWith("vehicle.arcade", StringComparison.Ordinal))
+            ?? availableVehicleIds.FirstOrDefault(id => id.StartsWith("vehicle.prometeo", StringComparison.Ordinal))
             ?? availableVehicleIds.First();
         var resolvedTrackId = ResolveSelected(availableTrackIds, selectedTrackId, PreferredTrackIds)
             ?? availableTrackIds.First();
@@ -1173,6 +1174,8 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
 
     private void ResetInteractiveDefaultsLocked()
     {
+        selectedVehicleId = PreferredVehicleIds[0];
+        selectedTrackId = PreferredTrackIds[0];
         selectedControlAgentId = "ego";
         selectedCameraMode = "driver";
         configuredAgents = NormalizeConfiguredAgents(Array.Empty<UnityRuntimeAgentSelectionRequest>(), selectedVehicleId);

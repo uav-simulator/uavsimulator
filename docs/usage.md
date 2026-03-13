@@ -107,8 +107,8 @@ rusim doctor --base-url http://127.0.0.1:8000
 rusim contract --base-url http://127.0.0.1:8000
 rusim list tracks --base-url http://127.0.0.1:8000
 rusim list vehicles --base-url http://127.0.0.1:8000
-rusim inspect vehicle vehicle.ks0223.arcade.blue.v1 --base-url http://127.0.0.1:8000
-rusim reset --base-url http://127.0.0.1:8000 --track-id track.roadsystem_arena.v1 --vehicle-id vehicle.ks0223.arcade.blue.v1
+rusim inspect vehicle vehicle.arcade.blue.v1 --base-url http://127.0.0.1:8000
+rusim reset --base-url http://127.0.0.1:8000 --track-id track.roadsystem_arena.v1 --vehicle-id vehicle.arcade.blue.v1
 rusim scenario validate configs/scenarios/demo.yaml
 rusim scenario reset configs/scenarios/demo.yaml --base-url http://127.0.0.1:8000
 rusim server up --mode background --port 8000 --scenario configs/scenarios/demo.yaml

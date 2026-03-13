@@ -33,17 +33,27 @@
 
 ## Текущий asset-based каталог
 ### Машинки
-- `vehicle.ks0223.v1`
-- `vehicle.ks0223.arcade.blue.v1`
-- `vehicle.ks0223.arcade.red.v1`
-- `vehicle.ks0223.arcade.gray.v1`
-- `vehicle.ks0223.arcade.purple.v1`
+- `vehicle.prometeo.sport.v1`
+- `vehicle.arcade.blue.v1`
+- `vehicle.arcade.red.v1`
+- `vehicle.arcade.gray.v1`
+- `vehicle.arcade.purple.v1`
 - `vehicle.drone.simple.v1`
 
 ### Треки
 - `track.basic_arena.v1`
 - `track.roadsystem_arena.v1`
 - `track.roadsystem_realistic.v2`
+
+## Breaking rename (2026-03-13)
+- Старые ID `vehicle.ks0223.v1` и `vehicle.ks0223.arcade.*` удалены из симуляторного каталога.
+- Актуальная схема:
+  - `vehicle.prometeo.sport.v1`
+  - `vehicle.arcade.blue.v1`
+  - `vehicle.arcade.red.v1`
+  - `vehicle.arcade.gray.v1`
+  - `vehicle.arcade.purple.v1`
+- Обратных алиасов нет намеренно: все сценарии, CLI-команды и внешние интеграции должны использовать только новые ID.
 
 ## Где лежат assets
 - Реестр: `Assets/Resources/UavSimulator/PluginRegistry.asset`

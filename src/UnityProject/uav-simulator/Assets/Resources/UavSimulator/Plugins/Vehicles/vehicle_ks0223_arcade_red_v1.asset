@@ -10,14 +10,14 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: b7166dcab92fb4f0fa25d7c155340a81, type: 3}
-  m_Name: vehicle_ks0223_arcade_red_v1
+  m_Name: vehicle_arcade_red_v1
   m_EditorClassIdentifier: 
-  id: vehicle.ks0223.arcade.red.v1
-  displayName: Keyestudio KS0223 (Arcade Red)
+  id: vehicle.arcade.red.v1
+  displayName: Arcade Free Racing Car (Red)
   version:
     major: 0
     minor: 0
     patch: 0
-  description: KS0223 physics profile with ARCADE red visual body.
+  description: Ground robot profile with ARCADE Free Racing Car red visual body.
   prefab: {fileID: 0}
   deviceContract: {fileID: 11400000, guid: 493747df29c7c4d05abc67cb95378c72, type: 2}

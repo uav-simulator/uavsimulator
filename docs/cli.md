@@ -178,7 +178,7 @@ rusim inspect scene track.roadsystem_arena.v1 --base-url http://127.0.0.1:8000
 ### Inspect vehicle
 
 ```bash
-rusim inspect vehicle vehicle.ks0223.arcade.blue.v1 --base-url http://127.0.0.1:8000
+rusim inspect vehicle vehicle.arcade.blue.v1 --base-url http://127.0.0.1:8000
 ```
 
 Команда возвращает:
@@ -196,7 +196,7 @@ rusim inspect vehicle vehicle.ks0223.arcade.blue.v1 --base-url http://127.0.0.1:
 ## 7. Прямой выбор track и vehicle
 
 ```bash
-rusim reset --base-url http://127.0.0.1:8000 --track-id track.roadsystem_arena.v1 --vehicle-id vehicle.ks0223.arcade.blue.v1
+rusim reset --base-url http://127.0.0.1:8000 --track-id track.roadsystem_arena.v1 --vehicle-id vehicle.arcade.blue.v1
 ```
 
 Поддерживаемые аргументы:
@@ -396,8 +396,8 @@ rusim step --base-url http://127.0.0.1:8000 --agent-id npc-red --throttle 0.3 --
 rusim doctor --base-url http://127.0.0.1:8000
 rusim list tracks --base-url http://127.0.0.1:8000
 rusim list vehicles --base-url http://127.0.0.1:8000
-rusim inspect vehicle vehicle.ks0223.arcade.blue.v1 --base-url http://127.0.0.1:8000
-rusim reset --base-url http://127.0.0.1:8000 --track-id track.roadsystem_arena.v1 --vehicle-id vehicle.ks0223.arcade.blue.v1
+rusim inspect vehicle vehicle.arcade.blue.v1 --base-url http://127.0.0.1:8000
+rusim reset --base-url http://127.0.0.1:8000 --track-id track.roadsystem_arena.v1 --vehicle-id vehicle.arcade.blue.v1
 ```
 
 Если проверяется build registry:

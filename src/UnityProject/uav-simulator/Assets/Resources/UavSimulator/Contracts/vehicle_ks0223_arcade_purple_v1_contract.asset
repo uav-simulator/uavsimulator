@@ -10,14 +10,14 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 351819dc65d0440cc94d7ae19b9b7fcc, type: 3}
-  m_Name: vehicle_ks0223_arcade_purple_v1_contract
+  m_Name: vehicle_arcade_purple_v1_contract
   m_EditorClassIdentifier: 
   contractVersion:
     major: 0
     minor: 1
     patch: 0
   descriptor:
-    deviceId: vehicle.ks0223.arcade.purple.v1
+    deviceId: vehicle.arcade.purple.v1
     deviceType: ground_robot_differential
     sensors:
     - id: camera.front.rgb

@@ -2,7 +2,6 @@ using System;
 using System.Globalization;
 using System.IO;
 using System.Linq;
-using System.Reflection;
 using System.Text;
 using UavSimulator.Plugins;
 using UavSimulator.Vehicles;
@@ -41,15 +40,18 @@ namespace UavSimulator.EditorTools
             Directory.CreateDirectory(outputDir);
 
             var root = new GameObject("VehicleAuditRoot");
+            var vehiclesRoot = new GameObject("AuditVehicles");
+            vehiclesRoot.transform.SetParent(root.transform, false);
             CreateLight(root.transform);
             CreateGround(root.transform);
 
             var vehicleIds = new[]
             {
-                BuiltinPluginFactory.Ks0223ArcadeBlueVehicleId,
-                BuiltinPluginFactory.Ks0223ArcadeRedVehicleId,
-                BuiltinPluginFactory.Ks0223ArcadeGrayVehicleId,
-                BuiltinPluginFactory.Ks0223ArcadePurpleVehicleId,
+                BuiltinPluginFactory.ArcadeBlueVehicleId,
+                BuiltinPluginFactory.ArcadeRedVehicleId,
+                BuiltinPluginFactory.ArcadeGrayVehicleId,
+                BuiltinPluginFactory.ArcadePurpleVehicleId,
+                BuiltinPluginFactory.PrometeoSportVehicleId,
             };
 
             var report = new StringBuilder();
@@ -62,8 +64,8 @@ namespace UavSimulator.EditorTools
             {
                 var descriptorId = vehicleIds[i];
                 var parent = new GameObject($"AuditVehicle_{i + 1}");
-                parent.transform.SetParent(root.transform, false);
-                parent.transform.position = new Vector3(-6f + (i * 4f), 0f, 0f);
+                parent.transform.SetParent(vehiclesRoot.transform, false);
+                parent.transform.position = new Vector3(-8f + (i * 4f), 0f, 0f);
 
                 if (!BuiltinPluginFactory.TryCreateVehicleInstance(descriptorId, parent.transform, out var vehicle))
                 {
@@ -73,17 +75,25 @@ namespace UavSimulator.EditorTools
 
                 if (vehicle is Ks0223Vehicle ks0223Vehicle)
                 {
-                    EnsureInternalPresentationVisuals(ks0223Vehicle);
+                    // Audit should reflect runtime visual pipeline as-is, without forcing palette overrides.
                     ks0223Vehicle.ResetVehicle(seed: 1);
                 }
 
                 report.AppendLine($"vehicle={descriptorId}");
                 AppendRendererAudit(report, parent.transform);
+                var perVehicleCapturePath = Path.Combine(outputDir, $"{SanitizePathToken(descriptorId)}.png");
+                CaptureVehicleShot(parent.transform, perVehicleCapturePath);
+                report.AppendLine($"  capture={perVehicleCapturePath}");
                 report.AppendLine();
             }
 
+            var vehiclesBounds = CalculateRendererBounds(vehiclesRoot.transform);
             var capturePath = Path.Combine(outputDir, "vehicle-variants.png");
-            CaptureShot(capturePath, new Vector3(0f, 3.5f, -11f), new Vector3(0f, 0.8f, 0f), 34f);
+            var lookAt = vehiclesBounds.center + new Vector3(0f, vehiclesBounds.extents.y * 0.2f, 0f);
+            var distance = Mathf.Max(14f, vehiclesBounds.extents.x * 2.6f);
+            var height = Mathf.Max(2.8f, vehiclesBounds.extents.y * 2.2f);
+            var cameraPosition = lookAt + new Vector3(0f, height, -distance);
+            CaptureShot(capturePath, cameraPosition, lookAt, 32f);
             report.AppendLine($"capture={capturePath}");
 
             var reportPath = Path.Combine(outputDir, "vehicle-visual-audit.txt");
@@ -111,10 +121,12 @@ namespace UavSimulator.EditorTools
                     var supported = shader != null && shader.isSupported;
                     var compatible = IsBuiltinCompatibleShader(shader);
                     var color = material != null ? ReadSourceColor(material) : Color.magenta;
+                    var baseMap = ReadTextureName(material, "_BaseMap");
+                    var mainTex = ReadTextureName(material, "_MainTex");
                     report.AppendLine(
                         string.Format(
                             CultureInfo.InvariantCulture,
-                            "  renderer={0} slot={1} material={2} shader={3} supported={4} builtinCompatible={5} color=({6:0.###},{7:0.###},{8:0.###},{9:0.###})",
+                            "  renderer={0} slot={1} material={2} shader={3} supported={4} builtinCompatible={5} color=({6:0.###},{7:0.###},{8:0.###},{9:0.###}) baseMap={10} mainTex={11}",
                             GetTransformPath(renderer.transform, root),
                             i,
                             material != null ? material.name : "<null>",
@@ -124,7 +136,9 @@ namespace UavSimulator.EditorTools
                             color.r,
                             color.g,
                             color.b,
-                            color.a));
+                            color.a,
+                            baseMap,
+                            mainTex));
                 }
             }
         }
@@ -151,6 +165,47 @@ namespace UavSimulator.EditorTools
 
             names.Reverse();
             return string.Join("/", names);
+        }
+
+        private static Bounds CalculateRendererBounds(Transform root)
+        {
+            var renderers = root.GetComponentsInChildren<Renderer>(includeInactive: true)
+                .Where(renderer => renderer != null)
+                .ToList();
+            if (renderers.Count == 0)
+            {
+                return new Bounds(Vector3.zero, new Vector3(8f, 2f, 4f));
+            }
+
+            var bounds = renderers[0].bounds;
+            for (var i = 1; i < renderers.Count; i++)
+            {
+                bounds.Encapsulate(renderers[i].bounds);
+            }
+
+            return bounds;
+        }
+
+        private static void CaptureVehicleShot(Transform vehicleRoot, string outputPath)
+        {
+            var bounds = CalculateRendererBounds(vehicleRoot);
+            var lookAt = bounds.center + new Vector3(0f, bounds.extents.y * 0.2f, 0f);
+            var distance = Mathf.Max(2.2f, bounds.extents.magnitude * 2.4f);
+            var height = Mathf.Max(1.05f, bounds.extents.y * 1.4f);
+            var cameraPosition = lookAt + new Vector3(bounds.extents.x * 0.8f, height, distance);
+            CaptureShot(outputPath, cameraPosition, lookAt, 30f);
+        }
+
+        private static string SanitizePathToken(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return "unknown";
+            }
+
+            var invalid = Path.GetInvalidFileNameChars();
+            var sanitized = new string(value.Select(ch => invalid.Contains(ch) ? '_' : ch).ToArray());
+            return sanitized.Replace('.', '_');
         }
 
         private static void CreateLight(Transform parent)
@@ -305,19 +360,16 @@ namespace UavSimulator.EditorTools
             return source.color;
         }
 
-        private static void EnsureInternalPresentationVisuals(Ks0223Vehicle vehicle)
+        private static string ReadTextureName(Material material, string propertyName)
         {
-            if (vehicle == null)
+            if (material == null || string.IsNullOrWhiteSpace(propertyName) || !material.HasProperty(propertyName))
             {
-                return;
+                return "<none>";
             }
 
-            var flags = BindingFlags.Instance | BindingFlags.NonPublic;
-            var ensureMethod = typeof(Ks0223Vehicle).GetMethod("EnsurePresentationVisuals", flags);
-            ensureMethod?.Invoke(vehicle, null);
-
-            var paletteMethod = typeof(Ks0223Vehicle).GetMethod("ApplyVisualPalette", flags);
-            paletteMethod?.Invoke(vehicle, null);
+            var texture = material.GetTexture(propertyName);
+            return texture != null ? texture.name : "<null>";
         }
+
     }
 }

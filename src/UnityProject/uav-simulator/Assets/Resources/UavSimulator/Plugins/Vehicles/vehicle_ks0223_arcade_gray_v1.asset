@@ -10,14 +10,14 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: b7166dcab92fb4f0fa25d7c155340a81, type: 3}
-  m_Name: vehicle_ks0223_arcade_gray_v1
+  m_Name: vehicle_arcade_gray_v1
   m_EditorClassIdentifier: 
-  id: vehicle.ks0223.arcade.gray.v1
-  displayName: Keyestudio KS0223 (Arcade Gray)
+  id: vehicle.arcade.gray.v1
+  displayName: Arcade Free Racing Car (Gray)
   version:
     major: 0
     minor: 0
     patch: 0
-  description: KS0223 physics profile with ARCADE gray visual body.
+  description: Ground robot profile with ARCADE Free Racing Car gray visual body.
   prefab: {fileID: 0}
   deviceContract: {fileID: 11400000, guid: e1fcbe61526f340a59aec7fc3f894d5f, type: 2}

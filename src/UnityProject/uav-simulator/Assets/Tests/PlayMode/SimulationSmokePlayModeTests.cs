@@ -75,7 +75,7 @@ namespace UavSimulator.Tests.PlayMode
         }
 
         [UnityTest]
-        public IEnumerator FallbackScene_ContractContainsBuiltinKs0223()
+        public IEnumerator FallbackScene_ContractContainsBuiltinGroundVehicle()
         {
             var root = new GameObject("PlayModeContractRoot");
             var manager = root.AddComponent<SimulationManager>();
@@ -97,7 +97,7 @@ namespace UavSimulator.Tests.PlayMode
                     continue;
                 }
 
-                if (device.deviceId == "vehicle.ks0223.v1")
+                if (device.deviceId == "vehicle.prometeo.sport.v1")
                 {
                     foundVehicle = true;
                 }
@@ -109,8 +109,8 @@ namespace UavSimulator.Tests.PlayMode
                 }
             }
 
-            Assert.That(foundVehicle, Is.True, "Expected builtin KS0223 vehicle contract in availableVehicles.");
-            Assert.That(foundCameraSensor, Is.True, "Expected KS0223 contract to expose front camera sensor.");
+            Assert.That(foundVehicle, Is.True, "Expected builtin ground vehicle contract in availableVehicles.");
+            Assert.That(foundCameraSensor, Is.True, "Expected ground vehicle contract to expose front camera sensor.");
             Object.Destroy(root);
         }
 
@@ -127,7 +127,7 @@ namespace UavSimulator.Tests.PlayMode
                 seed = 7,
                 timeScale = 1f,
                 selectedTrackId = BuiltinPluginFactory.BasicArenaTrackId,
-                selectedVehicleId = BuiltinPluginFactory.Ks0223ArcadeBlueVehicleId,
+                selectedVehicleId = BuiltinPluginFactory.ArcadeBlueVehicleId,
                 trackParams = new ConfigKeyValue[0],
                 vehicleParams = new ConfigKeyValue[0],
                 flags = new[]
@@ -140,7 +140,7 @@ namespace UavSimulator.Tests.PlayMode
                     new SimulationAgentConfig
                     {
                         agentId = "ego",
-                        vehicleId = BuiltinPluginFactory.Ks0223ArcadeBlueVehicleId,
+                        vehicleId = BuiltinPluginFactory.ArcadeBlueVehicleId,
                         isPrimary = true,
                         trackParams = new[]
                         {
@@ -150,7 +150,7 @@ namespace UavSimulator.Tests.PlayMode
                     new SimulationAgentConfig
                     {
                         agentId = "npc-red",
-                        vehicleId = BuiltinPluginFactory.Ks0223ArcadeRedVehicleId,
+                        vehicleId = BuiltinPluginFactory.ArcadeRedVehicleId,
                         trackParams = new[]
                         {
                             new ConfigKeyValue { key = "spawn.position", value = "1.1,0.2,-7.5" },

@@ -91,7 +91,7 @@ export function ConnectionCard({
   const disconnectedLabel = isUnityMode ? 'Unity API отключен' : 'TCP отключен'
   const hostLabel = isUnityMode ? 'IP или host Unity runtime' : 'IP или host Raspberry Pi'
   const defaultPort = isUnityMode ? 8000 : 5051
-  const runtimeLabel = status?.runtimeLabel ?? (isUnityMode ? 'Keyestudio KS0223 (Unity Simulator)' : 'Keyestudio KS0223 (Real Robot)')
+  const runtimeLabel = status?.runtimeLabel ?? (isUnityMode ? 'Unity Simulator Vehicle' : 'Keyestudio KS0223 (Real Robot)')
   const tracks = unityCatalog?.tracks ?? []
   const vehicles = unityCatalog?.vehicles ?? []
   const agents = unityCatalog?.agents ?? []
