@@ -20,7 +20,7 @@ import {
   Typography,
 } from '@mui/material'
 import { useEffect, useMemo, useState } from 'react'
-import type { StatusDto, UnityRuntimeAgentSelectionDraft, UnityRuntimeCatalogDto } from '../types'
+import type { StatusDto, UnityRuntimeCatalogDto } from '../types'
 
 type Props = {
   status: StatusDto | null
@@ -31,20 +31,24 @@ type Props = {
   onTargetHostChange: (value: string) => void
   targetPort: string
   onTargetPortChange: (value: string) => void
+  onResetEndpoint: () => void
   onConnect: () => Promise<void>
   onDisconnect: () => Promise<void>
   unityCatalog: UnityRuntimeCatalogDto | null
   unityCatalogBusy: boolean
   unityCameraMode: string
   onUnityCameraModeChange: (value: string) => void
-  unityExtraAgents: UnityRuntimeAgentSelectionDraft[]
-  onUnityExtraAgentsChange: (value: UnityRuntimeAgentSelectionDraft[]) => void
   unityControlAgentId: string
   onUnityControlAgentIdChange: (value: string) => void
   unityCameraAgentId: string
   onUnityCameraAgentIdChange: (value: string) => void
   onUnityCatalogRefresh: () => Promise<void>
-  onUnitySelectionSave: (trackId: string, vehicleId: string, applyImmediately: boolean) => Promise<void>
+  onUnitySelectionSave: (
+    trackId: string,
+    vehicleId: string,
+    agents: Array<{ agentId?: string; vehicleId?: string; isPrimary?: boolean }>,
+    applyImmediately: boolean,
+  ) => Promise<void>
 }
 
 function formatLatency(value: number | null): string {
@@ -64,14 +68,13 @@ export function ConnectionCard({
   onTargetHostChange,
   targetPort,
   onTargetPortChange,
+  onResetEndpoint,
   onConnect,
   onDisconnect,
   unityCatalog,
   unityCatalogBusy,
   unityCameraMode,
   onUnityCameraModeChange,
-  unityExtraAgents,
-  onUnityExtraAgentsChange,
   unityControlAgentId,
   onUnityControlAgentIdChange,
   unityCameraAgentId,
@@ -83,7 +86,7 @@ export function ConnectionCard({
   const [unityDialogBusy, setUnityDialogBusy] = useState(false)
   const [unityDialogError, setUnityDialogError] = useState<string | null>(null)
   const [trackDraft, setTrackDraft] = useState('')
-  const [vehicleDraft, setVehicleDraft] = useState('')
+  const [agentDrafts, setAgentDrafts] = useState<Array<{ agentId: string; vehicleId: string; isPrimary: boolean }>>([])
 
   const tcpConnected = status?.tcpConnected ?? false
   const isUnityMode = runtimeMode === 'unity-sim'
@@ -109,13 +112,17 @@ export function ConnectionCard({
   }, [unityCatalog])
 
   const selectedVehicleTitle = useMemo(() => {
-    if (!unityCatalog || !unityCatalog.selectedVehicleId) {
+    if (!unityCatalog) {
       return 'не выбрана'
     }
 
-    return (
-      unityCatalog.vehicles.find((item) => item.id === unityCatalog.selectedVehicleId)?.displayName ?? unityCatalog.selectedVehicleId
-    )
+    const primary = unityCatalog.agents.find((agent) => agent.isPrimary) ?? unityCatalog.agents[0]
+    const vehicleId = primary?.vehicleId || unityCatalog.selectedVehicleId
+    if (!vehicleId) {
+      return 'не выбрана'
+    }
+
+    return unityCatalog.vehicles.find((item) => item.id === vehicleId)?.displayName ?? vehicleId
   }, [unityCatalog])
 
   const selectedCameraModeTitle = useMemo(() => {
@@ -133,7 +140,7 @@ export function ConnectionCard({
 
   const selectedControlAgentTitle = useMemo(() => {
     if (!unityControlAgentId) {
-      return 'ego'
+      return 'не выбран'
     }
 
     const agent = agents.find((item) => item.agentId === unityControlAgentId)
@@ -142,7 +149,7 @@ export function ConnectionCard({
 
   const selectedCameraAgentTitle = useMemo(() => {
     if (!unityCameraAgentId) {
-      return 'ego'
+      return 'не выбран'
     }
 
     const agent = agents.find((item) => item.agentId === unityCameraAgentId)
@@ -158,28 +165,25 @@ export function ConnectionCard({
       setTrackDraft(unityCatalog.selectedTrackId)
     }
 
-    if (unityCatalog?.selectedVehicleId) {
-      setVehicleDraft(unityCatalog.selectedVehicleId)
-    }
+    setAgentDrafts(
+      (unityCatalog?.agents ?? []).map((agent) => ({
+        agentId: agent.agentId,
+        vehicleId: agent.vehicleId,
+        isPrimary: agent.isPrimary,
+      })),
+    )
   }, [unityCatalog, unityDialogOpen])
 
   const effectiveAgentOptions = useMemo(() => {
-    const draftMap = new Map<string, string>()
-    draftMap.set('ego', vehicleDraft || unityCatalog?.selectedVehicleId || '')
-    unityExtraAgents.forEach((agent) => {
-      if (agent.agentId.trim() && agent.vehicleId.trim()) {
-        draftMap.set(agent.agentId.trim(), agent.vehicleId.trim())
-      }
-    })
-
-    return Array.from(draftMap.entries()).map(([agentId, vehicleId]) => {
+    return agents.map((agent) => {
+      const vehicleId = agent.vehicleId
       const displayName =
         vehicles.find((vehicle) => vehicle.id === vehicleId)?.displayName ??
-        unityCatalog?.agents.find((agent) => agent.agentId === agentId)?.displayName ??
+        unityCatalog?.agents.find((item) => item.agentId === agent.agentId)?.displayName ??
         vehicleId
-      return { agentId, vehicleId, displayName }
+      return { agentId: agent.agentId, vehicleId, displayName }
     })
-  }, [unityCatalog, unityExtraAgents, vehicleDraft, vehicles])
+  }, [agents, unityCatalog?.agents, vehicles])
 
   const handleOpenUnityDialog = async () => {
     setUnityDialogOpen(true)
@@ -196,15 +200,25 @@ export function ConnectionCard({
   }
 
   const handleSaveUnitySelection = async () => {
-    if (!trackDraft || !vehicleDraft) {
-      setUnityDialogError('Выбери трек и машинку')
+    const firstVehicle = agentDrafts[0]?.vehicleId || unityCatalog?.selectedVehicleId || vehicles[0]?.id || ''
+    if (!trackDraft || !firstVehicle) {
+      setUnityDialogError('Выбери трек и добавь хотя бы одну машинку')
       return
     }
 
     setUnityDialogBusy(true)
     setUnityDialogError(null)
     try {
-      await onUnitySelectionSave(trackDraft, vehicleDraft, connectApplyImmediately)
+      await onUnitySelectionSave(
+        trackDraft,
+        firstVehicle,
+        agentDrafts.map((agent) => ({
+          agentId: agent.agentId,
+          vehicleId: agent.vehicleId,
+          isPrimary: false,
+        })),
+        connectApplyImmediately,
+      )
       setUnityDialogOpen(false)
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
@@ -238,6 +252,13 @@ export function ConnectionCard({
             Последняя ошибка: {status?.lastError ?? 'нет'}
           </Typography>
 
+          <Typography variant="caption" color="text.secondary">
+            Configured endpoint: {targetHost || '—'}:{targetPort || String(defaultPort)}
+          </Typography>
+          <Typography variant="caption" color={tcpConnected ? 'success.light' : 'text.secondary'}>
+            Connected endpoint: {status?.targetHost ?? '—'}:{status?.targetPort ?? '—'}
+          </Typography>
+
           <TextField
             size="small"
             select
@@ -268,8 +289,12 @@ export function ConnectionCard({
             onChange={(event) => onTargetPortChange(event.target.value)}
             disabled={busy}
             inputProps={{ min: 1, max: 65535, step: 1 }}
-            helperText={`Текущий порт: ${status?.targetPort ?? defaultPort}`}
+            helperText={`Порт по умолчанию: ${defaultPort}`}
           />
+
+          <Button variant="text" color="secondary" onClick={onResetEndpoint} disabled={busy}>
+            Сбросить endpoint к значениям по умолчанию
+          </Button>
 
           {isUnityMode ? (
             <Stack spacing={1}>
@@ -280,6 +305,11 @@ export function ConnectionCard({
                 <Chip label={`Camera agent: ${selectedCameraAgentTitle}`} size="small" />
                 <Chip label={`Control agent: ${selectedControlAgentTitle}`} size="small" />
               </Stack>
+              {tcpConnected && agents.length === 0 ? (
+                <Typography variant="body2" color="warning.main">
+                  В симуляции пока нет машинок. Открой popup и добавь agent.
+                </Typography>
+              ) : null}
               <Button
                 variant="outlined"
                 color="secondary"
@@ -319,7 +349,7 @@ export function ConnectionCard({
         <DialogContent sx={{ pt: '8px !important' }}>
           <Stack spacing={2} sx={{ mt: 1 }}>
             <Typography variant="body2" color="text.secondary">
-              Выбранный трек и машинка будут применяться при следующем подключении. Если соединение уже активно, настройки
+              Выбранный трек и список машинок будут применяться при следующем подключении. Если соединение уже активно, настройки
               применяются сразу через reset.
             </Typography>
 
@@ -341,21 +371,6 @@ export function ConnectionCard({
             <TextField
               select
               size="small"
-              label="Машинка"
-              value={vehicleDraft}
-              onChange={(event) => setVehicleDraft(event.target.value)}
-              disabled={dialogBusy || vehicles.length === 0}
-            >
-              {vehicles.map((vehicle) => (
-                <MenuItem key={vehicle.id} value={vehicle.id}>
-                  {vehicle.displayName}
-                </MenuItem>
-              ))}
-            </TextField>
-
-            <TextField
-              select
-              size="small"
               label="Camera mode"
               value={unityCameraMode}
               onChange={(event) => onUnityCameraModeChange(event.target.value)}
@@ -369,17 +384,16 @@ export function ConnectionCard({
 
             <Stack spacing={1}>
               <Typography variant="subtitle2">Машинки на трассе</Typography>
-              <TextField size="small" label="ego" value={selectedVehicleTitle} disabled helperText="Primary agent берётся из поля «Машинка»" />
-              {unityExtraAgents.map((agent, index) => (
+              {agentDrafts.map((agent, index) => (
                 <Stack key={`${agent.agentId}-${index}`} direction={{ xs: 'column', sm: 'row' }} spacing={1}>
                   <TextField
                     size="small"
                     label="Agent id"
                     value={agent.agentId}
                     onChange={(event) => {
-                      const next = [...unityExtraAgents]
-                      next[index] = { ...next[index], agentId: event.target.value.trim() || `npc-${index + 2}` }
-                      onUnityExtraAgentsChange(next)
+                      const next = [...agentDrafts]
+                      next[index] = { ...next[index], agentId: event.target.value.trim() || `agent-${index + 1}` }
+                      setAgentDrafts(next)
                     }}
                     disabled={dialogBusy}
                   />
@@ -389,32 +403,30 @@ export function ConnectionCard({
                     label="Машинка"
                     value={agent.vehicleId}
                     onChange={(event) => {
-                      const next = [...unityExtraAgents]
+                      const next = [...agentDrafts]
                       next[index] = { ...next[index], vehicleId: event.target.value }
-                      onUnityExtraAgentsChange(next)
+                      setAgentDrafts(next)
                     }}
                     disabled={dialogBusy || vehicles.length === 0}
                     sx={{ minWidth: { sm: 260 } }}
                   >
-                    {vehicles
-                      .filter((vehicle) => vehicle.id !== vehicleDraft || agent.vehicleId === vehicle.id)
-                      .map((vehicle) => (
-                        <MenuItem key={vehicle.id} value={vehicle.id}>
-                          {vehicle.displayName}
-                        </MenuItem>
-                      ))}
+                    {vehicles.map((vehicle) => (
+                      <MenuItem key={vehicle.id} value={vehicle.id}>
+                        {vehicle.displayName}
+                      </MenuItem>
+                    ))}
                   </TextField>
                   <Button
                     variant="outlined"
                     color="warning"
                     onClick={() => {
-                      const next = unityExtraAgents.filter((_, currentIndex) => currentIndex !== index)
-                      onUnityExtraAgentsChange(next)
+                      const next = agentDrafts.filter((_, currentIndex) => currentIndex !== index)
+                      setAgentDrafts(next)
                       if (unityControlAgentId === agent.agentId) {
-                        onUnityControlAgentIdChange('ego')
+                        onUnityControlAgentIdChange('')
                       }
                       if (unityCameraAgentId === agent.agentId) {
-                        onUnityCameraAgentIdChange('ego')
+                        onUnityCameraAgentIdChange('')
                       }
                     }}
                     disabled={dialogBusy}
@@ -426,20 +438,21 @@ export function ConnectionCard({
               <Button
                 variant="outlined"
                 onClick={() => {
-                  const usedIds = new Set(['ego', ...unityExtraAgents.map((agent) => agent.agentId.trim()).filter(Boolean)])
-                  let nextIndex = unityExtraAgents.length + 2
-                  let candidate = `npc-${nextIndex}`
+                  const usedIds = new Set(agentDrafts.map((item) => item.agentId.trim()).filter(Boolean))
+                  let nextIndex = agentDrafts.length + 1
+                  let candidate = `agent-${nextIndex}`
                   while (usedIds.has(candidate)) {
                     nextIndex += 1
-                    candidate = `npc-${nextIndex}`
+                    candidate = `agent-${nextIndex}`
                   }
 
-                  const fallbackVehicleId = vehicles.find((vehicle) => vehicle.id !== vehicleDraft)?.id ?? vehicles[0]?.id ?? ''
+                  const fallbackVehicleId = agentDrafts[0]?.vehicleId || vehicles[0]?.id || ''
                   if (!fallbackVehicleId) {
                     return
                   }
 
-                  onUnityExtraAgentsChange([...unityExtraAgents, { agentId: candidate, vehicleId: fallbackVehicleId }])
+                  const next = [...agentDrafts, { agentId: candidate, vehicleId: fallbackVehicleId, isPrimary: false }]
+                  setAgentDrafts(next)
                 }}
                 disabled={dialogBusy || vehicles.length === 0}
               >
@@ -453,9 +466,10 @@ export function ConnectionCard({
               label="Управляемый agent"
               value={unityControlAgentId}
               onChange={(event) => onUnityControlAgentIdChange(event.target.value)}
-              disabled={dialogBusy}
+              disabled={dialogBusy || effectiveAgentOptions.length === 0}
               helperText="Команды этой вкладки будут идти через выбранный agent"
             >
+              <MenuItem value="">{effectiveAgentOptions.length === 0 ? 'Нет машинок' : 'Не выбрано'}</MenuItem>
               {effectiveAgentOptions.map((agent) => (
                 <MenuItem key={agent.agentId} value={agent.agentId}>
                   {agent.agentId} · {agent.displayName}
@@ -468,10 +482,14 @@ export function ConnectionCard({
               size="small"
               label="Camera agent"
               value={unityCameraAgentId}
-              onChange={(event) => onUnityCameraAgentIdChange(event.target.value)}
-              disabled={dialogBusy}
-              helperText="Эта вкладка будет смотреть камеру выбранного agent"
+              onChange={(event) => {
+                onUnityCameraAgentIdChange(event.target.value)
+                onUnityControlAgentIdChange(event.target.value)
+              }}
+              disabled={dialogBusy || effectiveAgentOptions.length === 0}
+              helperText="Камера и управление синхронизируются на один agent"
             >
+              <MenuItem value="">{effectiveAgentOptions.length === 0 ? 'Нет машинок' : 'Не выбрано'}</MenuItem>
               {effectiveAgentOptions.map((agent) => (
                 <MenuItem key={agent.agentId} value={agent.agentId}>
                   {agent.agentId} · {agent.displayName}
@@ -480,7 +498,7 @@ export function ConnectionCard({
             </TextField>
 
             <Typography variant="body2" color="text.secondary">
-              Машинок в конфигурации: {effectiveAgentOptions.length}
+              Машинок в конфигурации: {agentDrafts.length}
             </Typography>
 
             {!hasUnityOptions ? (
@@ -506,7 +524,7 @@ export function ConnectionCard({
           <Button
             variant="contained"
             onClick={() => void handleSaveUnitySelection()}
-            disabled={dialogBusy || !trackDraft || !vehicleDraft}
+            disabled={dialogBusy || !trackDraft}
           >
             Применить
           </Button>

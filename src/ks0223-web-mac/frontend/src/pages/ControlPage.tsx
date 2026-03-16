@@ -10,7 +10,6 @@ import type {
   SensorBridgeStatusDto,
   SensorTelemetryDto,
   StatusDto,
-  UnityRuntimeAgentSelectionDraft,
   UnityRuntimeCatalogDto,
 } from '../types'
 
@@ -28,21 +27,26 @@ type Props = {
   onTargetHostChange: (value: string) => void
   targetPort: string
   onTargetPortChange: (value: string) => void
+  onResetEndpoint: () => void
   onConnect: () => Promise<void>
   onDisconnect: () => Promise<void>
   unityCatalog: UnityRuntimeCatalogDto | null
   unityCatalogBusy: boolean
   unityCameraMode: string
   onUnityCameraModeChange: (value: string) => void
-  unityExtraAgents: UnityRuntimeAgentSelectionDraft[]
-  onUnityExtraAgentsChange: (value: UnityRuntimeAgentSelectionDraft[]) => void
   unityControlAgentId: string
   onUnityControlAgentIdChange: (value: string) => void
   unityCameraAgentId: string
   onUnityCameraAgentIdChange: (value: string) => void
   onUnityCatalogRefresh: () => Promise<void>
-  onUnitySelectionSave: (trackId: string, vehicleId: string, applyImmediately: boolean) => Promise<void>
+  onUnitySelectionSave: (
+    trackId: string,
+    vehicleId: string,
+    agents: Array<{ agentId?: string; vehicleId?: string; isPrimary?: boolean }>,
+    applyImmediately: boolean,
+  ) => Promise<void>
   onCommand: (command: string) => Promise<void>
+  controlsEnabled: boolean
   cameraStreamUrl: string
   driveSpeedPercent: number
   cameraSpeedPercent: number
@@ -74,14 +78,13 @@ export function ControlPage({
   onTargetHostChange,
   targetPort,
   onTargetPortChange,
+  onResetEndpoint,
   onConnect,
   onDisconnect,
   unityCatalog,
   unityCatalogBusy,
   unityCameraMode,
   onUnityCameraModeChange,
-  unityExtraAgents,
-  onUnityExtraAgentsChange,
   unityControlAgentId,
   onUnityControlAgentIdChange,
   unityCameraAgentId,
@@ -89,6 +92,7 @@ export function ControlPage({
   onUnityCatalogRefresh,
   onUnitySelectionSave,
   onCommand,
+  controlsEnabled,
   cameraStreamUrl,
   driveSpeedPercent,
   cameraSpeedPercent,
@@ -117,14 +121,13 @@ export function ControlPage({
           onTargetHostChange={onTargetHostChange}
           targetPort={targetPort}
           onTargetPortChange={onTargetPortChange}
+          onResetEndpoint={onResetEndpoint}
           onConnect={onConnect}
           onDisconnect={onDisconnect}
           unityCatalog={unityCatalog}
           unityCatalogBusy={unityCatalogBusy}
           unityCameraMode={unityCameraMode}
           onUnityCameraModeChange={onUnityCameraModeChange}
-          unityExtraAgents={unityExtraAgents}
-          onUnityExtraAgentsChange={onUnityExtraAgentsChange}
           unityControlAgentId={unityControlAgentId}
           onUnityControlAgentIdChange={onUnityControlAgentIdChange}
           unityCameraAgentId={unityCameraAgentId}
@@ -138,6 +141,7 @@ export function ControlPage({
           <ControlPad
             status={status}
             onCommand={onCommand}
+            controlsEnabled={controlsEnabled}
             driveSpeedPercent={driveSpeedPercent}
             cameraSpeedPercent={cameraSpeedPercent}
             onDriveSpeedPercentChange={onDriveSpeedPercentChange}

@@ -26,6 +26,7 @@ import type { StatusDto } from '../types'
 type Props = {
   status: StatusDto | null
   onCommand: (command: string) => Promise<void>
+  controlsEnabled: boolean
   driveSpeedPercent: number
   cameraSpeedPercent: number
   onDriveSpeedPercentChange: (value: number) => void
@@ -87,6 +88,7 @@ function repeatMsForCamera(speedPercent: number): number {
 export function ControlPad({
   status,
   onCommand,
+  controlsEnabled,
   driveSpeedPercent,
   cameraSpeedPercent,
   onDriveSpeedPercentChange,
@@ -157,7 +159,7 @@ export function ControlPad({
 
   const startDriveHold = useCallback(
     async (command: string) => {
-      if (!(status?.tcpConnected ?? false)) {
+      if (!(status?.tcpConnected ?? false) || !controlsEnabled) {
         return
       }
 
@@ -181,7 +183,7 @@ export function ControlPad({
 
   const startCameraHold = useCallback(
     async (command: string) => {
-      if (!(status?.tcpConnected ?? false)) {
+      if (!(status?.tcpConnected ?? false) || !controlsEnabled) {
         return
       }
 
@@ -205,7 +207,7 @@ export function ControlPad({
 
   useEffect(() => {
     const keyDown = (event: KeyboardEvent) => {
-      if (!(status?.tcpConnected ?? false)) {
+      if (!(status?.tcpConnected ?? false) || !controlsEnabled) {
         return
       }
 
@@ -292,9 +294,9 @@ export function ControlPad({
       void stopDriveHold(true)
       void stopCameraHold(true)
     }
-  }, [startCameraHold, startDriveHold, status?.tcpConnected, stopCameraHold, stopDriveHold])
+  }, [controlsEnabled, startCameraHold, startDriveHold, status?.tcpConnected, stopCameraHold, stopDriveHold])
 
-  const disabled = !(status?.tcpConnected ?? false)
+  const disabled = !(status?.tcpConnected ?? false) || !controlsEnabled
 
   const drivePressProps = (command: string) => ({
     onPointerDown: () => void startDriveHold(command),

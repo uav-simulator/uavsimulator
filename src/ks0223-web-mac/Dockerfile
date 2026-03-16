@@ -30,6 +30,6 @@ EXPOSE 5058
 EXPOSE 5051/udp
 
 HEALTHCHECK --interval=10s --timeout=3s --start-period=15s --retries=6 \
-  CMD curl -fsS http://localhost:5058/api/health >/dev/null || exit 1
+  CMD curl -fsS "http://localhost:5058/api/health?clientId=healthcheck&runtimeMode=real-robot" >/dev/null || exit 1
 
 CMD ["dotnet", "backend.dll"]

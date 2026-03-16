@@ -25,9 +25,9 @@ docker-run: docker-stop
 	docker run -d --name $(CONTAINER) -p $(PORT):5058 -p $(UDP_PORT):5051/udp -v $(LOGS_DIR):/app/logs $(IMAGE)
 
 docker-wait:
-	@echo "Waiting for healthcheck on http://localhost:$(PORT)/api/health ..."
+	@echo "Waiting for healthcheck on http://localhost:$(PORT)/api/health?clientId=healthcheck&runtimeMode=real-robot ..."
 	@for i in $$(seq 1 30); do \
-		if curl -fsS http://localhost:$(PORT)/api/health >/dev/null 2>&1; then \
+		if curl -fsS "http://localhost:$(PORT)/api/health?clientId=healthcheck&runtimeMode=real-robot" >/dev/null 2>&1; then \
 			echo "Container is ready"; \
 			exit 0; \
 		fi; \
@@ -42,7 +42,7 @@ docker-logs:
 	docker logs -f $(CONTAINER)
 
 docker-health:
-	curl -fsS http://localhost:$(PORT)/api/health | jq .
+	curl -fsS "http://localhost:$(PORT)/api/health?clientId=healthcheck&runtimeMode=real-robot" | jq .
 
 docker-shell:
 	docker exec -it $(CONTAINER) /bin/sh

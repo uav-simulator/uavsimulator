@@ -15,6 +15,12 @@ const apiBase = import.meta.env.VITE_API_BASE_URL ?? ''
 
 const withBase = (path: string) => `${apiBase}${path}`
 
+function withClientRuntime(path: string, clientId: string, runtimeMode: string): string {
+  const params = new URLSearchParams({ clientId, runtimeMode })
+  const query = params.toString()
+  return withBase(`${path}${path.includes('?') ? '&' : '?'}${query}`)
+}
+
 async function handleJson<T>(response: Response): Promise<T> {
   if (!response.ok) {
     const text = await response.text()
@@ -24,27 +30,31 @@ async function handleJson<T>(response: Response): Promise<T> {
   return (await response.json()) as T
 }
 
-export async function fetchStatus(): Promise<StatusDto> {
-  const response = await fetch(withBase('/api/status'))
+export async function fetchStatus(clientId: string, runtimeMode: string): Promise<StatusDto> {
+  const response = await fetch(withClientRuntime('/api/status', clientId, runtimeMode))
   return handleJson<StatusDto>(response)
 }
 
-export async function connectPi(host: string, port?: number, runtimeMode?: string): Promise<StatusDto> {
+export async function connectPi(clientId: string, runtimeMode: string, host: string, port?: number): Promise<StatusDto> {
   const response = await fetch(withBase('/api/connection/connect'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ host, port, runtimeMode }),
+    body: JSON.stringify({ clientId, runtimeMode, host, port }),
   })
   return handleJson<StatusDto>(response)
 }
 
-export async function disconnectPi(): Promise<StatusDto> {
-  const response = await fetch(withBase('/api/connection/disconnect'), { method: 'POST' })
+export async function disconnectPi(clientId: string, runtimeMode: string): Promise<StatusDto> {
+  const response = await fetch(withBase('/api/connection/disconnect'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ clientId, runtimeMode }),
+  })
   return handleJson<StatusDto>(response)
 }
 
-export async function fetchUnityRuntimeCatalog(host?: string, port?: number): Promise<UnityRuntimeCatalogDto> {
-  const params = new URLSearchParams()
+export async function fetchUnityRuntimeCatalog(clientId: string, runtimeMode: string, host?: string, port?: number): Promise<UnityRuntimeCatalogDto> {
+  const params = new URLSearchParams({ clientId, runtimeMode })
   if (host?.trim()) {
     params.set('host', host.trim())
   }
@@ -52,16 +62,16 @@ export async function fetchUnityRuntimeCatalog(host?: string, port?: number): Pr
     params.set('port', String(port))
   }
 
-  const query = params.toString()
-  const response = await fetch(withBase(`/api/unity/runtime-catalog${query ? `?${query}` : ''}`))
+  const response = await fetch(withBase(`/api/unity/runtime-catalog?${params.toString()}`))
   return handleJson<UnityRuntimeCatalogDto>(response)
 }
 
 export async function setUnityRuntimeSelection(payload: {
+  clientId: string
+  runtimeMode: string
   trackId?: string
   vehicleId?: string
   cameraMode?: string
-  controlAgentId?: string
   agents?: Array<{
     agentId?: string
     vehicleId?: string
@@ -77,11 +87,30 @@ export async function setUnityRuntimeSelection(payload: {
   return handleJson<UnityRuntimeCatalogDto>(response)
 }
 
-export async function sendCommand(command: string, agentId?: string, clientId?: string): Promise<CommandResponse> {
+export async function setUnityClientSelection(payload: {
+  clientId: string
+  runtimeMode: string
+  controlAgentId?: string
+  cameraAgentId?: string
+}): Promise<UnityRuntimeCatalogDto> {
+  const response = await fetch(withBase('/api/unity/client-selection'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  return handleJson<UnityRuntimeCatalogDto>(response)
+}
+
+export async function sendCommand(
+  clientId: string,
+  runtimeMode: string,
+  command: string,
+  agentId?: string,
+): Promise<CommandResponse> {
   const response = await fetch(withBase('/api/command'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ command, agentId, clientId }),
+    body: JSON.stringify({ clientId, runtimeMode, command, agentId }),
   })
 
   return handleJson<CommandResponse>(response)
@@ -112,23 +141,23 @@ export async function openLogsFolder(): Promise<void> {
   await handleJson<{ opened: boolean }>(response)
 }
 
-export async function fetchCameraStatus(): Promise<CameraStatusDto> {
-  const response = await fetch(withBase('/api/camera/status'))
+export async function fetchCameraStatus(clientId: string, runtimeMode: string): Promise<CameraStatusDto> {
+  const response = await fetch(withClientRuntime('/api/camera/status', clientId, runtimeMode))
   return handleJson<CameraStatusDto>(response)
 }
 
-export async function fetchHealth(): Promise<HealthDto> {
-  const response = await fetch(withBase('/api/health'))
+export async function fetchHealth(clientId: string, runtimeMode: string): Promise<HealthDto> {
+  const response = await fetch(withClientRuntime('/api/health', clientId, runtimeMode))
   return handleJson<HealthDto>(response)
 }
 
-export async function fetchSensorStatus(): Promise<SensorBridgeStatusDto> {
-  const response = await fetch(withBase('/api/sensors/status'))
+export async function fetchSensorStatus(clientId: string, runtimeMode: string): Promise<SensorBridgeStatusDto> {
+  const response = await fetch(withClientRuntime('/api/sensors/status', clientId, runtimeMode))
   return handleJson<SensorBridgeStatusDto>(response)
 }
 
-export async function fetchSensorLatest(): Promise<SensorTelemetryDto | null> {
-  const response = await fetch(withBase('/api/sensors/latest'))
+export async function fetchSensorLatest(clientId: string, runtimeMode: string): Promise<SensorTelemetryDto | null> {
+  const response = await fetch(withClientRuntime('/api/sensors/latest', clientId, runtimeMode))
   if (response.status === 404) {
     return null
   }
@@ -136,16 +165,20 @@ export async function fetchSensorLatest(): Promise<SensorTelemetryDto | null> {
   return handleJson<SensorTelemetryDto>(response)
 }
 
-export async function updateSensorConfig(payload: {
-  autoScanEnabled?: boolean
-  sampleIntervalMs?: number
-  scanIntervalSec?: number
-  scanSettleMs?: number
-  driveSpeedPercent?: number
-  cameraSpeedPercent?: number
-  ultrasonicServoPin?: number
-}): Promise<SensorBridgeResponse> {
-  const params = new URLSearchParams()
+export async function updateSensorConfig(
+  clientId: string,
+  runtimeMode: string,
+  payload: {
+    autoScanEnabled?: boolean
+    sampleIntervalMs?: number
+    scanIntervalSec?: number
+    scanSettleMs?: number
+    driveSpeedPercent?: number
+    cameraSpeedPercent?: number
+    ultrasonicServoPin?: number
+  },
+): Promise<SensorBridgeResponse> {
+  const params = new URLSearchParams({ clientId, runtimeMode })
   if (payload.autoScanEnabled !== undefined) params.set('autoScanEnabled', String(payload.autoScanEnabled))
   if (payload.sampleIntervalMs !== undefined) params.set('sampleIntervalMs', String(payload.sampleIntervalMs))
   if (payload.scanIntervalSec !== undefined) params.set('scanIntervalSec', String(payload.scanIntervalSec))
@@ -160,11 +193,15 @@ export async function updateSensorConfig(payload: {
 }
 
 export async function setUltrasonicPosition(
+  clientId: string,
+  runtimeMode: string,
   angleDeg: number,
   disableAutoScan = true,
   servoPin?: number,
 ): Promise<SensorBridgeResponse> {
   const params = new URLSearchParams({
+    clientId,
+    runtimeMode,
     angleDeg: String(angleDeg),
     disableAutoScan: String(disableAutoScan),
   })
@@ -177,35 +214,40 @@ export async function setUltrasonicPosition(
   return handleJson<SensorBridgeResponse>(response)
 }
 
-export async function setUltrasonicAutoScan(enabled: boolean): Promise<SensorBridgeResponse> {
-  const response = await fetch(withBase(`/api/sensors/ultrasonic/auto-scan?enabled=${String(enabled)}`), { method: 'POST' })
+export async function setUltrasonicAutoScan(clientId: string, runtimeMode: string, enabled: boolean): Promise<SensorBridgeResponse> {
+  const params = new URLSearchParams({ clientId, runtimeMode, enabled: String(enabled) })
+  const response = await fetch(withBase(`/api/sensors/ultrasonic/auto-scan?${params.toString()}`), { method: 'POST' })
   return handleJson<SensorBridgeResponse>(response)
 }
 
-export async function ledSetPattern(pattern: string): Promise<SensorBridgeResponse> {
-  const response = await fetch(withBase(`/api/led/pattern?pattern=${encodeURIComponent(pattern)}`), { method: 'POST' })
+export async function ledSetPattern(clientId: string, runtimeMode: string, pattern: string): Promise<SensorBridgeResponse> {
+  const params = new URLSearchParams({ clientId, runtimeMode, pattern })
+  const response = await fetch(withBase(`/api/led/pattern?${params.toString()}`), { method: 'POST' })
   return handleJson<SensorBridgeResponse>(response)
 }
 
-export async function ledSetCustomFrame(frameHex: string): Promise<SensorBridgeResponse> {
-  const response = await fetch(withBase(`/api/led/custom?frameHex=${encodeURIComponent(frameHex)}`), { method: 'POST' })
+export async function ledSetCustomFrame(clientId: string, runtimeMode: string, frameHex: string): Promise<SensorBridgeResponse> {
+  const params = new URLSearchParams({ clientId, runtimeMode, frameHex })
+  const response = await fetch(withBase(`/api/led/custom?${params.toString()}`), { method: 'POST' })
   return handleJson<SensorBridgeResponse>(response)
 }
 
-export async function ledClear(): Promise<SensorBridgeResponse> {
+export async function ledClear(clientId: string, runtimeMode: string): Promise<SensorBridgeResponse> {
   const response = await fetch(withBase('/api/led/clear'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ clientId, runtimeMode }),
   })
   return handleJson<SensorBridgeResponse>(response)
 }
 
-export function cameraMjpegUrl(agentId?: string): string {
-  if (!agentId?.trim()) {
-    return withBase('/api/camera/mjpeg')
+export function cameraMjpegUrl(clientId: string, runtimeMode: string, agentId?: string): string {
+  const params = new URLSearchParams({ clientId, runtimeMode })
+  if (agentId?.trim()) {
+    params.set('agentId', agentId.trim())
   }
 
-  return withBase(`/api/camera/mjpeg?agentId=${encodeURIComponent(agentId.trim())}`)
+  return withBase(`/api/camera/mjpeg?${params.toString()}`)
 }
 
 export function resolveHubUrl(): string {

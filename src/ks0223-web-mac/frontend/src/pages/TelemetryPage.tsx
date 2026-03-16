@@ -25,7 +25,7 @@ export function TelemetryPage({ status, incoming, camera, health, sensorStatus, 
   return (
     <Stack spacing={2}>
       <CameraPanel
-        cameraStreamUrl={cameraMjpegUrl()}
+        cameraStreamUrl={cameraMjpegUrl('telemetry-preview', 'real-robot')}
         camera={camera}
         health={health}
         status={status}

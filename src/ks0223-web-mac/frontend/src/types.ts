@@ -105,6 +105,7 @@ export type UnityRuntimeCatalogDto = {
   selectedVehicleId: string
   selectedCameraMode: string
   selectedControlAgentId: string
+  selectedCameraAgentId: string
   tracks: UnityRuntimeOptionDto[]
   vehicles: UnityRuntimeOptionDto[]
   agents: UnityRuntimeAgentDto[]
