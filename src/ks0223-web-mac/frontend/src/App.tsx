@@ -20,6 +20,7 @@ import {
   openLogsFolder,
   resolveHubUrl,
   sendCommand,
+  setUnityClientSelection,
   setUnityRuntimeSelection,
   setUltrasonicAutoScan,
   setUltrasonicPosition,
@@ -39,19 +40,19 @@ import type {
   SensorBridgeStatusDto,
   SensorTelemetryDto,
   StatusDto,
-  UnityRuntimeAgentSelectionDraft,
   UnityRuntimeCatalogDto,
 } from './types'
 
 type TabKey = 'dashboard' | 'sensors' | 'led' | 'logs'
 type RuntimeMode = 'real-robot' | 'unity-sim'
+type UnityAgentDraft = { agentId?: string; vehicleId?: string; isPrimary?: boolean }
+type UnityPendingSelection = { trackId: string; vehicleId: string; cameraMode: string; agents: UnityAgentDraft[] }
 
 const RUNTIME_MODE_STORAGE_KEY = 'ks0223_runtime_mode'
 const TARGET_HOST_STORAGE_KEY_PREFIX = 'ks0223_target_host_'
 const TARGET_PORT_STORAGE_KEY_PREFIX = 'ks0223_target_port_'
 const UNITY_TRACK_STORAGE_KEY = 'ks0223_unity_track_id'
 const UNITY_VEHICLE_STORAGE_KEY = 'ks0223_unity_vehicle_id'
-const UNITY_EXTRA_AGENTS_STORAGE_KEY = 'ks0223_unity_extra_agents_v1'
 const UNITY_CAMERA_MODE_STORAGE_KEY = 'ks0223_unity_camera_mode'
 const UNITY_CONTROL_AGENT_STORAGE_KEY = 'ks0223_unity_control_agent'
 const UNITY_CAMERA_AGENT_STORAGE_KEY = 'ks0223_unity_camera_agent'
@@ -63,6 +64,7 @@ const DRIVE_SPEED_STORAGE_KEY = 'ks0223_drive_speed_percent'
 const CAMERA_SPEED_STORAGE_KEY = 'ks0223_camera_speed_percent'
 const ULTRASONIC_ANGLE_STORAGE_KEY = 'ks0223_ultrasonic_angle_deg'
 const ULTRASONIC_AUTO_SCAN_STORAGE_KEY = 'ks0223_ultrasonic_auto_scan'
+const ULTRASONIC_AUTO_SCAN_MIGRATION_V2_KEY = 'ks0223_ultrasonic_auto_scan_migration_v2'
 const ULTRASONIC_SERVO_PIN_STORAGE_KEY = 'ks0223_ultrasonic_servo_pin'
 const CAMERA_PAN_STORAGE_KEY = 'ks0223_camera_pan_deg'
 const CAMERA_TILT_STORAGE_KEY = 'ks0223_camera_tilt_deg'
@@ -169,30 +171,6 @@ function readStoredString(key: string): string {
   return window.localStorage.getItem(key)?.trim() ?? ''
 }
 
-function readStoredUnityAgents(): UnityRuntimeAgentSelectionDraft[] {
-  if (typeof window === 'undefined') {
-    return []
-  }
-
-  try {
-    const raw = window.localStorage.getItem(UNITY_EXTRA_AGENTS_STORAGE_KEY)
-    if (!raw) {
-      return []
-    }
-
-    const parsed = JSON.parse(raw) as Array<Partial<UnityRuntimeAgentSelectionDraft>>
-    return parsed
-      .filter((item) => item && typeof item.agentId === 'string' && typeof item.vehicleId === 'string')
-      .map((item) => ({
-        agentId: item.agentId!.trim(),
-        vehicleId: item.vehicleId!.trim(),
-      }))
-      .filter((item) => item.agentId && item.vehicleId)
-  } catch {
-    return []
-  }
-}
-
 function ensureClientInstanceId(): string {
   if (typeof window === 'undefined') {
     return 'client-server'
@@ -265,16 +243,8 @@ function normalizePortInput(value: string, mode: RuntimeMode): string {
   return String(Math.round(parsed))
 }
 
-function getActiveRuntimeMode(status: StatusDto | null, selectedRuntimeMode: RuntimeMode): RuntimeMode {
-  if (!status) {
-    return selectedRuntimeMode
-  }
-
-  if (status.desiredConnection || status.tcpConnected) {
-    return normalizeRuntimeMode(status.runtimeMode)
-  }
-
-  return selectedRuntimeMode
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms))
 }
 
 function App() {
@@ -301,39 +271,44 @@ function App() {
   const [unityCatalogBusy, setUnityCatalogBusy] = useState(false)
   const [unityTrackId, setUnityTrackId] = useState(() => readStoredString(UNITY_TRACK_STORAGE_KEY))
   const [unityVehicleId, setUnityVehicleId] = useState(() => readStoredString(UNITY_VEHICLE_STORAGE_KEY))
-  const [unityExtraAgents, setUnityExtraAgents] = useState<UnityRuntimeAgentSelectionDraft[]>(() => readStoredUnityAgents())
-  const [unityCameraMode, setUnityCameraMode] = useState(() => readStoredString(UNITY_CAMERA_MODE_STORAGE_KEY) || 'driver')
-  const [unityControlAgentId, setUnityControlAgentId] = useState(() => readStoredString(UNITY_CONTROL_AGENT_STORAGE_KEY) || 'ego')
-  const [unityCameraAgentId, setUnityCameraAgentId] = useState(() => readStoredString(UNITY_CAMERA_AGENT_STORAGE_KEY) || 'ego')
+  const [unityCameraMode, setUnityCameraMode] = useState(() => readStoredString(UNITY_CAMERA_MODE_STORAGE_KEY) || 'spectator')
+  const [unityControlAgentId, setUnityControlAgentId] = useState(() => readStoredString(UNITY_CONTROL_AGENT_STORAGE_KEY))
+  const [unityCameraAgentId, setUnityCameraAgentId] = useState(() => readStoredString(UNITY_CAMERA_AGENT_STORAGE_KEY))
+  const [unityPendingSelection, setUnityPendingSelection] = useState<UnityPendingSelection | null>(null)
 
   const [driveSpeedPercent, setDriveSpeedPercent] = useState(() => readStoredNumber(DRIVE_SPEED_STORAGE_KEY, 80, 0, 100))
   const [cameraSpeedPercent, setCameraSpeedPercent] = useState(() => readStoredNumber(CAMERA_SPEED_STORAGE_KEY, 70, 0, 100))
   const [ultrasonicAngleDeg, setUltrasonicAngleDeg] = useState(() => readStoredNumber(ULTRASONIC_ANGLE_STORAGE_KEY, 90, 0, 180))
   const [ultrasonicServoPin, setUltrasonicServoPin] = useState(() => readStoredNumber(ULTRASONIC_SERVO_PIN_STORAGE_KEY, 5, 5, 7))
-  const [ultrasonicAutoScanEnabled, setUltrasonicAutoScanEnabled] = useState(() =>
-    readStoredBool(ULTRASONIC_AUTO_SCAN_STORAGE_KEY, true),
-  )
+  const [ultrasonicAutoScanEnabled, setUltrasonicAutoScanEnabled] = useState(() => {
+    if (typeof window === 'undefined') {
+      return false
+    }
+
+    const migrated = window.localStorage.getItem(ULTRASONIC_AUTO_SCAN_MIGRATION_V2_KEY) === '1'
+    if (!migrated) {
+      window.localStorage.setItem(ULTRASONIC_AUTO_SCAN_STORAGE_KEY, 'false')
+      window.localStorage.setItem(ULTRASONIC_AUTO_SCAN_MIGRATION_V2_KEY, '1')
+      return false
+    }
+
+    return readStoredBool(ULTRASONIC_AUTO_SCAN_STORAGE_KEY, false)
+  })
   const [estimatedCameraPanDeg, setEstimatedCameraPanDeg] = useState(() => readStoredNumber(CAMERA_PAN_STORAGE_KEY, 90, 0, 180))
   const [estimatedCameraTiltDeg, setEstimatedCameraTiltDeg] = useState(() => readStoredNumber(CAMERA_TILT_STORAGE_KEY, 90, 0, 180))
   const ultrasonicUiOverrideUntilRef = useRef(0)
+  const selectedRuntimeModeRef = useRef<RuntimeMode>(selectedRuntimeMode)
 
   const markUltrasonicUiOverride = useCallback((durationMs = ULTRASONIC_UI_OVERRIDE_MS) => {
     ultrasonicUiOverrideUntilRef.current = Date.now() + Math.max(300, durationMs)
   }, [])
 
-  const activeRuntimeMode = getActiveRuntimeMode(status, selectedRuntimeMode)
+  const activeRuntimeMode = selectedRuntimeMode
 
   const syncStatus = useCallback(async () => {
-    const next = await fetchStatus()
+    const next = await fetchStatus(clientInstanceId, selectedRuntimeMode)
     setStatus(next)
-
-    if (next.desiredConnection || next.tcpConnected) {
-      const nextMode = normalizeRuntimeMode(next.runtimeMode)
-      setSelectedRuntimeMode(nextMode)
-      setTargetHost(next.targetHost)
-      setTargetPort(String(next.targetPort))
-    }
-  }, [])
+  }, [clientInstanceId, selectedRuntimeMode])
 
   const syncFiles = useCallback(async () => {
     const nextFiles = await fetchLogFiles()
@@ -342,16 +317,16 @@ function App() {
 
   const syncDiagnostics = useCallback(async () => {
     const [nextHealth, nextCamera, nextSensorStatus, nextSensorTelemetry] = await Promise.all([
-      fetchHealth(),
-      fetchCameraStatus(),
-      fetchSensorStatus(),
-      fetchSensorLatest(),
+      fetchHealth(clientInstanceId, selectedRuntimeMode),
+      fetchCameraStatus(clientInstanceId, selectedRuntimeMode),
+      fetchSensorStatus(clientInstanceId, selectedRuntimeMode),
+      fetchSensorLatest(clientInstanceId, selectedRuntimeMode),
     ])
     setHealth(nextHealth)
     setCamera(nextCamera)
     setSensorStatus(nextSensorStatus)
     setSensorTelemetry(nextSensorTelemetry)
-  }, [])
+  }, [clientInstanceId, selectedRuntimeMode])
 
   const syncUnityCatalog = useCallback(
     async (hostOverride?: string, portOverride?: number) => {
@@ -363,64 +338,79 @@ function App() {
 
       setUnityCatalogBusy(true)
       try {
-        const catalog = await fetchUnityRuntimeCatalog(host, port)
+        const catalog = await fetchUnityRuntimeCatalog(clientInstanceId, 'unity-sim', host, port)
         setUnityCatalog(catalog)
         setUnityTrackId(catalog.selectedTrackId)
         setUnityVehicleId(catalog.selectedVehicleId)
-        setUnityCameraMode(catalog.selectedCameraMode || 'driver')
-        setUnityControlAgentId(catalog.selectedControlAgentId || 'ego')
-        setUnityCameraAgentId((prev) => {
-          const availableAgentIds = new Set((catalog.agents ?? []).map((agent) => agent.agentId))
-          return prev && availableAgentIds.has(prev) ? prev : catalog.selectedControlAgentId || 'ego'
-        })
-        setUnityExtraAgents(
-          (catalog.agents ?? [])
-            .filter((agent) => !agent.isPrimary)
-            .map((agent) => ({ agentId: agent.agentId, vehicleId: agent.vehicleId })),
-        )
+        setUnityCameraMode(catalog.selectedCameraMode || 'spectator')
+        setUnityControlAgentId(catalog.selectedControlAgentId || '')
+        setUnityCameraAgentId(catalog.selectedCameraAgentId || catalog.selectedControlAgentId || '')
         return catalog
       } finally {
         setUnityCatalogBusy(false)
       }
     },
-    [targetHost, targetPort],
+    [clientInstanceId, targetHost, targetPort],
   )
 
   const applyUnitySelection = useCallback(
-    async (trackId: string, vehicleId: string, applyImmediately: boolean) => {
-        const catalog = await setUnityRuntimeSelection({
-          trackId,
-          vehicleId,
+    async (
+      trackId: string,
+      vehicleId: string,
+      agents: UnityAgentDraft[],
+      applyImmediately: boolean,
+    ) => {
+      if (!applyImmediately || !(status?.desiredConnection ?? false)) {
+        setUnityTrackId(trackId)
+        setUnityVehicleId(vehicleId)
+        setUnityPendingSelection({ trackId, vehicleId, cameraMode: unityCameraMode, agents })
+        setUnityCatalog((prev) => {
+          if (!prev) {
+            return prev
+          }
+
+          return {
+            ...prev,
+            selectedTrackId: trackId,
+            selectedVehicleId: vehicleId,
+            selectedCameraMode: unityCameraMode,
+            agents: agents.map((agent, index) => ({
+              agentId: agent.agentId?.trim() || `agent-${index + 1}`,
+              vehicleId: agent.vehicleId?.trim() || vehicleId,
+              displayName:
+                prev.vehicles.find((item) => item.id === (agent.vehicleId?.trim() || vehicleId))?.displayName ||
+                agent.vehicleId?.trim() ||
+                vehicleId,
+              isPrimary: Boolean(agent.isPrimary),
+            })),
+          }
+        })
+        return
+      }
+
+      const catalog = await setUnityRuntimeSelection({
+        clientId: clientInstanceId,
+        runtimeMode: 'unity-sim',
+        trackId,
+        vehicleId,
           cameraMode: unityCameraMode,
-          controlAgentId: unityControlAgentId,
-          agents: unityExtraAgents.map((agent) => ({
-            agentId: agent.agentId,
-            vehicleId: agent.vehicleId,
-            isPrimary: false,
-          })),
+          agents,
           applyImmediately,
         })
 
       setUnityCatalog(catalog)
       setUnityTrackId(catalog.selectedTrackId)
       setUnityVehicleId(catalog.selectedVehicleId)
-      setUnityCameraMode(catalog.selectedCameraMode || 'driver')
-      setUnityControlAgentId(catalog.selectedControlAgentId || 'ego')
-      setUnityExtraAgents(
-        (catalog.agents ?? [])
-          .filter((agent) => !agent.isPrimary)
-          .map((agent) => ({ agentId: agent.agentId, vehicleId: agent.vehicleId })),
-      )
-      setUnityCameraAgentId((prev) => {
-        const availableAgentIds = new Set((catalog.agents ?? []).map((agent) => agent.agentId))
-        return prev && availableAgentIds.has(prev) ? prev : catalog.selectedControlAgentId || 'ego'
-      })
+      setUnityCameraMode(catalog.selectedCameraMode || 'spectator')
+      setUnityControlAgentId(catalog.selectedControlAgentId || '')
+      setUnityCameraAgentId(catalog.selectedCameraAgentId || catalog.selectedControlAgentId || '')
+      setUnityPendingSelection(null)
 
       if (applyImmediately) {
         await Promise.all([syncStatus(), syncDiagnostics()])
       }
     },
-    [syncDiagnostics, syncStatus, unityCameraMode, unityControlAgentId, unityExtraAgents],
+    [clientInstanceId, status?.desiredConnection, syncDiagnostics, syncStatus, unityCameraMode],
   )
 
   useEffect(() => {
@@ -435,6 +425,9 @@ function App() {
       .build()
 
     hub.on('status', (payload: StatusDto) => {
+      if (normalizeRuntimeMode(payload.runtimeMode) !== selectedRuntimeModeRef.current) {
+        return
+      }
       setStatus(payload)
     })
 
@@ -450,14 +443,17 @@ function App() {
       setSensorTelemetry(payload)
     })
 
-    void hub.start().catch((error: unknown) => {
-      console.error('SignalR start error', error)
-    })
+    void hub
+      .start()
+      .then(() => hub.invoke('BindClient', clientInstanceId))
+      .catch((error: unknown) => {
+        console.error('SignalR start error', error)
+      })
 
     return () => {
       void hub.stop()
     }
-  }, [syncDiagnostics, syncFiles, syncStatus])
+  }, [clientInstanceId, syncDiagnostics, syncFiles, syncStatus])
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -471,6 +467,7 @@ function App() {
 
   useEffect(() => {
     window.localStorage.setItem(RUNTIME_MODE_STORAGE_KEY, selectedRuntimeMode)
+    selectedRuntimeModeRef.current = selectedRuntimeMode
   }, [selectedRuntimeMode])
 
   useEffect(() => {
@@ -507,13 +504,7 @@ function App() {
 
   useEffect(() => {
     window.localStorage.removeItem(LEGACY_UNITY_SECONDARY_VEHICLE_STORAGE_KEY)
-    if (unityExtraAgents.length === 0) {
-      window.localStorage.removeItem(UNITY_EXTRA_AGENTS_STORAGE_KEY)
-      return
-    }
-
-    window.localStorage.setItem(UNITY_EXTRA_AGENTS_STORAGE_KEY, JSON.stringify(unityExtraAgents))
-  }, [unityExtraAgents])
+  }, [])
 
   useEffect(() => {
     if (!unityCameraMode) {
@@ -571,8 +562,13 @@ function App() {
   }, [estimatedCameraTiltDeg])
 
   useEffect(() => {
+    if (!(status?.tcpConnected ?? false)) {
+      return
+    }
+
     const timer = window.setTimeout(() => {
-      void updateSensorConfig({
+      void updateSensorConfig(clientInstanceId, selectedRuntimeMode, {
+        autoScanEnabled: ultrasonicAutoScanEnabled,
         driveSpeedPercent,
         cameraSpeedPercent,
         ultrasonicServoPin,
@@ -584,7 +580,15 @@ function App() {
     return () => {
       window.clearTimeout(timer)
     }
-  }, [driveSpeedPercent, cameraSpeedPercent, ultrasonicServoPin])
+  }, [
+    cameraSpeedPercent,
+    clientInstanceId,
+    driveSpeedPercent,
+    selectedRuntimeMode,
+    status?.tcpConnected,
+    ultrasonicAutoScanEnabled,
+    ultrasonicServoPin,
+  ])
 
   useEffect(() => {
     const uiOverrideActive = Date.now() < ultrasonicUiOverrideUntilRef.current
@@ -619,6 +623,24 @@ function App() {
     }
   }, [])
 
+  const waitForConnectionOutcome = useCallback(
+    async (mode: RuntimeMode, timeoutMs = 4500) => {
+      const startedAt = Date.now()
+      while (Date.now() - startedAt < timeoutMs) {
+        const next = await fetchStatus(clientInstanceId, mode)
+        setStatus(next)
+        if (next.tcpConnected || next.lastError) {
+          return next
+        }
+
+        await sleep(250)
+      }
+
+      return null
+    },
+    [clientInstanceId],
+  )
+
   const handleConnect = useCallback(async () => {
     await guarded(async () => {
       const normalizedHost = targetHost.trim()
@@ -628,52 +650,40 @@ function App() {
       }
 
       const normalizedPort = normalizePortInput(targetPort, selectedRuntimeMode)
-      if (selectedRuntimeMode === 'unity-sim' && (unityTrackId || unityVehicleId || unityCameraMode)) {
-        await setUnityRuntimeSelection({
-          trackId: unityTrackId || undefined,
-          vehicleId: unityVehicleId || undefined,
-          cameraMode: unityCameraMode,
-          controlAgentId: 'ego',
-          agents: [],
-          applyImmediately: false,
-        })
-        setUnityExtraAgents([])
-        setUnityControlAgentId('ego')
-        setUnityCameraAgentId('ego')
-      }
-
-      const next = await connectPi(normalizedHost, Number(normalizedPort), selectedRuntimeMode)
+      const next = await connectPi(clientInstanceId, selectedRuntimeMode, normalizedHost, Number(normalizedPort))
       setStatus(next)
-      const nextRuntimeMode = normalizeRuntimeMode(next.runtimeMode)
-      setSelectedRuntimeMode(nextRuntimeMode)
-      setTargetHost(next.targetHost)
-      setTargetPort(String(next.targetPort))
-      window.localStorage.setItem(targetHostStorageKey(nextRuntimeMode), next.targetHost)
-      window.localStorage.setItem(targetPortStorageKey(nextRuntimeMode), String(next.targetPort))
+      await waitForConnectionOutcome(selectedRuntimeMode)
 
-      if (nextRuntimeMode === 'unity-sim') {
-        await syncUnityCatalog(next.targetHost, next.targetPort)
+      if (selectedRuntimeMode === 'unity-sim') {
+        const catalog = await syncUnityCatalog(normalizedHost, Number(normalizedPort))
+        if (unityPendingSelection) {
+          await applyUnitySelection(
+            unityPendingSelection.trackId || catalog.selectedTrackId,
+            unityPendingSelection.vehicleId || catalog.selectedVehicleId,
+            unityPendingSelection.agents,
+            true,
+          )
+        }
       }
     })
   }, [
+    applyUnitySelection,
+    clientInstanceId,
     guarded,
     selectedRuntimeMode,
     syncUnityCatalog,
     targetHost,
     targetPort,
-    unityCameraMode,
-    unityExtraAgents,
-    unityControlAgentId,
-    unityTrackId,
-    unityVehicleId,
+    unityPendingSelection,
+    waitForConnectionOutcome,
   ])
 
   const handleDisconnect = useCallback(async () => {
     await guarded(async () => {
-      const next = await disconnectPi()
+      const next = await disconnectPi(clientInstanceId, selectedRuntimeMode)
       setStatus(next)
     })
-  }, [guarded])
+  }, [clientInstanceId, guarded, selectedRuntimeMode])
 
   const handleRuntimeModeChange = useCallback((value: string) => {
     const nextMode = normalizeRuntimeMode(value)
@@ -682,10 +692,63 @@ function App() {
     setTargetPort(readStoredTargetPort(nextMode))
   }, [])
 
+  const handleResetEndpoint = useCallback(() => {
+    setTargetHost(defaultHostForMode(selectedRuntimeMode))
+    setTargetPort(String(defaultPortForMode(selectedRuntimeMode)))
+  }, [selectedRuntimeMode])
+
+  const applyUnityClientSelection = useCallback(
+    async (controlAgentId?: string, cameraAgentId?: string) => {
+      if (selectedRuntimeMode !== 'unity-sim') {
+        return
+      }
+
+      if (!status?.desiredConnection) {
+        setUnityControlAgentId(controlAgentId ?? '')
+        setUnityCameraAgentId(cameraAgentId ?? controlAgentId ?? '')
+        return
+      }
+
+      const catalog = await setUnityClientSelection({
+        clientId: clientInstanceId,
+        runtimeMode: 'unity-sim',
+        controlAgentId,
+        cameraAgentId,
+      })
+      setUnityCatalog(catalog)
+      setUnityControlAgentId(catalog.selectedControlAgentId || '')
+      setUnityCameraAgentId(catalog.selectedCameraAgentId || catalog.selectedControlAgentId || '')
+    },
+    [clientInstanceId, selectedRuntimeMode, status?.desiredConnection],
+  )
+
+  const handleUnityControlAgentChange = useCallback(
+    (value: string) => {
+      const normalized = value.trim()
+      setUnityControlAgentId(normalized)
+      void applyUnityClientSelection(normalized || undefined, unityCameraAgentId || undefined).catch((error) => {
+        console.warn('Failed to apply unity control agent selection', error)
+      })
+    },
+    [applyUnityClientSelection, unityCameraAgentId],
+  )
+
+  const handleUnityCameraAgentChange = useCallback(
+    (value: string) => {
+      const normalized = value.trim()
+      setUnityCameraAgentId(normalized)
+      setUnityControlAgentId(normalized)
+      void applyUnityClientSelection(normalized || undefined, normalized || undefined).catch((error) => {
+        console.warn('Failed to apply unity camera agent selection', error)
+      })
+    },
+    [applyUnityClientSelection],
+  )
+
   const handleCommand = useCallback(
     async (command: string, agentId?: string) => {
       try {
-        await sendCommand(command, agentId, clientInstanceId)
+        await sendCommand(clientInstanceId, selectedRuntimeMode, command, agentId)
 
         if (command === 'CamUp') {
           setEstimatedCameraTiltDeg((prev) => clamp(prev - 1, 0, 180))
@@ -701,10 +764,10 @@ function App() {
         await syncStatus()
       }
     },
-    [clientInstanceId, syncStatus],
+    [clientInstanceId, selectedRuntimeMode, syncStatus],
   )
 
-  const activeCommandAgentId = activeRuntimeMode === 'unity-sim' ? unityControlAgentId : undefined
+  const activeCommandAgentId = activeRuntimeMode === 'unity-sim' ? unityControlAgentId || undefined : undefined
 
   const handleActiveCommand = useCallback(
     async (command: string) => {
@@ -739,7 +802,7 @@ function App() {
   const handleUltrasonicApply = useCallback(
     async (angleDeg: number, disableAutoScan: boolean, servoPin: number) => {
       markUltrasonicUiOverride()
-      await setUltrasonicPosition(angleDeg, disableAutoScan, servoPin)
+      await setUltrasonicPosition(clientInstanceId, selectedRuntimeMode, angleDeg, disableAutoScan, servoPin)
       setUltrasonicAngleDeg(clamp(angleDeg, 0, 180))
       if ([5, 6, 7].includes(servoPin)) {
         setUltrasonicServoPin(servoPin)
@@ -749,17 +812,17 @@ function App() {
       }
       await syncDiagnostics()
     },
-    [markUltrasonicUiOverride, syncDiagnostics],
+    [clientInstanceId, markUltrasonicUiOverride, selectedRuntimeMode, syncDiagnostics],
   )
 
   const handleUltrasonicAutoScanChange = useCallback(
     async (enabled: boolean) => {
       markUltrasonicUiOverride()
-      await setUltrasonicAutoScan(enabled)
+      await setUltrasonicAutoScan(clientInstanceId, selectedRuntimeMode, enabled)
       setUltrasonicAutoScanEnabled(enabled)
       await syncDiagnostics()
     },
-    [markUltrasonicUiOverride, syncDiagnostics],
+    [clientInstanceId, markUltrasonicUiOverride, selectedRuntimeMode, syncDiagnostics],
   )
 
   const handleUltrasonicManualStart = useCallback(async () => {
@@ -769,35 +832,35 @@ function App() {
     }
 
     try {
-      await setUltrasonicAutoScan(false)
+      await setUltrasonicAutoScan(clientInstanceId, selectedRuntimeMode, false)
       setUltrasonicAutoScanEnabled(false)
       markUltrasonicUiOverride()
       void syncDiagnostics()
     } catch (error) {
       console.warn('Failed to disable ultrasonic autoscan before manual control', error)
     }
-  }, [markUltrasonicUiOverride, syncDiagnostics, ultrasonicAutoScanEnabled])
+  }, [clientInstanceId, markUltrasonicUiOverride, selectedRuntimeMode, syncDiagnostics, ultrasonicAutoScanEnabled])
 
   const handleLedSetPattern = useCallback(
     async (pattern: string) => {
-      await ledSetPattern(pattern)
+      await ledSetPattern(clientInstanceId, selectedRuntimeMode, pattern)
       await syncDiagnostics()
     },
-    [syncDiagnostics],
+    [clientInstanceId, selectedRuntimeMode, syncDiagnostics],
   )
 
   const handleLedSetCustomFrame = useCallback(
     async (frameHex: string) => {
-      await ledSetCustomFrame(frameHex)
+      await ledSetCustomFrame(clientInstanceId, selectedRuntimeMode, frameHex)
       await syncDiagnostics()
     },
-    [syncDiagnostics],
+    [clientInstanceId, selectedRuntimeMode, syncDiagnostics],
   )
 
   const handleLedClear = useCallback(async () => {
-    await ledClear()
+    await ledClear(clientInstanceId, selectedRuntimeMode)
     await syncDiagnostics()
-  }, [syncDiagnostics])
+  }, [clientInstanceId, selectedRuntimeMode, syncDiagnostics])
 
   const content = useMemo(() => {
     if (tab === 'logs') {
@@ -847,28 +910,32 @@ function App() {
         busy={busy}
         runtimeMode={activeRuntimeMode}
         onRuntimeModeChange={handleRuntimeModeChange}
-        targetHost={(status?.desiredConnection || status?.tcpConnected) ? (status?.targetHost ?? targetHost) : targetHost}
+        targetHost={targetHost}
         onTargetHostChange={setTargetHost}
-        targetPort={(status?.desiredConnection || status?.tcpConnected) ? String(status?.targetPort ?? targetPort) : targetPort}
+        targetPort={targetPort}
         onTargetPortChange={setTargetPort}
+        onResetEndpoint={handleResetEndpoint}
         onConnect={handleConnect}
         onDisconnect={handleDisconnect}
         unityCatalog={unityCatalog}
         unityCatalogBusy={unityCatalogBusy}
         unityCameraMode={unityCameraMode}
         onUnityCameraModeChange={setUnityCameraMode}
-        unityExtraAgents={unityExtraAgents}
-        onUnityExtraAgentsChange={setUnityExtraAgents}
         unityControlAgentId={unityControlAgentId}
-        onUnityControlAgentIdChange={setUnityControlAgentId}
+        onUnityControlAgentIdChange={handleUnityControlAgentChange}
         unityCameraAgentId={unityCameraAgentId}
-        onUnityCameraAgentIdChange={setUnityCameraAgentId}
+        onUnityCameraAgentIdChange={handleUnityCameraAgentChange}
         onUnityCatalogRefresh={async () => {
           await syncUnityCatalog()
         }}
         onUnitySelectionSave={applyUnitySelection}
         onCommand={handleActiveCommand}
-        cameraStreamUrl={activeRuntimeMode === 'unity-sim' ? cameraMjpegUrl(unityCameraAgentId) : cameraMjpegUrl()}
+        controlsEnabled={activeRuntimeMode !== 'unity-sim' || Boolean(unityControlAgentId)}
+        cameraStreamUrl={cameraMjpegUrl(
+          clientInstanceId,
+          activeRuntimeMode,
+          activeRuntimeMode === 'unity-sim' ? unityCameraAgentId || unityControlAgentId || undefined : undefined,
+        )}
         driveSpeedPercent={driveSpeedPercent}
         cameraSpeedPercent={cameraSpeedPercent}
         onDriveSpeedPercentChange={(value) => setDriveSpeedPercent(clamp(value, 0, 100))}
@@ -889,6 +956,7 @@ function App() {
       />
     )
   }, [
+    clientInstanceId,
     tab,
     status,
     incoming,
@@ -905,18 +973,19 @@ function App() {
     selectedRuntimeMode,
     activeRuntimeMode,
     targetHost,
+    handleResetEndpoint,
     handleRuntimeModeChange,
     handleConnect,
     handleDisconnect,
     unityCatalog,
     unityCatalogBusy,
     unityCameraMode,
-    unityExtraAgents,
     unityControlAgentId,
     unityCameraAgentId,
+    handleUnityControlAgentChange,
+    handleUnityCameraAgentChange,
     syncUnityCatalog,
     applyUnitySelection,
-    handleCommand,
     driveSpeedPercent,
     cameraSpeedPercent,
     ultrasonicAngleDeg,
@@ -950,7 +1019,7 @@ function App() {
               KS0223 Control Center
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600 }}>
-              {activeRuntimeMode === 'unity-sim' ? 'Unity' : 'Pi'} {(status?.desiredConnection || status?.tcpConnected) ? (status?.targetHost ?? targetHost) : targetHost}:{(status?.desiredConnection || status?.tcpConnected) ? (status?.targetPort ?? defaultPortForMode(activeRuntimeMode)) : normalizePortInput(targetPort, activeRuntimeMode)}
+              {activeRuntimeMode === 'unity-sim' ? 'Unity' : 'Pi'} {status?.targetHost ?? targetHost}:{status?.targetPort ?? normalizePortInput(targetPort, activeRuntimeMode)}
             </Typography>
           </Toolbar>
         </AppBar>

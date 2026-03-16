@@ -1,73 +1,40 @@
-# React + TypeScript + Vite
+# KS0223 Web Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Frontend SPA для `ks0223-web-mac` (React + TypeScript + Vite + MUI).
 
-Currently, two official plugins are available:
+## Запуск
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+cd src/ks0223-web-mac/frontend
+npm install
+npm run dev
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+По умолчанию открывается на `http://localhost:5173`.
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+## Build
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm run build
 ```
+
+## Runtime/API модель (v2)
+
+- Все runtime-вызовы идут в backend с обязательными `clientId` и `runtimeMode`.
+- `clientId` генерируется на вкладку (`sessionStorage`) и используется для session-aware изоляции.
+- После старта SignalR frontend вызывает `BindClient(clientId)` на `/hub/telemetry`.
+- Статус/телеметрия приходят адресно только для этой вкладки/клиента.
+
+## Поведение UI
+
+- Host/port поля работают как пользовательский draft и не перетираются из `/api/status`.
+- Кэш host/port хранится в `localStorage` отдельно по runtime mode:
+  - `real-robot`
+  - `unity-sim`
+- В Unity-режиме поддержан zero-agent флоу:
+  - начальное состояние может быть без машинок (`spectator`);
+  - первая машинка добавляется вручную в popup;
+  - выбор `Camera agent` автоматически синхронизирует `Control agent`.
+- Разделение Unity API:
+  - `/api/unity/runtime-selection` — world-level (track/vehicle/agents/reset);
+  - `/api/unity/client-selection` — client-level (control/camera agent без reset).
