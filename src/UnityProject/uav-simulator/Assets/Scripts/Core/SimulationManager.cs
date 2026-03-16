@@ -32,6 +32,7 @@ namespace UavSimulator.Core
         private const string SpawnPositionKey = "spawn.position";
         private const string SpawnYawDegKey = "spawn.yaw_deg";
         private const string RenderQualityProfileKey = "render.quality_profile";
+        private const string AllowEmptyAgentsKey = "agents.allow_empty";
 
         [SerializeField] private Transform trackRoot;
         [SerializeField] private Transform vehicleRoot;
@@ -156,7 +157,8 @@ namespace UavSimulator.Core
         public void ResetSimulation(SimulationConfig config)
         {
             var validation = SimulationConfigValidator.Validate(config, registry);
-            var resolvedAgents = ResolveAgentConfigs(config, validation.Vehicle);
+            var allowEmptyAgents = TryReadFlag(config.flags, AllowEmptyAgentsKey, out var allowEmptyValue) && allowEmptyValue;
+            var resolvedAgents = ResolveAgentConfigs(config, validation.Vehicle, allowEmptyAgents);
             var qualityProfile = ReadConfigValue(config.flags, RenderQualityProfileKey);
             ApplyRuntimeGraphicsProfile(string.IsNullOrWhiteSpace(qualityProfile) ? "high" : qualityProfile);
 
@@ -190,7 +192,16 @@ namespace UavSimulator.Core
             var primary = activeAgents.FirstOrDefault(agent => agent.IsPrimary) ?? activeAgents.FirstOrDefault();
             if (primary == null)
             {
-                throw new InvalidOperationException("No active vehicles were created for the simulation.");
+                if (!allowEmptyAgents)
+                {
+                    throw new InvalidOperationException("No active vehicles were created for the simulation.");
+                }
+
+                activeVehicle = null;
+                activeAgentId = string.Empty;
+                activeVehicleId = string.Empty;
+                ApplyAgentInteractions(config.flags);
+                return;
             }
 
             activeVehicle = primary.Vehicle;
@@ -235,7 +246,30 @@ namespace UavSimulator.Core
             var target = ResolveTargetAgent(targetAgentId, targetVehicleId);
             if (target == null)
             {
-                throw new InvalidOperationException("Active vehicle is not initialized. Call ResetSimulation first.");
+                return new StepResult
+                {
+                    activeAgentId = string.Empty,
+                    activeVehicleId = string.Empty,
+                    state = new VehicleState
+                    {
+                        pose = new Posef
+                        {
+                            position = new Vector3f(),
+                            rotation = new Quaternionf { w = 1f },
+                        },
+                        linearVelocity = new Vector3f(),
+                        angularVelocity = new Vector3f(),
+                        speed = 0f,
+                        timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                        timeBase = "unix_ms",
+                        telemetry = Array.Empty<ConfigKeyValue>(),
+                    },
+                    reward = 0f,
+                    done = false,
+                    info = Array.Empty<ConfigKeyValue>(),
+                    frame = null,
+                    agents = Array.Empty<AgentStepResult>(),
+                };
             }
 
             var state = target.Vehicle.ReadState();
@@ -707,7 +741,7 @@ namespace UavSimulator.Core
             return spawn;
         }
 
-        private List<ResolvedAgentConfig> ResolveAgentConfigs(SimulationConfig config, VehiclePluginDescriptor defaultVehicle)
+        private List<ResolvedAgentConfig> ResolveAgentConfigs(SimulationConfig config, VehiclePluginDescriptor defaultVehicle, bool allowEmptyAgents)
         {
             var result = new List<ResolvedAgentConfig>();
             var globalTrackParams = config.trackParams ?? Array.Empty<ConfigKeyValue>();
@@ -716,6 +750,11 @@ namespace UavSimulator.Core
 
             if (configuredAgents.Length == 0)
             {
+                if (allowEmptyAgents)
+                {
+                    return result;
+                }
+
                 result.Add(new ResolvedAgentConfig
                 {
                     AgentId = "ego",
@@ -752,6 +791,11 @@ namespace UavSimulator.Core
 
             if (result.Count == 0)
             {
+                if (allowEmptyAgents)
+                {
+                    return result;
+                }
+
                 throw new InvalidOperationException("Simulation config contains an empty agents list.");
             }
 
@@ -1066,7 +1110,7 @@ namespace UavSimulator.Core
         {
             if (string.Equals(trackId, BuiltinPluginFactory.RoadSystemRealisticTrackId, StringComparison.Ordinal))
             {
-                return (new Vector3(-11f, 0.2f, -13.5f), 3f);
+                return (new Vector3(-11f, 0.2f, -11.8f), 3f);
             }
 
             if (string.Equals(trackId, BuiltinPluginFactory.RoadSystemArenaTrackId, StringComparison.Ordinal))

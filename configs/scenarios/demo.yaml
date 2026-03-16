@@ -30,7 +30,7 @@ sensors:
 
 route:
   params:
-    spawn.position: -11.000,0.200,-13.500
+    spawn.position: -11.000,0.200,-11.800
   waypoints:
     - [-11.0, -13.5]
     - [-10.5, -4.5]
