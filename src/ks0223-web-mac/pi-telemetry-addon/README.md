@@ -20,7 +20,7 @@
   - line tracking (`tracking.left/center/right`)
   - IR receiver (`ir.last_code_*`, `ir.signal_level`)
   - системные метрики (`system.cpu_temp_c`, `system.uptime_sec`)
-  - config (`config.auto_scan_enabled`, `config.drive_speed_percent`, `config.camera_speed_percent`)
+- config (`config.auto_scan_enabled`, `config.drive_speed_percent`, `config.camera_speed_percent`)
   - LED состояние (`led.mode`, `led.pattern`, `led.frame_hex`)
 
 ## Структура
@@ -48,6 +48,8 @@ cd src/ks0223-web-mac/pi-telemetry-addon
 ```
 
 Скрипт делает backup старого `ks0223_sensor_bridge.py` в папку `backup_YYYYMMDD_HHMMSS`.
+
+Важно: в актуальной версии add-on `auto_scan_enabled` по умолчанию выключен (`false`), чтобы HC-SR04 серво не начинал автоскандо первого ручного управления из UI.
 
 ## Проверка на Pi
 

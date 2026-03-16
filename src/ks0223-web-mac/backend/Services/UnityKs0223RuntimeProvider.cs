@@ -62,6 +62,9 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
     private readonly IHttpClientFactory httpClientFactory;
     private readonly IHubContext<TelemetryHub> hubContext;
     private readonly ILogger<UnityKs0223RuntimeProvider> logger;
+    private readonly string? clientGroup;
+    private readonly string? sessionClientId;
+    private readonly string sessionRuntimeMode;
 
     private bool desiredConnection;
     private bool unityConnected;
@@ -71,8 +74,8 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
     private int targetPort = 8000;
     private string selectedVehicleId = PreferredVehicleIds[0];
     private string selectedTrackId = PreferredTrackIds[0];
-    private string selectedCameraMode = "driver";
-    private string selectedControlAgentId = "ego";
+    private string selectedCameraMode = "spectator";
+    private string selectedControlAgentId = string.Empty;
     private List<UnityRuntimeAgentSelectionRequest> configuredAgents = new();
     private IReadOnlyList<UnityRuntimeOptionDto> availableTracks = Array.Empty<UnityRuntimeOptionDto>();
     private IReadOnlyList<UnityRuntimeOptionDto> availableVehicles = Array.Empty<UnityRuntimeOptionDto>();
@@ -93,7 +96,7 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
     private int cameraSpeedPercent = 70;
     private int ultrasonicServoPin = 5;
     private int ultrasonicAngleDeg = 90;
-    private bool ultrasonicAutoScanEnabled = true;
+    private bool ultrasonicAutoScanEnabled = false;
     private int cameraPanDeg = 90;
     private int cameraTiltDeg = 90;
     private int autoScanDirection = 1;
@@ -111,12 +114,20 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
         SessionLogger sessionLogger,
         IHttpClientFactory httpClientFactory,
         IHubContext<TelemetryHub> hubContext,
-        ILogger<UnityKs0223RuntimeProvider> logger)
+        ILogger<UnityKs0223RuntimeProvider> logger,
+        string? clientGroup = null,
+        string? sessionClientId = null,
+        string sessionRuntimeMode = RuntimeModes.UnitySim)
     {
         this.sessionLogger = sessionLogger;
         this.httpClientFactory = httpClientFactory;
         this.hubContext = hubContext;
         this.logger = logger;
+        this.clientGroup = string.IsNullOrWhiteSpace(clientGroup) ? null : clientGroup.Trim();
+        this.sessionClientId = string.IsNullOrWhiteSpace(sessionClientId) ? null : sessionClientId.Trim();
+        this.sessionRuntimeMode = string.IsNullOrWhiteSpace(sessionRuntimeMode)
+            ? RuntimeModes.UnitySim
+            : RuntimeModes.Normalize(sessionRuntimeMode);
     }
 
     public string Mode => RuntimeModes.UnitySim;
@@ -188,11 +199,7 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
             {
                 selectedCameraMode = NormalizeCameraMode(cameraMode);
             }
-
-            if (!string.IsNullOrWhiteSpace(controlAgentId))
-            {
-                selectedControlAgentId = controlAgentId.Trim();
-            }
+            _ = controlAgentId;
 
             if (agents is not null)
             {
@@ -205,7 +212,7 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
                     .ToList();
             }
 
-            SyncAgentStateDictionariesLocked(NormalizeConfiguredAgents(configuredAgents, selectedVehicleId));
+            SyncAgentStateDictionariesLocked(NormalizeConfiguredAgents(configuredAgents));
         }
 
         if (!applyImmediately)
@@ -270,12 +277,15 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
         {
             await sessionLogger.WriteAsync(
                 "command.ignored",
-                new { command, source, mode = Mode, agentId, clientId, reason = "control-owned-by-another-client" },
+                new { clientId = sessionClientId, runtimeMode = sessionRuntimeMode, command, source, mode = Mode, agentId, commandClientId = clientId, reason = "control-owned-by-another-client-or-no-agent" },
                 cancellationToken);
-            return new CommandResponse(false, "Command ignored: control is owned by another UI tab");
+            return new CommandResponse(false, "Command ignored: control is owned by another UI tab or target agent is not selected");
         }
 
-        await sessionLogger.WriteAsync("command.outgoing", new { command, source, mode = Mode, agentId, clientId }, cancellationToken);
+        await sessionLogger.WriteAsync(
+            "command.outgoing",
+            new { clientId = sessionClientId, runtimeMode = sessionRuntimeMode, command, source, mode = Mode, agentId, commandClientId = clientId },
+            cancellationToken);
         await BroadcastStatusAsync(cancellationToken);
         return new CommandResponse(true);
     }
@@ -287,7 +297,9 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
             uiConnectedClients++;
         }
 
-        await sessionLogger.WriteAsync("ui.connected", new { connectionId, mode = Mode, uiConnectedClients });
+        await sessionLogger.WriteAsync(
+            "ui.connected",
+            new { clientId = sessionClientId, runtimeMode = sessionRuntimeMode, connectionId, mode = Mode, uiConnectedClients });
         await BroadcastStatusAsync();
     }
 
@@ -298,7 +310,9 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
             uiConnectedClients = Math.Max(0, uiConnectedClients - 1);
         }
 
-        await sessionLogger.WriteAsync("ui.disconnected", new { connectionId, mode = Mode, uiConnectedClients });
+        await sessionLogger.WriteAsync(
+            "ui.disconnected",
+            new { clientId = sessionClientId, runtimeMode = sessionRuntimeMode, connectionId, mode = Mode, uiConnectedClients });
         if (uiConnectedClients == 0)
         {
             ResetDriveState();
@@ -323,7 +337,7 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
 
     public async Task BroadcastStatusAsync(CancellationToken cancellationToken = default)
     {
-        await hubContext.Clients.All.SendAsync("status", GetStatus(), cancellationToken);
+        await ResolveHubClients().SendAsync("status", GetStatus(), cancellationToken);
     }
 
     public CameraStatusDto GetCameraStatus()
@@ -512,7 +526,10 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
             }
 
             await StartLoopAsync(cancellationToken);
-            await sessionLogger.WriteAsync("unity.connected", new { host = targetHost, port = targetPort }, cancellationToken);
+            await sessionLogger.WriteAsync(
+                "unity.connected",
+                new { clientId = sessionClientId, runtimeMode = sessionRuntimeMode, host = targetHost, port = targetPort },
+                cancellationToken);
             await BroadcastStatusAsync(cancellationToken);
         }
         catch
@@ -577,14 +594,18 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
                 foreach (var agent in agentsSnapshot)
                 {
                     var agentId = ResolveCommandTargetAgentId(agent.AgentId);
+                    if (string.IsNullOrWhiteSpace(agentId))
+                    {
+                        continue;
+                    }
+
                     var commandState = GetAgentControlStateSnapshot(agentId);
-                    var captureFrame = string.Equals(agentId, selectedControlAgentId, StringComparison.Ordinal);
                     var result = await StepSimulationAsync(agentId, commandState, cancellationToken);
-                    UpdateFromStepResult(result, agentId, captureFrame);
+                    UpdateFromStepResult(result, agentId, updateSharedState: true);
                 }
 
-                await hubContext.Clients.All.SendAsync("sensorTelemetry", GetLatestSensorTelemetry(), cancellationToken);
-                await hubContext.Clients.All.SendAsync("sensorStatus", GetSensorStatus(), cancellationToken);
+                await ResolveHubClients().SendAsync("sensorTelemetry", GetLatestSensorTelemetry(), cancellationToken);
+                await ResolveHubClients().SendAsync("sensorStatus", GetSensorStatus(), cancellationToken);
                 await BroadcastStatusAsync(cancellationToken);
             }
             catch (OperationCanceledException)
@@ -602,8 +623,10 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
                     consecutiveFailures++;
                 }
 
-                await sessionLogger.WriteAsync("unity.step_failed", new { error = ex.Message });
-                await hubContext.Clients.All.SendAsync("sensorStatus", GetSensorStatus(), cancellationToken);
+                await sessionLogger.WriteAsync(
+                    "unity.step_failed",
+                    new { clientId = sessionClientId, runtimeMode = sessionRuntimeMode, error = ex.Message });
+                await ResolveHubClients().SendAsync("sensorStatus", GetSensorStatus(), cancellationToken);
                 await BroadcastStatusAsync(cancellationToken);
                 break;
             }
@@ -717,7 +740,7 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
             selectedTrackId = resolvedTrackId;
             availableVehicles = vehicleOptions;
             availableTracks = trackOptions;
-            configuredAgents = NormalizeConfiguredAgents(configuredAgents, resolvedVehicleId);
+            configuredAgents = NormalizeConfiguredAgents(configuredAgents);
             SyncAgentStateDictionariesLocked(configuredAgents);
             selectedControlAgentId = ResolveSelectedControlAgentId(selectedControlAgentId, configuredAgents);
             var selectedDisplayName = vehicleOptions.FirstOrDefault(option => string.Equals(option.Id, resolvedVehicleId, StringComparison.Ordinal))
@@ -737,7 +760,7 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
         string cameraMode;
         lock (stateLock)
         {
-            agentsSnapshot = NormalizeConfiguredAgents(configuredAgents, selectedVehicleId);
+            agentsSnapshot = NormalizeConfiguredAgents(configuredAgents);
             cameraMode = selectedCameraMode;
         }
 
@@ -759,10 +782,12 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
                     new { key = "render.quality_profile", value = RenderQualityProfile },
                     new { key = "agents.see_each_other", value = "true" },
                     new { key = "agents.collisions_enabled", value = "false" },
+                    new { key = "agents.allow_empty", value = "false" },
                 }
                 : new object[]
                 {
                     new { key = "render.quality_profile", value = RenderQualityProfile },
+                    new { key = "agents.allow_empty", value = agentsSnapshot.Count == 0 ? "true" : "false" },
                 },
             agents = agentsSnapshot.Select((agent, index) => new
             {
@@ -981,10 +1006,12 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
         lock (stateLock)
         {
             var resolvedAgentId = ResolveCommandTargetAgentId(targetAgentId);
-            if (!TryAcquireControlOwnershipLocked(resolvedAgentId, command, clientId))
+            if (string.IsNullOrWhiteSpace(resolvedAgentId))
             {
                 return false;
             }
+
+            _ = clientId;
 
             var commandState = GetOrCreateAgentControlStateLocked(resolvedAgentId);
             var now = DateTimeOffset.UtcNow;
@@ -1066,7 +1093,7 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
     {
         lock (stateLock)
         {
-            return NormalizeConfiguredAgents(configuredAgents, selectedVehicleId);
+            return NormalizeConfiguredAgents(configuredAgents);
         }
     }
 
@@ -1096,19 +1123,19 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
         }
     }
 
-    private string ResolveCommandTargetAgentId(string? targetAgentId)
+    private string? ResolveCommandTargetAgentId(string? targetAgentId)
     {
         if (!string.IsNullOrWhiteSpace(targetAgentId))
         {
             return targetAgentId.Trim();
         }
 
-        return string.IsNullOrWhiteSpace(selectedControlAgentId) ? "ego" : selectedControlAgentId;
+        return string.IsNullOrWhiteSpace(selectedControlAgentId) ? null : selectedControlAgentId;
     }
 
     private AgentControlState GetOrCreateAgentControlStateLocked(string agentId)
     {
-        var normalizedAgentId = string.IsNullOrWhiteSpace(agentId) ? "ego" : agentId.Trim();
+        var normalizedAgentId = string.IsNullOrWhiteSpace(agentId) ? "agent-1" : agentId.Trim();
         if (!agentControlStates.TryGetValue(normalizedAgentId, out var state))
         {
             state = new AgentControlState
@@ -1124,7 +1151,7 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
 
     private AgentFrameState GetOrCreateAgentFrameStateLocked(string agentId)
     {
-        var normalizedAgentId = string.IsNullOrWhiteSpace(agentId) ? "ego" : agentId.Trim();
+        var normalizedAgentId = string.IsNullOrWhiteSpace(agentId) ? "agent-1" : agentId.Trim();
         if (!agentFrameStates.TryGetValue(normalizedAgentId, out var state))
         {
             state = new AgentFrameState();
@@ -1147,7 +1174,8 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
     {
         var normalizedAgentIds = new HashSet<string>(
             (agents ?? Array.Empty<UnityRuntimeAgentSelectionRequest>())
-                .Select(agent => string.IsNullOrWhiteSpace(agent.AgentId) ? "ego" : agent.AgentId!.Trim()),
+                .Select(agent => string.IsNullOrWhiteSpace(agent.AgentId) ? string.Empty : agent.AgentId!.Trim())
+                .Where(agentId => !string.IsNullOrWhiteSpace(agentId)),
             StringComparer.Ordinal);
 
         foreach (var agentId in normalizedAgentIds)
@@ -1176,9 +1204,10 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
     {
         selectedVehicleId = PreferredVehicleIds[0];
         selectedTrackId = PreferredTrackIds[0];
-        selectedControlAgentId = "ego";
-        selectedCameraMode = "driver";
-        configuredAgents = NormalizeConfiguredAgents(Array.Empty<UnityRuntimeAgentSelectionRequest>(), selectedVehicleId);
+        selectedControlAgentId = string.Empty;
+        selectedCameraMode = "spectator";
+        ultrasonicAutoScanEnabled = false;
+        configuredAgents = NormalizeConfiguredAgents(Array.Empty<UnityRuntimeAgentSelectionRequest>());
         SyncAgentStateDictionariesLocked(configuredAgents);
         ResetDriveState();
     }
@@ -1192,42 +1221,15 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
         }
 
         var state = GetOrCreateAgentControlOwnerLocked(agentId);
-        var now = DateTimeOffset.UtcNow;
-        var stopLike = IsStopLikeCommand(command);
-
-        if (state.ClientId is null || state.LeaseUntil <= now)
-        {
-            if (!stopLike)
-            {
-                state.ClientId = normalizedClientId;
-                state.LeaseUntil = now + ControlOwnershipLease;
-            }
-
-            return true;
-        }
-
-        if (string.Equals(state.ClientId, normalizedClientId, StringComparison.Ordinal))
-        {
-            if (stopLike)
-            {
-                state.ClientId = null;
-                state.LeaseUntil = DateTimeOffset.MinValue;
-                return true;
-            }
-
-            state.LeaseUntil = now + ControlOwnershipLease;
-            return true;
-        }
-
-        // Another client currently owns this agent controls.
-        // We don't allow takeover during an active lease to avoid conflicting
-        // command streams from multiple browser tabs.
-        return false;
+        state.ClientId = normalizedClientId;
+        state.LeaseUntil = DateTimeOffset.UtcNow + ControlOwnershipLease;
+        _ = command;
+        return true;
     }
 
     private AgentControlOwnerState GetOrCreateAgentControlOwnerLocked(string agentId)
     {
-        var normalizedAgentId = string.IsNullOrWhiteSpace(agentId) ? "ego" : agentId.Trim();
+        var normalizedAgentId = string.IsNullOrWhiteSpace(agentId) ? "agent-1" : agentId.Trim();
         if (!agentControlOwners.TryGetValue(normalizedAgentId, out var state))
         {
             state = new AgentControlOwnerState();
@@ -1264,21 +1266,14 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
     }
 
     private static List<UnityRuntimeAgentSelectionRequest> NormalizeConfiguredAgents(
-        IReadOnlyList<UnityRuntimeAgentSelectionRequest>? configured,
-        string primaryVehicleId)
+        IReadOnlyList<UnityRuntimeAgentSelectionRequest>? configured)
     {
         var result = new List<UnityRuntimeAgentSelectionRequest>();
-        var primaryAdded = false;
-
-        if (!string.IsNullOrWhiteSpace(primaryVehicleId))
-        {
-            result.Add(new UnityRuntimeAgentSelectionRequest("ego", primaryVehicleId, true));
-            primaryAdded = true;
-        }
 
         if (configured is not null)
         {
             var index = 1;
+            var usedAgentIds = new HashSet<string>(StringComparer.Ordinal);
             foreach (var item in configured)
             {
                 if (item is null || string.IsNullOrWhiteSpace(item.VehicleId))
@@ -1288,23 +1283,22 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
 
                 var agentId = string.IsNullOrWhiteSpace(item.AgentId) ? $"agent-{index}" : item.AgentId!.Trim();
                 var vehicleId = item.VehicleId!.Trim();
-                if (string.Equals(agentId, "ego", StringComparison.Ordinal) || item.IsPrimary)
+                if (string.IsNullOrWhiteSpace(agentId) || usedAgentIds.Contains(agentId))
                 {
-                    if (primaryAdded)
-                    {
-                        index++;
-                        continue;
-                    }
-
-                    result.Insert(0, new UnityRuntimeAgentSelectionRequest("ego", vehicleId, true));
-                    primaryAdded = true;
                     index++;
                     continue;
                 }
 
-                result.Add(new UnityRuntimeAgentSelectionRequest(agentId, vehicleId, false));
+                usedAgentIds.Add(agentId);
+                result.Add(new UnityRuntimeAgentSelectionRequest(agentId, vehicleId, item.IsPrimary));
                 index++;
             }
+        }
+
+        if (result.Count > 0 && !result.Any(agent => agent.IsPrimary))
+        {
+            var first = result[0];
+            result[0] = first with { IsPrimary = true };
         }
 
         return result;
@@ -1320,7 +1314,7 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
 
         return agents.FirstOrDefault(agent => agent.IsPrimary)?.AgentId
             ?? agents.FirstOrDefault()?.AgentId
-            ?? "ego";
+            ?? string.Empty;
     }
 
     private void AdvanceAutoScan()
@@ -1356,6 +1350,11 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
                 foreach (var agent in GetLoopAgentsSnapshot())
                 {
                     var agentId = ResolveCommandTargetAgentId(agent.AgentId);
+                    if (string.IsNullOrWhiteSpace(agentId))
+                    {
+                        continue;
+                    }
+
                     using var result = await StepSimulationAsync(agentId, GetAgentControlStateSnapshot(agentId), cancellationToken);
                     _ = result;
                 }
@@ -1394,12 +1393,13 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
     {
         lock (stateLock)
         {
-            var normalizedAgents = NormalizeConfiguredAgents(configuredAgents, selectedVehicleId);
+            var normalizedAgents = NormalizeConfiguredAgents(configuredAgents);
             return new UnityRuntimeCatalogDto(
                 SelectedTrackId: selectedTrackId,
                 SelectedVehicleId: selectedVehicleId,
                 SelectedCameraMode: selectedCameraMode,
                 SelectedControlAgentId: ResolveSelectedControlAgentId(selectedControlAgentId, normalizedAgents),
+                SelectedCameraAgentId: ResolveSelectedControlAgentId(selectedControlAgentId, normalizedAgents),
                 Tracks: availableTracks,
                 Vehicles: availableVehicles,
                 Agents: normalizedAgents.Select(agent =>
@@ -1458,4 +1458,9 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
 
         return $"127.0.0.1:{port}";
     }
+
+    private IClientProxy ResolveHubClients() =>
+        string.IsNullOrWhiteSpace(clientGroup)
+            ? hubContext.Clients.All
+            : hubContext.Clients.Group(clientGroup);
 }

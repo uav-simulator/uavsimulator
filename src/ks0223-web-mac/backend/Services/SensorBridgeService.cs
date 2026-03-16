@@ -24,6 +24,9 @@ public sealed class SensorBridgeService : BackgroundService
     private readonly SessionLogger sessionLogger;
     private readonly IHubContext<TelemetryHub> hubContext;
     private readonly ILogger<SensorBridgeService> logger;
+    private readonly string? clientGroup;
+    private readonly string? sessionClientId;
+    private readonly string sessionRuntimeMode;
 
     private SensorTelemetryDto? latestTelemetry;
     private DateTimeOffset? lastSuccessAt;
@@ -38,7 +41,10 @@ public sealed class SensorBridgeService : BackgroundService
         PiTcpClientService piTcpClientService,
         SessionLogger sessionLogger,
         IHubContext<TelemetryHub> hubContext,
-        ILogger<SensorBridgeService> logger)
+        ILogger<SensorBridgeService> logger,
+        string? clientGroup = null,
+        string? sessionClientId = null,
+        string sessionRuntimeMode = RuntimeModes.RealRobot)
     {
         this.options = options.Value;
         this.httpClientFactory = httpClientFactory;
@@ -46,6 +52,11 @@ public sealed class SensorBridgeService : BackgroundService
         this.sessionLogger = sessionLogger;
         this.hubContext = hubContext;
         this.logger = logger;
+        this.clientGroup = string.IsNullOrWhiteSpace(clientGroup) ? null : clientGroup.Trim();
+        this.sessionClientId = string.IsNullOrWhiteSpace(sessionClientId) ? null : sessionClientId.Trim();
+        this.sessionRuntimeMode = string.IsNullOrWhiteSpace(sessionRuntimeMode)
+            ? RuntimeModes.RealRobot
+            : RuntimeModes.Normalize(sessionRuntimeMode);
     }
 
     public SensorBridgeStatusDto GetStatus()
@@ -94,13 +105,15 @@ public sealed class SensorBridgeService : BackgroundService
             var body = await response.Content.ReadAsStringAsync(timeoutCts.Token);
             var result = new SensorBridgeResponse(response.IsSuccessStatusCode, (int)response.StatusCode, body, response.IsSuccessStatusCode ? null : body);
 
-            await sessionLogger.WriteAsync(
-                "sensor.bridge.command",
-                new
-                {
-                    url,
-                    status = result.StatusCode,
-                    sent = result.Sent,
+                await sessionLogger.WriteAsync(
+                    "sensor.bridge.command",
+                    new
+                    {
+                        clientId = sessionClientId,
+                        runtimeMode = sessionRuntimeMode,
+                        url,
+                        status = result.StatusCode,
+                        sent = result.Sent,
                     payload = payloadJson,
                     body = body.Length > 1200 ? body[..1200] : body,
                 },
@@ -122,7 +135,7 @@ public sealed class SensorBridgeService : BackgroundService
     {
         if (!options.Enabled)
         {
-            await hubContext.Clients.All.SendAsync("sensorStatus", GetStatus(), stoppingToken);
+            await ResolveHubClients().SendAsync("sensorStatus", GetStatus(), stoppingToken);
             return;
         }
 
@@ -158,6 +171,8 @@ public sealed class SensorBridgeService : BackgroundService
                     "sensor.telemetry.incoming",
                     new
                     {
+                        clientId = sessionClientId,
+                        runtimeMode = sessionRuntimeMode,
                         source = telemetry.SourceUrl,
                         size = payload.Length,
                         fields = telemetry.Flat.Count,
@@ -165,7 +180,7 @@ public sealed class SensorBridgeService : BackgroundService
                     },
                     stoppingToken);
 
-                await hubContext.Clients.All.SendAsync("sensorTelemetry", telemetry, stoppingToken);
+                await ResolveHubClients().SendAsync("sensorTelemetry", telemetry, stoppingToken);
             }
             catch (OperationCanceledException) when (!stoppingToken.IsCancellationRequested)
             {
@@ -177,7 +192,7 @@ public sealed class SensorBridgeService : BackgroundService
                 logger.LogDebug(ex, "Sensor telemetry fetch failed from {Url}", url);
             }
 
-            await hubContext.Clients.All.SendAsync("sensorStatus", GetStatus(), stoppingToken);
+            await ResolveHubClients().SendAsync("sensorStatus", GetStatus(), stoppingToken);
             await Task.Delay(pollDelay, stoppingToken);
         }
     }
@@ -265,4 +280,9 @@ public sealed class SensorBridgeService : BackgroundService
                 break;
         }
     }
+
+    private IClientProxy ResolveHubClients() =>
+        string.IsNullOrWhiteSpace(clientGroup)
+            ? hubContext.Clients.All
+            : hubContext.Clients.Group(clientGroup);
 }

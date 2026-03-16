@@ -1,10 +1,22 @@
 namespace Ks0223.Web.Backend.Models;
 
-public sealed record CommandRequest(string Command, string? AgentId = null, string? ClientId = null);
+public sealed record CommandRequest(
+    string ClientId,
+    string RuntimeMode,
+    string Command,
+    string? AgentId = null);
 
 public sealed record CommandResponse(bool Sent, string? Error = null);
 
-public sealed record ConnectRequest(string? Host, int? Port, string? RuntimeMode = null);
+public sealed record ConnectRequest(
+    string ClientId,
+    string RuntimeMode,
+    string? Host,
+    int? Port);
+
+public sealed record DisconnectRequest(
+    string ClientId,
+    string RuntimeMode);
 
 public sealed record UnityRuntimeOptionDto(string Id, string DisplayName);
 
@@ -19,6 +31,7 @@ public sealed record UnityRuntimeCatalogDto(
     string SelectedVehicleId,
     string SelectedCameraMode,
     string SelectedControlAgentId,
+    string SelectedCameraAgentId,
     IReadOnlyList<UnityRuntimeOptionDto> Tracks,
     IReadOnlyList<UnityRuntimeOptionDto> Vehicles,
     IReadOnlyList<UnityRuntimeAgentDto> Agents);
@@ -29,12 +42,19 @@ public sealed record UnityRuntimeAgentSelectionRequest(
     bool IsPrimary = false);
 
 public sealed record UnityRuntimeSelectionRequest(
+    string ClientId,
+    string RuntimeMode,
     string? TrackId,
     string? VehicleId,
     string? CameraMode,
-    string? ControlAgentId,
     IReadOnlyList<UnityRuntimeAgentSelectionRequest>? Agents,
     bool ApplyImmediately = true);
+
+public sealed record UnityClientSelectionRequest(
+    string ClientId,
+    string RuntimeMode,
+    string? ControlAgentId,
+    string? CameraAgentId);
 
 public sealed record ConnectionTargetDto(string Host, int Port, string RuntimeMode = "real-robot");
 

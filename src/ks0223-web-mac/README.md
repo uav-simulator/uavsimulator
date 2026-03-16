@@ -75,15 +75,18 @@ SSH доступ использовался только для чтения (`p
 
 ## Про видео/сенсоры
 
-`FramesSend.py` отправляет JPEG кадры по UDP на порт `5051`, но как отдельный процесс-отправитель (не сервер) и сейчас не запущен.
+`FramesSend.py` отправляет JPEG кадры по UDP на порт `5051`, но как отдельный процесс-отправитель (не сервер).
 
 В текущей конфигурации без правок Pi:
 
 - канал управления есть;
-- backend готов принимать кадры камеры по UDP, если на Pi активен `FramesSend*`/эквивалентный отправитель;
+- backend принимает кадры камеры по UDP (`:5051/udp`), если на Pi активен `FramesSend*`/эквивалентный отправитель;
+- при connect в `real-robot` backend автоматически отправляет ICMP bootstrap ping к Pi, чтобы поднять `FramesSend.py` после reboot (он ждёт первый echo-пакет на `wlan0`);
 - backend проверяет типовые HTTP camera URL (`/?action=stream`, `/stream.mjpg`, `/video_feed` и т.д.);
 - входящей телеметрии сенсоров из `MainControl.py` по сети нет;
 - поэтому для «всех сенсоров» используется отдельный `pi-telemetry-addon` (см. ниже).
+
+Примечание: если в `camera/status` нет `hasFrame=true` и `httpDiscoveredStreams` пустой, проверьте, что на Pi реально запущен поток кадров (`FramesSend*`) и что backend слушает `5051/udp`.
 
 ## Pi Telemetry Add-on (отдельная папка)
 
@@ -114,31 +117,41 @@ dotnet run
 
 Backend слушает: `http://localhost:5058`
 
-Полезные endpoint-ы:
+Полезные endpoint-ы (API v2, breaking):
 
-- `GET /api/status`
-- `GET /api/health`
+- `GET /api/status?clientId=<id>&runtimeMode=<mode>`
+- `GET /api/health?clientId=<id>&runtimeMode=<mode>`
 - `POST /api/connection/connect`
-  - body: `{ "host": "192.168.1.121", "port": 5051, "runtimeMode": "real-robot" }`
-  - для Unity: `{ "host": "127.0.0.1", "port": 8000, "runtimeMode": "unity-sim" }`
+  - body:
+    - real: `{ "clientId":"tab-a", "runtimeMode":"real-robot", "host":"192.168.1.121", "port":5051 }`
+    - unity: `{ "clientId":"tab-a", "runtimeMode":"unity-sim", "host":"127.0.0.1", "port":8000 }`
 - `POST /api/connection/disconnect`
-- `POST /api/command` body: `{ "command": "DirStop" }`
+  - body: `{ "clientId":"tab-a", "runtimeMode":"unity-sim" }`
+- `POST /api/command`
+  - body: `{ "clientId":"tab-a", "runtimeMode":"unity-sim", "command":"DirStop", "agentId":"car-a" }`
 - `POST /api/logs/start` body: `{ "tag": "test" }`
 - `POST /api/logs/stop`
 - `GET /api/logs/files`
 - `POST /api/logs/open-folder`
-- `GET /api/camera/status`
-- `GET /api/camera/snapshot`
-- `GET /api/camera/mjpeg`
-- `GET /api/sensors/status`
-- `GET /api/sensors/latest`
-- `POST /api/sensors/config?driveSpeedPercent=80&cameraSpeedPercent=70`
-- `POST /api/sensors/ultrasonic/position?angleDeg=90&disableAutoScan=true`
-- `POST /api/sensors/ultrasonic/auto-scan?enabled=true|false`
-- `POST /api/led/pattern?pattern=smile|forward|back|left|right|stop|heart`
-- `POST /api/led/custom?frameHex=<32 hex chars>`
-- `POST /api/led/clear`
+- `GET /api/camera/status?clientId=<id>&runtimeMode=<mode>`
+- `GET /api/camera/snapshot?clientId=<id>&runtimeMode=<mode>&agentId=<optional>`
+- `GET /api/camera/mjpeg?clientId=<id>&runtimeMode=<mode>&agentId=<optional>`
+- `GET /api/sensors/status?clientId=<id>&runtimeMode=<mode>`
+- `GET /api/sensors/latest?clientId=<id>&runtimeMode=<mode>`
+- `POST /api/sensors/config` (`clientId`/`runtimeMode` в query или body)
+- `POST /api/sensors/ultrasonic/position` (`clientId`/`runtimeMode` в query или body)
+- `POST /api/sensors/ultrasonic/auto-scan` (`clientId`/`runtimeMode` в query или body)
+- `POST /api/led/pattern` (`clientId`/`runtimeMode` + `pattern`)
+- `POST /api/led/custom` (`clientId`/`runtimeMode` + `frameHex`)
+- `POST /api/led/clear` (`clientId`/`runtimeMode`)
+- `GET /api/unity/runtime-catalog?clientId=<id>&runtimeMode=unity-sim&host=<optional>&port=<optional>`
+- `POST /api/unity/runtime-selection`
+  - body: `{ "clientId":"tab-a","runtimeMode":"unity-sim","trackId":"...","vehicleId":"...","cameraMode":"spectator","agents":[],"applyImmediately":true }`
+- `POST /api/unity/client-selection`
+  - body: `{ "clientId":"tab-a","runtimeMode":"unity-sim","controlAgentId":"car-a","cameraAgentId":"car-a" }`
 - SignalR hub: `/hub/telemetry`
+
+Важно: в SignalR после подключения клиент вызывает `BindClient(clientId)`. Для `real-robot` события идут в `client:{clientId}`, для `unity-sim` — в group shared world endpoint-а.
 
 ## Docker (backend+frontend в одном контейнере)
 
@@ -178,16 +191,43 @@ Operator UI поддерживает два режима работы без о�
 - `Real robot`
   - target host: Raspberry Pi;
   - backend подключается к `MainControl.py` по TCP `5051`;
-  - камера и сенсоры идут через реальные Pi-каналы.
+  - камера и сенсоры идут через реальные Pi-каналы;
+  - для нескольких вкладок используется единый live-stream камеры (без конфликтов UDP bind).
+  - для одного endpoint активным держится последний подключившийся клиент (takeover), так как штатный `MainControl.py` фактически обрабатывает один активный TCP control-client.
 - `Unity simulator`
   - target host: Unity runtime с `HttpJsonApiHost` (по умолчанию `127.0.0.1:8000`);
   - backend работает как live-адаптер поверх Unity HTTP API (`/health`, `/contract`, `/reset`, `/step`);
-  - при reset backend автоматически выбирает лучший доступный трек из контракта (приоритет: `track.roadsystem_realistic.v2` -> `track.roadsystem_arena.v1` -> `track.basic_arena.v1`);
+  - один endpoint `(host:port)` = один shared world session;
+  - вкладки attach-ятся к этому world без reset сцены и выбирают свой `control agent`/`camera agent`;
+  - по умолчанию симуляция может быть с пустым списком агентов (`agents=[]`, `agents.allow_empty=true`) и камерой `spectator`;
+  - первая машинка добавляется явно через popup в UI;
+  - при выборе `Camera agent` UI автоматически синхронизирует `Control agent`;
   - камера, телеметрия и управление отдаются в тех же UI-панелях.
   - если backend запущен в Docker, loopback-host автоматически нормализуется для доступа к Unity на macOS host.
 
 Последний host кэшируется в браузере отдельно для каждого режима.
 После изменений в Unity `HttpJsonApiHost`/`HttpJsonSimulatorApiServer` перезапустите Play Mode, чтобы Editor поднял API с новой конфигурацией.
+
+### Multi-tab / multi-runtime
+
+Поддерживается одновременная работа нескольких вкладок:
+
+- Tab A: `clientId=a1`, `runtimeMode=unity-sim`, endpoint `127.0.0.1:8000`;
+- Tab B: `clientId=b1`, `runtimeMode=unity-sim`, endpoint `cloud-host:8000`;
+- Tab C: `clientId=c1`, `runtimeMode=real-robot`, endpoint `192.168.1.121:5051`.
+
+Сессии и realtime-каналы изолированы, автоматического глобального переключения режима больше нет.
+
+## Migration from global runtime model
+
+С версии API v2 удалена глобальная модель `currentMode`.
+
+Breaking changes:
+
+- Для runtime endpoint-ов обязательны `clientId` и `runtimeMode`.
+- Legacy-запросы без этих полей не поддерживаются.
+- SignalR push больше не `Clients.All`: `real-robot` идёт по `client:{clientId}`, `unity-sim` по group shared world endpoint-а.
+- Real robot fail-safe STOP выполняется в рамках соответствующей real-session (disconnect UI/TCP/shutdown).
 
 ## Функции UI
 
@@ -205,6 +245,7 @@ Operator UI поддерживает два режима работы без о�
   - слайдер «Скорость машинки (командная)»;
   - слайдер «Скорость камеры (командная)»;
   - управление поворотом ultrasonic-сервопривода (угол + автоскан);
+  - автоскан ultrasonic по умолчанию выключен и включается явно тумблером в UI;
   - карточка камеры/health;
   - на камере есть настраиваемый Overlay (текст поверх видео) с сохранением настроек в localStorage;
   - в Overlay можно включать/выключать рамку и поля: time, TCP, latency, HC-SR04, scan L/C/R, tracking, IR, CPU temp, source, позиция камеры, скорость машинки/камеры, позиция ultrasonic-серво;

@@ -50,7 +50,7 @@ class RuntimeState:
     ultrasonic_servo_angle_deg: int = 90
     ultrasonic_manual_angle_deg: int = 90
     ultrasonic_servo_pin: int = ULTRASONIC_SERVO_PIN
-    auto_scan_enabled: bool = True
+    auto_scan_enabled: bool = False
     tracking_left: int = 0
     tracking_center: int = 0
     tracking_right: int = 0

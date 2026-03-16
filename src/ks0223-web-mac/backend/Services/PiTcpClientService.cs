@@ -18,6 +18,9 @@ public sealed class PiTcpClientService : BackgroundService
     private readonly TelemetryParser telemetryParser;
     private readonly PiConnectionOptions options;
     private readonly ILogger<PiTcpClientService> logger;
+    private readonly string? clientGroup;
+    private readonly string? sessionClientId;
+    private readonly string sessionRuntimeMode;
 
     private TcpClient? client;
     private NetworkStream? stream;
@@ -38,13 +41,21 @@ public sealed class PiTcpClientService : BackgroundService
         IHubContext<TelemetryHub> hubContext,
         SessionLogger sessionLogger,
         TelemetryParser telemetryParser,
-        ILogger<PiTcpClientService> logger)
+        ILogger<PiTcpClientService> logger,
+        string? clientGroup = null,
+        string? sessionClientId = null,
+        string sessionRuntimeMode = RuntimeModes.RealRobot)
     {
         this.options = options.Value;
         this.hubContext = hubContext;
         this.sessionLogger = sessionLogger;
         this.telemetryParser = telemetryParser;
         this.logger = logger;
+        this.clientGroup = string.IsNullOrWhiteSpace(clientGroup) ? null : clientGroup.Trim();
+        this.sessionClientId = string.IsNullOrWhiteSpace(sessionClientId) ? null : sessionClientId.Trim();
+        this.sessionRuntimeMode = string.IsNullOrWhiteSpace(sessionRuntimeMode)
+            ? RuntimeModes.RealRobot
+            : RuntimeModes.Normalize(sessionRuntimeMode);
         targetHost = this.options.Host;
         targetPort = this.options.Port;
     }
@@ -94,7 +105,10 @@ public sealed class PiTcpClientService : BackgroundService
         }
 
         var target = GetTargetEndpointSnapshot();
-        await sessionLogger.WriteAsync("connection.desired", new { desired = true, target.Host, target.Port }, cancellationToken);
+        await sessionLogger.WriteAsync(
+            "connection.desired",
+            new { clientId = sessionClientId, runtimeMode = sessionRuntimeMode, desired = true, target.Host, target.Port },
+            cancellationToken);
         await BroadcastStatusAsync(cancellationToken);
     }
 
@@ -107,7 +121,10 @@ public sealed class PiTcpClientService : BackgroundService
 
         await TrySendStopBestEffortAsync("manual-disconnect", cancellationToken);
         await CloseConnectionAsync(cancellationToken);
-        await sessionLogger.WriteAsync("connection.desired", new { desired = false }, cancellationToken);
+        await sessionLogger.WriteAsync(
+            "connection.desired",
+            new { clientId = sessionClientId, runtimeMode = sessionRuntimeMode, desired = false },
+            cancellationToken);
         await BroadcastStatusAsync(cancellationToken);
     }
 
@@ -140,7 +157,10 @@ public sealed class PiTcpClientService : BackgroundService
             await activeStream.WriteAsync(payload.AsMemory(), cancellationToken);
             await activeStream.FlushAsync(cancellationToken);
 
-            await sessionLogger.WriteAsync("command.outgoing", new { command, source, bytes = payload.Length }, cancellationToken);
+            await sessionLogger.WriteAsync(
+                "command.outgoing",
+                new { clientId = sessionClientId, runtimeMode = sessionRuntimeMode, command, source, bytes = payload.Length },
+                cancellationToken);
             return new CommandResponse(true);
         }
         catch (Exception ex)
@@ -167,7 +187,9 @@ public sealed class PiTcpClientService : BackgroundService
             lastError = null;
         }
 
-        await sessionLogger.WriteAsync("ui.connected", new { connectionId, uiConnectedClients = uiConnectedClients });
+        await sessionLogger.WriteAsync(
+            "ui.connected",
+            new { clientId = sessionClientId, runtimeMode = sessionRuntimeMode, connectionId, uiConnectedClients = uiConnectedClients });
         await BroadcastStatusAsync();
     }
 
@@ -180,7 +202,9 @@ public sealed class PiTcpClientService : BackgroundService
             mustStop = uiConnectedClients == 0;
         }
 
-        await sessionLogger.WriteAsync("ui.disconnected", new { connectionId, uiConnectedClients = uiConnectedClients });
+        await sessionLogger.WriteAsync(
+            "ui.disconnected",
+            new { clientId = sessionClientId, runtimeMode = sessionRuntimeMode, connectionId, uiConnectedClients = uiConnectedClients });
 
         if (mustStop)
         {
@@ -208,7 +232,7 @@ public sealed class PiTcpClientService : BackgroundService
 
     public async Task BroadcastStatusAsync(CancellationToken cancellationToken = default)
     {
-        await hubContext.Clients.All.SendAsync("status", GetStatus(), cancellationToken);
+        await ResolveHubClients().SendAsync("status", GetStatus(), cancellationToken);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -309,7 +333,10 @@ public sealed class PiTcpClientService : BackgroundService
                 lastError = null;
             }
 
-            await sessionLogger.WriteAsync("tcp.connected", new { target.Host, target.Port }, cancellationToken);
+            await sessionLogger.WriteAsync(
+                "tcp.connected",
+                new { clientId = sessionClientId, runtimeMode = sessionRuntimeMode, target.Host, target.Port },
+                cancellationToken);
             logger.LogInformation("Connected to Pi TCP endpoint {Host}:{Port}", target.Host, target.Port);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
@@ -321,7 +348,10 @@ public sealed class PiTcpClientService : BackgroundService
                 lastError = error;
             }
 
-            await sessionLogger.WriteAsync("tcp.connect_failed", new { target.Host, target.Port, error }, cancellationToken);
+            await sessionLogger.WriteAsync(
+                "tcp.connect_failed",
+                new { clientId = sessionClientId, runtimeMode = sessionRuntimeMode, target.Host, target.Port, error },
+                cancellationToken);
             logger.LogWarning("Connect timeout to Pi {Host}:{Port}", target.Host, target.Port);
         }
         catch (Exception ex)
@@ -332,7 +362,10 @@ public sealed class PiTcpClientService : BackgroundService
                 lastError = $"Connect failed: {ex.Message}";
             }
 
-            await sessionLogger.WriteAsync("tcp.connect_failed", new { target.Host, target.Port, error = ex.Message }, cancellationToken);
+            await sessionLogger.WriteAsync(
+                "tcp.connect_failed",
+                new { clientId = sessionClientId, runtimeMode = sessionRuntimeMode, target.Host, target.Port, error = ex.Message },
+                cancellationToken);
             logger.LogWarning(ex, "Connect failed to Pi {Host}:{Port}", target.Host, target.Port);
         }
         finally
@@ -368,8 +401,11 @@ public sealed class PiTcpClientService : BackgroundService
                 }
 
                 var dto = new IncomingMessageDto(DateTimeOffset.UtcNow, text, parsed);
-                await sessionLogger.WriteAsync("tcp.incoming", new { message = text, bytes = bytesRead, parsedTelemetry = parsed }, cancellationToken);
-                await hubContext.Clients.All.SendAsync("incoming", dto, cancellationToken);
+                await sessionLogger.WriteAsync(
+                    "tcp.incoming",
+                    new { clientId = sessionClientId, runtimeMode = sessionRuntimeMode, message = text, bytes = bytesRead, parsedTelemetry = parsed },
+                    cancellationToken);
+                await ResolveHubClients().SendAsync("incoming", dto, cancellationToken);
                 await BroadcastStatusAsync(cancellationToken);
             }
         }
@@ -384,7 +420,10 @@ public sealed class PiTcpClientService : BackgroundService
                 lastError = $"TCP receive failed: {ex.Message}";
             }
 
-            await sessionLogger.WriteAsync("tcp.receive_failed", new { error = ex.Message }, cancellationToken);
+            await sessionLogger.WriteAsync(
+                "tcp.receive_failed",
+                new { clientId = sessionClientId, runtimeMode = sessionRuntimeMode, error = ex.Message },
+                cancellationToken);
             logger.LogWarning(ex, "TCP receive loop stopped unexpectedly");
         }
     }
@@ -421,7 +460,10 @@ public sealed class PiTcpClientService : BackgroundService
             }
 
             localClient?.Close();
-            await sessionLogger.WriteAsync("tcp.disconnected", new { reason = "connection-closed" }, cancellationToken);
+            await sessionLogger.WriteAsync(
+                "tcp.disconnected",
+                new { clientId = sessionClientId, runtimeMode = sessionRuntimeMode, reason = "connection-closed" },
+                cancellationToken);
         }
         finally
         {
@@ -433,12 +475,18 @@ public sealed class PiTcpClientService : BackgroundService
     {
         if (!IsTcpConnected())
         {
-            await sessionLogger.WriteAsync("failsafe.stop_attempt", new { reason, sent = false, error = "skipped:not-connected" }, cancellationToken);
+            await sessionLogger.WriteAsync(
+                "failsafe.stop_attempt",
+                new { clientId = sessionClientId, runtimeMode = sessionRuntimeMode, reason, sent = false, error = "skipped:not-connected" },
+                cancellationToken);
             return;
         }
 
         var result = await SendCommandAsync("DirStop", $"failsafe:{reason}", cancellationToken);
-        await sessionLogger.WriteAsync("failsafe.stop_attempt", new { reason, sent = result.Sent, error = result.Error }, cancellationToken);
+        await sessionLogger.WriteAsync(
+            "failsafe.stop_attempt",
+            new { clientId = sessionClientId, runtimeMode = sessionRuntimeMode, reason, sent = result.Sent, error = result.Error },
+            cancellationToken);
     }
 
     private (string Host, int Port) GetTargetEndpointSnapshot()
@@ -495,4 +543,9 @@ public sealed class PiTcpClientService : BackgroundService
 
         return false;
     }
+
+    private IClientProxy ResolveHubClients() =>
+        string.IsNullOrWhiteSpace(clientGroup)
+            ? hubContext.Clients.All
+            : hubContext.Clients.Group(clientGroup);
 }
