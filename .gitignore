@@ -92,6 +92,7 @@ __pycache__/
 
 # Local preview/debug artifacts
 tmp/
+.tmp/
 output/*.png
 output/*.jpg
 .mkdocs-site/
