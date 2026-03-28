@@ -1,14 +1,24 @@
 # Использование
 
+**Что это**  
+Практическая страница про текущие пользовательские и разработческие сценарии работы с платформой.
+
+**Для кого**  
+Для оператора, разработчика и интегратора, которые уже подняли проект и хотят работать с runtime, Web UI и CLI.
+
+**Статус**  
+Канонический guide по текущему использованию.
+
+**Проверено по**  
+`python/sim_client/cli.py`, `configs/scenarios/demo.yaml`, `configs/scenarios/demo-multi-agent.yaml`, `src/ks0223-web-mac/backend/Services/UnityKs0223RuntimeProvider.cs`
+
 ## Основные режимы работы
-Платформа должна поддерживать два основных режима:
+- `unity-sim`
+- `real-robot`
 
-1. `unity-sim`
-2. `real-robot`
+Для оператора оба режима проходят через один backend и один Web UI.
 
-Для оператора оба режима должны выглядеть одинаково.
-
-## Базовый operator flow
+## Базовый операторский поток
 ```mermaid
 sequenceDiagram
     participant User as "Оператор"
@@ -16,21 +26,66 @@ sequenceDiagram
     participant Backend as "Operator backend"
     participant Runtime as "Unity / Physical runtime"
 
-    User->>UI: выбирает runtime и host
-    UI->>Backend: POST /api/connection/connect
-    Backend->>Runtime: connect
+    User->>UI: выбирает runtime, host и port
+    UI->>Backend: connect
+    Backend->>Runtime: connect / reset / health
     Runtime-->>Backend: status / contract / telemetry
-    Backend-->>UI: unified status
+    Backend-->>UI: unified state
     User->>UI: отправляет команды
-    UI->>Backend: POST /api/command
-    Backend->>Runtime: runtime-specific command
-    Runtime-->>Backend: telemetry / camera / health
-    Backend-->>UI: unified updates
+    UI->>Backend: command
+    Backend->>Runtime: runtime-specific control
+    Runtime-->>Backend: camera / telemetry / health
+    Backend-->>UI: updated state
 ```
+
+## Unity runtime через `rusim`
+
+### Поднять runtime
+```bash
+rusim server up --mode background --port 8000 --scenario configs/scenarios/demo.yaml
+rusim doctor --base-url http://127.0.0.1:8000
+```
+
+### Проверить доступные сущности
+```bash
+rusim list tracks --base-url http://127.0.0.1:8000
+rusim list vehicles --base-url http://127.0.0.1:8000
+rusim inspect vehicle vehicle.arcade.blue.v1 --base-url http://127.0.0.1:8000
+```
+
+### Сбросить сценарий или выбрать сущности вручную
+```bash
+rusim scenario validate configs/scenarios/demo.yaml
+rusim scenario reset configs/scenarios/demo.yaml --base-url http://127.0.0.1:8000
+rusim reset --base-url http://127.0.0.1:8000 --track-id track.roadsystem_realistic.v2 --vehicle-id vehicle.arcade.blue.v1
+```
+
+### Отправить шаг управления
+```bash
+rusim step --base-url http://127.0.0.1:8000 --throttle 0.2 --steer 0.1 --brake 0.0
+```
+
+## Multi-agent сценарий
+Референсный multi-agent конфиг:
+
+```text
+configs/scenarios/demo-multi-agent.yaml
+```
+
+Запуск:
+
+```bash
+rusim server up --mode background --port 8000 --scenario configs/scenarios/demo-multi-agent.yaml
+rusim step --base-url http://127.0.0.1:8000 --agent-id npc-red --throttle 0.3 --steer 0.0 --brake 0.0
+```
+
+Сценарий поднимает:
+- `ego` на `vehicle.arcade.blue.v1`
+- `npc-red` на `vehicle.arcade.red.v1`
+- трек `track.roadsystem_realistic.v2`
 
 ## Web UI
 Текущий Web UI используется как единый операторский интерфейс:
-
 - подключение и отключение;
 - отображение статуса;
 - ручное управление;
@@ -38,209 +93,44 @@ sequenceDiagram
 - телеметрия и сенсоры;
 - логирование.
 
-## HTTP API
-Канонический операторский API описан в:
-
-- [Unified Runtime Contract v1](unified-runtime-contract-v1.md)
-- [API](api.md)
-
-Ключевые точки:
-
-- `POST /api/connection/connect`
-- `POST /api/connection/disconnect`
-- `GET /api/status`
-- `GET /api/health`
-- `POST /api/command`
-- `GET /api/camera/*`
-- `GET /api/sensors/*`
-
-## CLI
-`rusim` является каноническим продуктовым CLI платформы.
-
-Полная справка по командам вынесена в отдельный документ:
-- [CLI `rusim`](cli.md)
-
-Если `rusim` не найден в `zsh`, сначала выполнить:
-
-```bash
-./rusim install --write-shell-config
-source ~/.zshrc
-```
-
-или запускать из корня репозитория:
-
-```bash
-./rusim --help
-```
-
-CLI ведёт себя дружелюбно:
-- `rusim` без аргументов показывает корневую справку;
-- `rusim help` и `rusim help runtime` работают как ожидается;
-- пустые группы команд (`rusim runtime`, `rusim server`, `rusim inspect`, `rusim scenario`, `rusim list`) показывают help по разделу вместо argparse error.
-
-Поддерживаемые команды:
-
-- `version`
-- `install`
-- `upgrade`
-- `doctor`
-- `contract`
-- `list tracks`
-- `list scenes`
-- `list vehicles`
-- `inspect track`
-- `inspect scene`
-- `inspect vehicle`
-- `reset`
-- `scenario validate`
-- `scenario print-reset`
-- `scenario reset`
-- `step`
-
-Примеры:
-
-```bash
-rusim version
-rusim install --write-shell-config
-rusim upgrade --repo NMGorovenko/uav-simulator --tag latest --check-only
-rusim doctor --base-url http://127.0.0.1:8000
-rusim contract --base-url http://127.0.0.1:8000
-rusim list tracks --base-url http://127.0.0.1:8000
-rusim list vehicles --base-url http://127.0.0.1:8000
-rusim inspect vehicle vehicle.arcade.blue.v1 --base-url http://127.0.0.1:8000
-rusim reset --base-url http://127.0.0.1:8000 --track-id track.roadsystem_arena.v1 --vehicle-id vehicle.arcade.blue.v1
-rusim scenario validate configs/scenarios/demo.yaml
-rusim scenario reset configs/scenarios/demo.yaml --base-url http://127.0.0.1:8000
-rusim server up --mode background --port 8000 --scenario configs/scenarios/demo.yaml
-rusim server down
-rusim step --base-url http://127.0.0.1:8000 --throttle 0.2 --steer 0.1
-rusim server up --mode background --port 8000 --scenario configs/scenarios/demo-multi-agent.yaml
-rusim step --base-url http://127.0.0.1:8000 --agent-id npc-2 --throttle 0.3 --steer 0.0
-```
-
-Важно:
-- `scene` в CLI является alias для track plugin;
-- к отдельной машинке в Unity не подключаются через отдельный порт;
-- подключение идёт к общему runtime, а выбор активной машинки/сцены делается через `rusim reset`.
-- основная lifecycle-модель теперь проходит через `rusim server up/down/status`;
-- `rusim runtime run` и `rusim server start/stop` сохранены как backward-compatible alias.
-- для multi-agent сценариев адресная команда идёт через `--agent-id`; `--vehicle-id` работает только если такой vehicle plugin в runtime уникален.
-- `rusim doctor` теперь показывает `pluginRegistrySource` и активные `track/vehicle`, чтобы быстро проверить, реально ли используются plugin assets или сработал builtin fallback.
-- `configs/scenarios/demo.yaml` является единственным каноническим demo entrypoint для `make demo-*` и smoke-проверок.
-- `configs/scenarios/demo-multi-agent.yaml` является референсным примером для запуска нескольких машинок на одном треке.
-
-## Multi-agent в Web UI
-Для `unity-sim` вкладка управления теперь может настраивать:
-
-- основной `vehicle` и `track`;
+Для Unity runtime UI поддерживает:
+- выбор `track`;
+- выбор основной машинки;
 - список дополнительных `agents[]`;
-- `control agent` для команд текущей вкладки;
-- `camera agent` для MJPEG/camera snapshot текущей вкладки;
-- `camera mode` (`driver`, `bumper`, `chase`, `spectator`).
-
-Практический смысл:
-
-- один runtime обслуживает несколько машинок на трассе;
-- две вкладки браузера могут смотреть разные камеры;
-- команды из вкладок больше не обязаны конфликтовать через скрытый global secondary vehicle.
-
-Backend-контур для этого расширен адресным `agentId`:
-
-- `POST /api/command { command, agentId }`
-- `GET /api/camera/mjpeg?agentId=...`
-- `GET /api/camera/snapshot?agentId=...`
-
-Старый скрытый cache-ключ `ks0223_unity_secondary_vehicle_id` больше не используется. Вместо него UI хранит явный список `ks0223_unity_extra_agents_v1`, а при старте удаляет legacy secondary-key, чтобы не resurrect-ить фиолетовую машинку из старого localStorage.
-
-Ограничение текущего среза:
-- CLI поддерживает потребление релиза (`rusim upgrade`), но не управляет публикацией release/tag lifecycle;
-- для `headless` камера не гарантируется, потому что Unity запускается с `-nographics`.
-
-Ограничение launcher:
-- `rusim server up/status/down` уже покрывает editor/runtime lifecycle;
-- но launcher всё ещё ограничен стандартным Unity project lock.
-
-Примеры:
-
-```bash
-rusim server up --mode windowed
-rusim server up --mode background --port 8011
-rusim server up --mode headless --port 8011
-rusim server status --port 8011
-rusim server down
-```
-
-Практическое ограничение:
-- если проект уже открыт в другом Unity Editor instance, headless/windowed launcher второго instance не сможет занять тот же project path.
+- `control agent`;
+- `camera agent`;
+- `camera mode`.
 
 ## Standalone runtime
-Для продуктового сценария без Unity Editor используется standalone runtime build:
+Для работы без Unity Editor можно использовать локально собранный runtime build:
 
 ```bash
 rusim runtime build --project-path src/UnityProject/uav-simulator
 rusim runtime list
-rusim runtime favorite set latest
-rusim server up --build favorite --mode background --port 8011
-rusim runtime remove latest
+rusim server up --build latest --mode background --port 8011
+rusim server down
 ```
 
-Именно этот путь должен стать основным для конечного пользователя.
+`background` остаётся практическим режимом по умолчанию, если нужна камера и рендер.
 
-## Makefile
-`Makefile` больше не рассматривается как публичный operator interface.
+## Реальный стенд
+Физический runtime подключается через тот же backend и тот же Web UI.
 
-Он нужен для:
-- developer automation;
-- ROS2 desktop/docker orchestration;
-- smoke/preflight сценариев перед показом;
-- локальной работы с Unity Editor.
+Отличается только target подключения:
+- `runtimeMode=real-robot`
+- собственные `host` и `port`
 
-Если действие является частью продуктового UX, оно должно попадать в `rusim`, а не в `make`.
+Product-layer не требует отдельного frontend для физического стенда.
 
-Рекомендуемая интерпретация режимов:
-- `windowed` — ручная визуальная работа;
-- `background` — есть камера и рендер, но не нужен обычный UI;
-- `headless` — максимально лёгкий режим без графики, useful для CI, server-side rollout и batch training.
+## Что относится к research-layer
+- Python SDK и notebooks;
+- ROS2 bridge;
+- внешние автопилотные модули.
 
-Практически подтверждено:
-- standalone runtime в режиме `background` успешно отвечает на `/health` и `/contract`;
-- после `reset` endpoint `/step` возвращает `frame.dataBase64`, то есть camera flow в этом режиме работает.
+Эти контуры используют продуктовые интерфейсы, но не определяют основной пользовательский путь.
 
-Registry build-артефактов хранится в:
-- `.rusim/runtime-builds.json`
-
-Runtime state и logs:
-- `.rusim/runtime/`
-
-## Python SDK и notebooks
-Python tooling используется для:
-
-- smoke-проверок;
-- интеграционных тестов;
-- Jupyter-экспериментов;
-- будущего training flow.
-
-Это research-layer, но он должен опираться на стабильные product-core интерфейсы.
-
-## ROS2
-ROS2 используется как отдельный interoperability-слой.
-
-Он нужен для:
-
-- публикации typed topics;
-- интеграции со стандартными robotics-инструментами;
-- внешних экспериментальных сценариев.
-
-ROS2 не должен быть обязательной зависимостью базового operator flow.
-
-## Автопилот
-Автопилот рассматривается как внешний модуль, который подключается к платформе через отдельный интеграционный контракт.
-
-Канонический документ:
-- [Autopilot Integration Contract v1](autopilot-integration-contract-v1.md)
-
-## Сценарии симуляции
-Симуляция должна подниматься не через ручную возню по сцене, а через сценарный/config entrypoint.
-
-Канонический документ:
-- [Simulator Scenario Config Contract v1](simulator-scenario-config-contract-v1.md)
+## Связанные страницы
+- [Установка](installation.md)
+- [CLI `rusim`](cli.md)
+- [API](api.md)
+- [Simulator Scenario Config Contract](simulator-scenario-config-contract.md)

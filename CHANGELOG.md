@@ -13,6 +13,17 @@
 - Начать заполнять с первого релевантного релиза MVP.
 
 ## [Unreleased]
+### Sprint 1 (Преддипломная практика, 2026-03-21 — 2026-04-04)
+Статус: промежуточный срез на 2026-03-28. Период спринта продолжается до 2026-04-04.
+
+#### Added
+- Добавлен отдельный журнал изменений спринта: `docs/report/prediploma-practice/sprint-1-changelog.md`.
+- Добавлена задача `docs/tasks/task-64-sprint-1-product-hardening-and-evidence.md` для доведения продуктового контура до следующей контрольной точки практики.
+
+#### Changed
+- Зафиксированы и систематизированы выполненные работы по преддипломной практике за период 2026-03-21 — 2026-03-28 в формате, пригодном для отправки в электронный курс.
+- Уточнен приоритет фокуса до 2026-04-04: воспроизводимый e2e smoke (`Unity API + runtime + docs`) и подготовка доказательной базы для Спринта 1.
+
 ### Added
 - Root `Makefile` with separated operator flows for simulator and ROS2 tooling.
 - Extended architecture documentation with component and sequence diagrams.

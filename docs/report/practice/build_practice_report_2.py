@@ -171,17 +171,16 @@ TABLE_3_ROWS = [
 ]
 
 SOURCES = [
-    "Keyestudio. KS0223 Smart Small Turtle Robot Car for Raspberry Pi : [сайт]. - URL: https://docs.keyestudio.com/projects/KS0223/en/latest/ (дата обращения: 13.03.2026).",
-    "Keyestudio. KS0223 Description : [сайт]. - URL: https://docs.keyestudio.com/projects/KS0223/en/latest/Description.html (дата обращения: 13.03.2026).",
-    "Keyestudio. KS0223 Kit List : [сайт]. - URL: https://docs.keyestudio.com/projects/KS0223/en/latest/Kit%20List.html (дата обращения: 13.03.2026).",
-    "Microsoft Learn. ASP.NET Core SignalR overview : [сайт]. - URL: https://learn.microsoft.com/aspnet/core/signalr/introduction?view=aspnetcore-8.0 (дата обращения: 13.03.2026).",
-    "Microsoft Learn. Hosted services in ASP.NET Core : [сайт]. - URL: https://learn.microsoft.com/aspnet/core/fundamentals/host/hosted-services?view=aspnetcore-8.0 (дата обращения: 13.03.2026).",
-    "Microsoft Learn. Minimal APIs overview : [сайт]. - URL: https://learn.microsoft.com/aspnet/core/fundamentals/minimal-apis/overview?view=aspnetcore-8.0 (дата обращения: 13.03.2026).",
-    "Unity Manual. Unity 6 Manual : [сайт]. - URL: https://docs.unity3d.com/6000.1/Documentation/Manual/ (дата обращения: 13.03.2026).",
-    "MUI. Material UI - React components : [сайт]. - URL: https://mui.com/material-ui/getting-started/ (дата обращения: 13.03.2026).",
-    "Vite. Getting Started Guide : [сайт]. - URL: https://vite.dev/guide/ (дата обращения: 13.03.2026).",
-    "Docker Docs. Docker overview : [сайт]. - URL: https://docs.docker.com/get-started/docker-overview/ (дата обращения: 13.03.2026).",
-    "Open Robotics. ROS 2 Documentation : [сайт]. - URL: https://docs.ros.org/en/humble/index.html (дата обращения: 13.03.2026).",
+    "1. Zhu W., Guo X., Owaki D., Kutsuzawa K., Hayashibe M. A Survey of Sim-to-Real Transfer Techniques Applied to Reinforcement Learning for Bioinspired Robots // IEEE Transactions on Neural Networks and Learning Systems. 2023. Vol. 34, No. 7. P. 3444-3459. DOI: 10.1109/TNNLS.2021.3112718.",
+    "2. Tobin J., Fong R., Ray A., Schneider J., Zaremba W., Abbeel P. Domain Randomization for Transferring Deep Neural Networks from Simulation to the Real World // arXiv preprint arXiv:1703.06907. 2017. URL: https://arxiv.org/abs/1703.06907 (дата обращения: 17.03.2026).",
+    "3. Douthwaite J. A., Lesage B., Gleirscher M., Calinescu R., Aitken J. M., Alexander R. A Modular Digital Twinning Framework for Safety Assurance of Collaborative Robotics // Frontiers in Robotics and AI. 2021. Vol. 8. DOI: 10.3389/frobt.2021.758099.",
+    "4. Audonnet F. P., Grizou J., Hamilton A., Aragon-Camarasa G. TELESIM: A Modular and Plug-and-Play Framework for Robotic Arm Teleoperation using a Digital Twin // arXiv preprint arXiv:2309.10579. 2023. URL: https://arxiv.org/abs/2309.10579 (дата обращения: 17.03.2026).",
+    "5. Moniruzzaman M. D., Rassau A., Chai D., Islam S. M. S. Teleoperation methods and enhancement techniques for mobile robots: A comprehensive survey // Robotics and Autonomous Systems. 2022. Vol. 150. Art. 103973. DOI: 10.1016/j.robot.2021.103973.",
+    "6. Unity Technologies. Unity 6.1 User Manual [Электронный ресурс] // Unity Documentation : [сайт]. URL: https://docs.unity3d.com/6000.1/Documentation/Manual/ (дата обращения: 17.03.2026).",
+    "7. Unity Technologies. ML Agents [Электронный ресурс] // Unity Documentation : [сайт]. URL: https://docs.unity3d.com/6000.1/Documentation/Manual/com.unity.ml-agents.html (дата обращения: 17.03.2026).",
+    "8. Robot Web Tools [Электронный ресурс] // Robot Web Tools : [сайт]. URL: https://robotwebtools.github.io/ (дата обращения: 17.03.2026).",
+    "9. Open Robotics. ROS 2 Documentation: Humble [Электронный ресурс] // ROS 2 Documentation : [сайт]. URL: https://docs.ros.org/en/humble/index.html (дата обращения: 17.03.2026).",
+    "10. Keyestudio. Raspberry Pi Smart Car Documentation [Электронный ресурс] // Keyestudio Docs : [сайт]. URL: https://docs.keyestudio.com/projects/KS0223/en/latest/ (дата обращения: 17.03.2026).",
 ]
 
 

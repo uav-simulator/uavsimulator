@@ -1,25 +1,72 @@
-## Purpose
-Зафиксировать требования к CI для проекта (проверки качества и воспроизводимости).
+# CI/CD
 
-## Assumptions
-- CI должен быть минимальным и не требовать Unity Editor в ранней стадии, если это не подтверждено инфраструктурой.
+**Что это**  
+Текущее состояние автоматических проверок, публикации Pages и release workflow.
 
-## Decisions
-- Минимальный набор проверок:
-  - сборка backend (`.NET`);
-  - сборка frontend (`Vite/TypeScript`);
-  - Python import-check для SDK/bridge;
-  - запуск Unity Test Framework в batchmode, если задан `UNITY_LICENSE`;
-  - smoke-проверка `make demo-proof-ci` с graceful skip, если Unity не в Play / ROS не запущен;
-  - публикация документации через `MkDocs Material` и GitHub Pages отдельным workflow;
-  - отдельный release workflow для генерации `rusim-release-manifest.json` из GitHub Release assets.
+**Для кого**  
+Для разработчика, который меняет код, документацию или release-поток.
 
-## Next steps
-- CI платформа: GitHub Actions.
-- Pages: сборка `mkdocs build` из `docs/` с конфигурацией `mkdocs.yml`.
-- Unity тесты: через GameCI `unity-test-runner`, требует `UNITY_LICENSE` secret (job пропускается, если secret не задан).
-- Python: минимальная проверка импорта клиента из `python/`.
-- Для workflows используются Node 24-compatible major-версии `actions/*`.
-- Releases: workflow `Release Manifest` запускается на `release.published` или вручную и прикладывает к GitHub Release файл `rusim-release-manifest.json`.
-- Добавить notebook-smoke в CI (без Unity — graceful skip, с Unity — полный прогон).
-- Следующий шаг: добавить docs validation и smoke-check для операторского backend API.
+**Статус**  
+Фактическое описание текущих GitHub Actions workflow.
+
+**Проверено по**  
+`.github/workflows/ci.yml`, `.github/workflows/pages.yml`, `.github/workflows/release-manifest.yml`, `.github/workflows/release-rusim.yml`
+
+## CI
+Основной workflow:
+
+```text
+.github/workflows/ci.yml
+```
+
+Он выполняет:
+- backend build (`.NET`);
+- frontend build (`Vite`);
+- Python import check;
+- Unity tests через GameCI, если задан `UNITY_LICENSE`;
+- `make demo-proof-ci` как graceful smoke job.
+
+## GitHub Pages
+Публикация документации живёт отдельно:
+
+```text
+.github/workflows/pages.yml
+```
+
+Workflow:
+- собирает `mkdocs build --strict`;
+- загружает `.mkdocs-site`;
+- деплоит GitHub Pages.
+
+## Release workflow
+Runtime manifest:
+
+```text
+.github/workflows/release-manifest.yml
+```
+
+Что делает:
+- принимает `tag`;
+- генерирует `rusim-release-manifest.json`;
+- прикладывает manifest в GitHub Release.
+
+Rusim package:
+
+```text
+.github/workflows/release-rusim.yml
+```
+
+Что делает:
+- реагирует на тег `v*` или ручной запуск;
+- синхронизирует версию Python package с тегом;
+- собирает `.whl` и `.tar.gz`;
+- публикует их в GitHub Release.
+
+## Ограничения текущего контура
+- runtime build не собирается в GitHub Actions;
+- release runtime публикуется из локально собранного `.app`;
+- Unity test job зависит от наличия `UNITY_LICENSE`.
+
+## Связанные страницы
+- [Сборка и локальный запуск](build.md)
+- [Поставка и обновление](release-distribution-model.md)
