@@ -1,38 +1,41 @@
-## Назначение
-Зафиксировать текущую plugin-архитектуру симулятора и правила её расширения без разрастания core-слоя.
+# Плагины
 
-## Текущая схема
-- Реестр плагинов хранится в `Assets/Resources/UavSimulator/PluginRegistry.asset`.
+**Что это**  
+Обзор текущей plugin-архитектуры симулятора и актуального каталога машинок и треков.
+
+**Для кого**  
+Для разработчика, который добавляет новый track или vehicle plugin.
+
+**Статус**  
+Каноническая reference-страница по plugin catalog.
+
+**Проверено по**  
+`Assets/Resources/UavSimulator/PluginRegistry.asset`, `Assets/Resources/UavSimulator/Plugins/`, `Assets/Scripts/Plugins/`
+
+## Как устроен каталог
+- Основной реестр: `Assets/Resources/UavSimulator/PluginRegistry.asset`
 - Дополнительные descriptor assets автоматически подхватываются из:
   - `Assets/Resources/UavSimulator/Plugins/Vehicles`
   - `Assets/Resources/UavSimulator/Plugins/Tracks`
-- `PluginRegistry.Load()` объединяет:
-  - curated registry asset;
-  - auto-discovery из `Resources/UavSimulator/Plugins`.
-- Если assets отсутствуют или каталог пустой, включается runtime fallback через `BuiltinPluginFactory`.
+- Если assets недоступны, runtime может использовать fallback из `BuiltinPluginFactory`.
 
-## Состав vehicle plugin
-- `VehiclePluginDescriptor`
-  - идентификатор машинки;
-  - человекочитаемое имя;
-  - ссылка на prefab с `VehicleBase`-совместимым runtime компонентом;
-  - ссылка на `DeviceContractDescriptorAsset`.
+## Vehicle plugin
+Содержит:
+- `id`
+- `displayName`
+- `description`
+- prefab с `VehicleBase`
 - `DeviceContractDescriptorAsset`
-  - сенсоры;
-  - актуаторы;
-  - observation/action schema.
-- Runtime-реализация
-  - prefab с `Rigidbody`, collider и компонентом-наследником `VehicleBase`;
-  - либо fallback-строитель в `BuiltinPluginFactory` для встроенных профилей.
 
-## Состав track plugin
-- `TrackPluginDescriptor`
-  - `trackId`, `displayName`, `description`;
-  - optional prefab;
-  - JSON schema для `trackParams`.
+## Track plugin
+Содержит:
+- `trackId`
+- `displayName`
+- `description`
+- optional prefab
+- JSON schema для `trackParams`
 
-## Текущий asset-based каталог
-### Машинки
+## Актуальный каталог машинок
 - `vehicle.prometeo.sport.v1`
 - `vehicle.arcade.blue.v1`
 - `vehicle.arcade.red.v1`
@@ -40,41 +43,21 @@
 - `vehicle.arcade.purple.v1`
 - `vehicle.drone.simple.v1`
 
-### Треки
+Legacy IDs `vehicle.ks0223.*` больше не считаются каноническими для симуляторного каталога.
+
+## Актуальный каталог треков
 - `track.basic_arena.v1`
 - `track.roadsystem_arena.v1`
 - `track.roadsystem_realistic.v2`
 
-## Breaking rename (2026-03-13)
-- Старые ID `vehicle.ks0223.v1` и `vehicle.ks0223.arcade.*` удалены из симуляторного каталога.
-- Актуальная схема:
-  - `vehicle.prometeo.sport.v1`
-  - `vehicle.arcade.blue.v1`
-  - `vehicle.arcade.red.v1`
-  - `vehicle.arcade.gray.v1`
-  - `vehicle.arcade.purple.v1`
-- Обратных алиасов нет намеренно: все сценарии, CLI-команды и внешние интеграции должны использовать только новые ID.
-
-## Где лежат assets
-- Реестр: `Assets/Resources/UavSimulator/PluginRegistry.asset`
-- Контракты: `Assets/Resources/UavSimulator/Contracts`
-- Машинки: `Assets/Resources/UavSimulator/Plugins/Vehicles`
-- Треки: `Assets/Resources/UavSimulator/Plugins/Tracks`
-
 ## Синхронизация built-in каталога
-Для встроенных профилей добавлен editor utility:
+Editor utility:
 
 ```text
 UavSimulator/Plugins/Sync Builtin Plugin Catalog
 ```
 
-Он создаёт или обновляет:
-- `PluginRegistry.asset`
-- `VehiclePluginDescriptor`
-- `TrackPluginDescriptor`
-- `DeviceContractDescriptorAsset`
-
-CLI-эквивалент:
+Batchmode вызов:
 
 ```bash
 "/Applications/Unity/Hub/Editor/6000.1.8f1/Unity.app/Contents/MacOS/Unity" \
@@ -83,12 +66,12 @@ CLI-эквивалент:
   -executeMethod UavSimulator.EditorTools.PluginCatalogSeeder.SyncBuiltinPluginCatalog
 ```
 
-## Диагностика
-- Проверить каталог можно через:
-  - `GET /contract`
-  - `rusim inspect vehicle`
-  - popup выбора машинки в web UI
-- Если descriptor asset создан, но машинка не появляется:
-  - проверить, что asset лежит под `Assets/Resources/UavSimulator/Plugins/...`;
-  - проверить уникальность `id`;
-  - проверить, что prefab содержит runtime компонент, наследующий `VehicleBase`.
+## Проверка каталога
+- `GET /contract`
+- `rusim list tracks`
+- `rusim list vehicles`
+- `rusim inspect vehicle ...`
+
+## Связанные страницы
+- [Машинки](vehicles.md)
+- [Как добавить новую машинку](plugin-vehicle-guide.md)

@@ -1,126 +1,68 @@
-# Release / Distribution Model
+# Поставка и обновление
 
-## Назначение
-Эта страница фиксирует каноническую модель поставки продукта наружу.
+**Что это**  
+Текущая модель поставки runtime и Python package наружу.
 
-Цель:
-- иметь понятный внешний source of truth для runtime release;
-- отделить локальный dev-registry от публичной дистрибуции;
-- использовать `rusim upgrade` как канонический клиент обновления.
+**Для кого**  
+Для разработчика, который публикует release или поддерживает update flow через `rusim`.
 
-## Базовый принцип
-Наружу распространяется не git checkout, а **versioned standalone runtime release**.
+**Статус**  
+Актуальная схема дистрибуции. Полноценной cloud-сборки runtime в GitHub Actions сейчас нет.
 
-Важно разделение:
-- `runtime` (Unity `.app/.zip`) — публикуется вручную из локальной сборки;
-- `rusim` (Python package) — собирается и публикуется в GitHub Actions.
+**Проверено по**  
+`.github/workflows/release-manifest.yml`, `.github/workflows/release-rusim.yml`, `python/sim_client/cli.py`
 
-Источник истины для distribution:
-1. Git tag
-2. GitHub Release
-3. release manifest JSON, прикреплённый к тому же Release
+## Что публикуется сейчас
+- standalone runtime archive, собранный локально;
+- checksum для runtime archive;
+- `rusim-release-manifest.json`;
+- Python package artifacts (`.whl`, `.tar.gz`) для `rusim`.
 
-Локальный `rusim` registry:
-- `.rusim/runtime-builds.json`
-
-не является внешним каналом поставки.  
-Он описывает только уже установленные или локально собранные runtime build-ы.
-
-## Каноническая схема
+## Как устроен поток
 ```mermaid
 flowchart LR
-    Dev["Разработчик"] --> Build["Standalone runtime build (.app/.zip)"]
+    Dev["Разработчик"] --> Build["Локальная сборка runtime"]
     Build --> Release["GitHub Release"]
     Release --> Manifest["rusim-release-manifest.json"]
+    Release --> Rusim["rusim package artifacts"]
     Manifest --> Client["rusim upgrade"]
-    Release --> Client
 ```
 
-## Что публикуется в Release
-Минимальный ожидаемый набор asset-ов:
-- `uav-simulator-macos-vX.Y.Z.zip`
-- `uav-simulator-macos-vX.Y.Z.zip.sha256`
-- `rusim-release-manifest.json`
+## Что важно
+- runtime release собирается локально и прикладывается в GitHub Release вручную;
+- manifest генерируется workflow `Release Manifest`;
+- Python package публикуется workflow `Release Rusim Package`;
+- `rusim upgrade` использует manifest как машинно-читаемую точку входа.
 
-Позже можно расширить:
-- `linux`
-- `windows`
-- release notes / changelog exports
-
-## Почему выбран именно GitHub Releases
-Плюсы:
-- уже используется GitHub как source hosting;
-- не нужен отдельный update server;
-- легко хранить версионированные binary artifacts;
-- manifest можно прикладывать как обычный release asset;
-- будущий `rusim upgrade` сможет читать latest release через GitHub API.
-
-Минусы:
-- бинарные asset-ы завязаны на процесс публикации release;
-- checksum нужно публиковать явно;
-- пока есть ручной шаг локальной сборки runtime перед публикацией.
-
-## Что считается release manifest
-Канонический формат описан в:
-- [Release Manifest v1](release-manifest-v1.md)
-
-Практический смысл manifest:
-- описывает latest release;
-- перечисляет доступные runtime asset-ы;
-- содержит download URL и checksum;
-- становится машинно-читаемой точкой входа для upgrade/install flow.
-
-## Текущий статус
-На текущем этапе реализовано:
-- schema и documentation для manifest;
-- локальный генератор manifest (`scripts/generate_release_manifest.py`);
-- GitHub Actions workflow `Release Manifest` (manual), который публикует `rusim-release-manifest.json` для уже созданного Release;
-- GitHub Actions workflow `Release Rusim Package`, который на tag собирает `rusim` package artifacts (`.whl`, `.tar.gz`) и прикрепляет их в GitHub Release;
-- команда `rusim upgrade`:
-  - `--check-only` для проверки доступности обновления;
-  - установка runtime из release manifest в локальный registry.
-
-На текущем этапе ещё не реализовано:
-- cloud-сборка runtime по тегу в GitHub Actions;
-- мультиплатформенная cloud-сборка (`linux/windows`);
-- отдельная команда `rusim release` для управления публикацией релизов из CLI.
-
-## Практический workflow сейчас
+## Практический runtime flow
 1. Локально собрать runtime:
 
 ```bash
 rusim runtime build --project-path src/UnityProject/uav-simulator
 ```
 
-2. Упаковать `.app` в архив `uav-simulator-macos-vX.Y.Z.zip` и подготовить `.sha256`.
+2. Упаковать `.app` в архив и посчитать `sha256`.
+3. Создать GitHub Release и загрузить runtime archive + checksum.
+4. Запустить `Release Manifest` для генерации `rusim-release-manifest.json`.
 
-3. Создать GitHub Release `vX.Y.Z` и прикрепить runtime zip + checksum.
-
-4. `Release Rusim Package` автоматически (или вручную через workflow dispatch) соберёт и прикрепит:
-- `uav_sim_client-*.whl`
-- `uav_sim_client-*.tar.gz`
-
-5. Запустить manual workflow `Release Manifest` с нужным `tag`.
-
-```text
-rusim-release-manifest.json
-```
-
-3. Пользователь обновляется через:
-
-```bash
-rusim upgrade --repo NMGorovenko/uav-simulator --tag latest
-```
-
-## Практические команды
-Проверить наличие апдейта:
+## Практический update flow
+Проверка доступности обновления:
 
 ```bash
 rusim upgrade --repo NMGorovenko/uav-simulator --tag latest --check-only
 ```
 
-Установить релиз:
+Установка доступного runtime:
 
 ```bash
 rusim upgrade --repo NMGorovenko/uav-simulator --tag latest
 ```
+
+## Ограничения текущего контура
+- cloud-build runtime отсутствует;
+- runtime release пока ориентирован на локально собранный macOS bundle;
+- release pipeline не является заменой обычной установки из репозитория во время активной разработки.
+
+## Связанные страницы
+- [Release Manifest](release-manifest.md)
+- [CLI `rusim`](cli.md)

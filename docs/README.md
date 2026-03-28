@@ -1,66 +1,56 @@
-# Документация
+# Документация продукта
 
-## Назначение
-Единая точка входа в документацию продукта, архитектуры и research-layer.
+**Что это**  
+Главная точка входа в публичную документацию `uav-simulator`.
 
-С этого документа должен начинаться заход в проект:
+**Для кого**  
+Для пользователя, разработчика и исследователя, которым нужно быстро понять продукт и работать с актуальным состоянием проекта.
 
-1. понять, что именно мы строим;
-2. понять, как это установить и запустить;
-3. понять, как этим пользоваться;
-4. понять, какие контракты считаются каноническими;
-5. понять, где проект находится относительно MVP.
+**Статус**  
+Канонический индекс документации GitHub Pages.
 
-## Канонические страницы
-### 1. О симуляторе
-- [about-simulator.md](about-simulator.md)
+**Проверено по**  
+`mkdocs.yml`, `README.md`, `configs/scenarios/demo.yaml`, `configs/scenarios/demo-multi-agent.yaml`, `python/sim_client/cli.py`
 
-### 2. Технологии
-- [stack.md](stack.md)
+## С чего начать
 
-### 3. Установка
-- [installation.md](installation.md)
+### Быстрый старт
+1. Прочитать [О продукте](about-simulator.md).
+2. Пройти [Установку](installation.md).
+3. Использовать [CLI](cli.md) и [Использование](usage.md).
 
-### 4. Использование
-- [usage.md](usage.md)
+### Ежедневная работа
+1. Проверить [Использование](usage.md).
+2. Открыть [CLI](cli.md).
+3. При необходимости свериться с [API](api.md) и [Архитектурой](architecture.md).
 
-### 4.1. CLI
-- [cli.md](cli.md)
+### Разработка и расширение
+1. Открыть [Архитектуру](architecture.md).
+2. Прочитать [Плагины](plugins.md) и [Как добавить новую машинку](plugin-vehicle-guide.md).
+3. При необходимости перейти к [Контрактам](contracts.md) и [CI/CD](ci.md).
 
-### 4.2. Releases
-- [release-distribution-model.md](release-distribution-model.md)
-- [release-manifest-v1.md](release-manifest-v1.md)
+## Канонические product-страницы
+- [О продукте](about-simulator.md)
+- [Установка](installation.md)
+- [Использование](usage.md)
+- [CLI `rusim`](cli.md)
+- [Архитектура](architecture.md)
+- [API](api.md)
+- [Плагины](plugins.md)
+- [Сборка и релизы](build.md)
+- [Статус проекта](roadmap.md)
 
-### 5. Контракты
-- [contracts.md](contracts.md)
+## Контракты
+- [Обзор контрактов](contracts.md)
+- [Product Definition](product-definition.md)
+- [Unified Runtime Contract](unified-runtime-contract.md)
+- [Autopilot Integration Contract](autopilot-integration-contract.md)
+- [Simulator Scenario Config Contract](simulator-scenario-config-contract.md)
 
-### 6. Roadmap и текущая стадия
-- [roadmap.md](roadmap.md)
+## Вторичный слой
+- [Research и магистерская](research-index.md)
+- [Инженерный журнал](engineering-log.md)
 
-## Канонические артефакты продукта
-- [product-definition-v1.md](product-definition-v1.md)
-- [unified-runtime-contract-v1.md](unified-runtime-contract-v1.md)
-- [autopilot-integration-contract-v1.md](autopilot-integration-contract-v1.md)
-- [simulator-scenario-config-contract-v1.md](simulator-scenario-config-contract-v1.md)
-- [definition-of-done-mvp.md](definition-of-done-mvp.md)
-
-## Архитектура и API
-- [architecture.md](architecture.md)
-- [api.md](api.md)
-- [ci.md](ci.md)
-
-## Research и магистерская
-- [2026-03-11-sim-to-real-platform-master-document.md](research/2026-03-11-sim-to-real-platform-master-document.md)
-- [master-thesis/README.md](master-thesis/README.md)
-
-## Вспомогательные разделы
-- [build.md](build.md)
-- [plugins.md](plugins.md)
-- [vehicles.md](vehicles.md)
-- [ros2.md](ros2.md)
-- [training.md](training.md)
-- [documentation-cleanup-plan.md](documentation-cleanup-plan.md)
-
-## Инженерный журнал
-- [tasks.md](tasks.md)
-- каталог задач: `docs/tasks/`
+## Что не является основным входом
+- `docs/research/`, `docs/master-thesis/`, `docs/report/` и `docs/tasks/` сохраняются в репозитории, но не заменяют продуктовые guide-страницы.
+- Черновики, cleanup-планы и исторические заметки не используются как источник истины для запуска и эксплуатации.

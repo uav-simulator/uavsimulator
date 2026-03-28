@@ -4,15 +4,15 @@
 
 ## Текущее состояние
 - Плагинная архитектура для треков и роботов.
-- Runtime fallback-плагины (включая `track.roadsystem_arena.v1`, `track.basic_arena.v1`, `vehicle.ks0223.arcade.*`, `vehicle.ks0223.v1`).
+- Актуальный каталог треков: `track.roadsystem_arena.v1`, `track.basic_arena.v1`, `track.roadsystem_realistic.v2`.
 - Добавлен реалистичный RoadSystem plugin track:
   - `track.roadsystem_realistic.v2` (бордюры, старт/финиш, освещение, расширенное окружение).
 - Ассетные визуалы машин (через plugin `vehicleId`):
-  - `vehicle.ks0223.v1` (PROMETEO visual)
-  - `vehicle.ks0223.arcade.blue.v1`
-  - `vehicle.ks0223.arcade.red.v1`
-  - `vehicle.ks0223.arcade.gray.v1`
-  - `vehicle.ks0223.arcade.purple.v1`
+  - `vehicle.prometeo.sport.v1`
+  - `vehicle.arcade.blue.v1`
+  - `vehicle.arcade.red.v1`
+  - `vehicle.arcade.gray.v1`
+  - `vehicle.arcade.purple.v1`
 - Дрон-плагин:
   - `vehicle.drone.simple.v1`
 - HTTP JSON API (`/health`, `/contract`, `/reset`, `/step`).
@@ -22,8 +22,7 @@
 - Опциональный ROS2 bridge (typed topics + compat JSON topics).
 
 ## Быстрый старт
-Assumptions:
-- Unity версия проекта: `6000.1.8f1`.
+Unity версия проекта: `6000.1.8f1`.
 
 1. Создай Python окружение:
    - `make venv`
@@ -56,10 +55,10 @@ CLI пример CARLA-style:
   - `make demo-reset DEMO_SCENARIO=configs/scenarios/demo.yaml`
   - multi-agent demo:
     - `rusim server up --mode background --port 8000 --scenario configs/scenarios/demo-multi-agent.yaml`
-    - `rusim step --base-url http://127.0.0.1:8000 --agent-id npc-2 --throttle 0.3 --steer 0.0 --brake 0.0`
+    - `rusim step --base-url http://127.0.0.1:8000 --agent-id npc-red --throttle 0.3 --steer 0.0 --brake 0.0`
   - для ручного override вне demo-сценария:
-    - `rusim reset --base-url http://127.0.0.1:8000 --vehicle-id vehicle.ks0223.arcade.red.v1`
-    - `rusim reset --base-url http://127.0.0.1:8000 --vehicle-id vehicle.ks0223.v1`
+    - `rusim reset --base-url http://127.0.0.1:8000 --vehicle-id vehicle.arcade.red.v1`
+    - `rusim reset --base-url http://127.0.0.1:8000 --vehicle-id vehicle.prometeo.sport.v1`
     - `rusim reset --base-url http://127.0.0.1:8000 --vehicle-id vehicle.drone.simple.v1`
     - `rusim reset --base-url http://127.0.0.1:8000 --track-id track.roadsystem_arena.v1`
 
@@ -93,12 +92,16 @@ CLI пример CARLA-style:
 
 ## Документация
 - Индекс: `docs/README.md`
-- Обзор: `docs/overview.md`
+- О продукте: `docs/about-simulator.md`
+- Установка: `docs/installation.md`
+- Использование: `docs/usage.md`
+- CLI: `docs/cli.md`
 - Архитектура + диаграммы: `docs/architecture.md`
 - Сборка/запуск: `docs/build.md`
-- ROS2: `docs/ros2.md`
+- CI/CD: `docs/ci.md`
 - Плагины: `docs/plugins.md`
 - API: `docs/api.md`
+- Контракты: `docs/contracts.md`
 - Транспорт/роботы: `docs/vehicles.md`, `docs/robots/ks0223.md`, `docs/robots/simple-drone.md`
 - Python SDK: `python/README.md`
 

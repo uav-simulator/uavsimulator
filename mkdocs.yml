@@ -49,30 +49,30 @@ extra_javascript:
 
 nav:
   - Старт: README.md
-  - О симуляторе: about-simulator.md
-  - Технологии: stack.md
+  - О продукте: about-simulator.md
   - Установка: installation.md
   - Использование: usage.md
   - CLI: cli.md
-  - Releases:
-      - Distribution Model: release-distribution-model.md
-      - Release Manifest v1: release-manifest-v1.md
-  - Контракты:
-      - Обзор контрактов: contracts.md
-      - Product Definition v1: product-definition-v1.md
-      - Unified Runtime Contract v1: unified-runtime-contract-v1.md
-      - Autopilot Integration Contract v1: autopilot-integration-contract-v1.md
-      - Simulator Scenario Config Contract v1: simulator-scenario-config-contract-v1.md
-      - Definition of Done MVP: definition-of-done-mvp.md
-      - API: api.md
   - Архитектура: architecture.md
+  - API: api.md
   - Плагины:
       - Обзор: plugins.md
       - Машинки: vehicles.md
       - Как добавить новую машинку: plugin-vehicle-guide.md
-  - Roadmap: roadmap.md
+  - Сборка и релизы:
+      - Локальная сборка и запуск: build.md
+      - Поставка и обновление: release-distribution-model.md
+      - Release Manifest: release-manifest.md
+  - Контракты:
+      - Обзор контрактов: contracts.md
+      - Product Definition: product-definition.md
+      - Unified Runtime Contract: unified-runtime-contract.md
+      - Autopilot Integration Contract: autopilot-integration-contract.md
+      - Simulator Scenario Config Contract: simulator-scenario-config-contract.md
   - CI/CD: ci.md
-  - Research:
-      - Master Document: research/2026-03-11-sim-to-real-platform-master-document.md
-      - Unity <> KS0223: research/2026-03-10-ks0223-ui-unity-sim2real.md
-      - Product Gap Analysis: research/2026-03-10-ks0223-product-readiness-gap-analysis.md
+  - Статус проекта:
+      - Roadmap: roadmap.md
+      - Definition of Done MVP: definition-of-done-mvp.md
+  - Дополнительно:
+      - Research и магистерская: research-index.md
+      - Инженерный журнал: engineering-log.md
