@@ -1,9 +1,11 @@
 import type {
+  AutopilotStatusDto,
   CameraStatusDto,
   CommandResponse,
   HealthDto,
   LogFileInfo,
   LogState,
+  ModelInfoDto,
   SensorBridgeResponse,
   SensorBridgeStatusDto,
   SensorTelemetryDto,
@@ -190,6 +192,81 @@ export async function updateSensorConfig(
   const response = await fetch(withBase(`/api/sensors/config?${params.toString()}`), { method: 'POST' })
 
   return handleJson<SensorBridgeResponse>(response)
+}
+
+export async function uploadModelArtifact(payload: {
+  file: File
+  name?: string
+  version?: string
+  source?: string
+  metadata?: string
+  metrics?: string
+}): Promise<ModelInfoDto> {
+  const form = new FormData()
+  form.set('file', payload.file)
+  if (payload.name?.trim()) form.set('name', payload.name.trim())
+  if (payload.version?.trim()) form.set('version', payload.version.trim())
+  if (payload.source?.trim()) form.set('source', payload.source.trim())
+  if (payload.metadata?.trim()) form.set('metadata', payload.metadata.trim())
+  if (payload.metrics?.trim()) form.set('metrics', payload.metrics.trim())
+
+  const response = await fetch(withBase('/api/models/upload'), {
+    method: 'POST',
+    body: form,
+  })
+  return handleJson<ModelInfoDto>(response)
+}
+
+export async function fetchModels(): Promise<ModelInfoDto[]> {
+  const response = await fetch(withBase('/api/models'))
+  return handleJson<ModelInfoDto[]>(response)
+}
+
+export async function activateModel(modelId: string): Promise<ModelInfoDto> {
+  const response = await fetch(withBase('/api/models/activate'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ modelId }),
+  })
+  return handleJson<ModelInfoDto>(response)
+}
+
+export async function fetchActiveModel(): Promise<ModelInfoDto | null> {
+  const response = await fetch(withBase('/api/models/active'))
+  if (response.status === 404) {
+    return null
+  }
+
+  return handleJson<ModelInfoDto>(response)
+}
+
+export async function startAutopilot(payload: {
+  clientId: string
+  runtimeMode: string
+  agentId?: string
+  modelId?: string
+  loopIntervalMs?: number
+}): Promise<AutopilotStatusDto> {
+  const response = await fetch(withBase('/api/autopilot/start'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  return handleJson<AutopilotStatusDto>(response)
+}
+
+export async function stopAutopilot(payload?: { clientId?: string; runtimeMode?: string }): Promise<AutopilotStatusDto> {
+  const response = await fetch(withBase('/api/autopilot/stop'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload ?? {}),
+  })
+  return handleJson<AutopilotStatusDto>(response)
+}
+
+export async function fetchAutopilotStatus(): Promise<AutopilotStatusDto> {
+  const response = await fetch(withBase('/api/autopilot/status'))
+  return handleJson<AutopilotStatusDto>(response)
 }
 
 export async function setUltrasonicPosition(

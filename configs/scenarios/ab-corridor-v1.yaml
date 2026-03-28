@@ -1,0 +1,53 @@
+scenarioId: ab-corridor-v1
+displayName: A to B Corridor Baseline
+description: Базовый сценарий A->B для обучения/валидации telemetry-first политики.
+version: 1
+
+runtime:
+  runtimeMode: unity-sim
+  headless: false
+  timeScale: 1.0
+  seed: 73
+
+world:
+  trackId: track.basic_arena.v1
+
+vehicle:
+  vehicleId: vehicle.ks0223.v1
+  params:
+    camera.profile: high
+
+sensors:
+  camera:
+    enabled: true
+    profile: high
+  telemetry:
+    profile: default
+  lineTracker:
+    enabled: true
+  ultrasonic:
+    enabled: true
+
+route:
+  params:
+    spawn.position: -6.000,0.200,-8.500
+    corridor.width_m: 1.20
+    goal.radius_m: 1.00
+    obstacle.count: 1
+  waypoints:
+    - [-6.0, -8.5]
+    - [-6.0, -2.0]
+    - [-3.0, 2.5]
+    - [2.0, 6.0]
+    - [6.5, 8.0]
+  loop: false
+  reachDistanceM: 1.0
+
+agents:
+  count: 1
+  isolated: true
+  seeEachOther: false
+
+logging:
+  enabled: true
+  tag: ab-corridor-v1

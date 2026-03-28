@@ -110,3 +110,32 @@ export type UnityRuntimeCatalogDto = {
   vehicles: UnityRuntimeOptionDto[]
   agents: UnityRuntimeAgentDto[]
 }
+
+export type ModelInfoDto = {
+  modelId: string
+  name: string
+  version: string
+  source: string
+  createdAtUtc: string
+  isActive: boolean
+  artifactPath: string
+  metadataPath: string
+  metricsPath: string
+}
+
+export type AutopilotStatusDto = {
+  isRunning: boolean
+  clientId: string | null
+  runtimeMode: string | null
+  agentId: string | null
+  modelId: string | null
+  startedAtUtc: string | null
+  lastStepAtUtc: string | null
+  stepsTotal: number
+  commandsSent: number
+  lastCommand: string | null
+  lastThrottle: number
+  lastSteer: number
+  lastError: string | null
+  mode: string
+}

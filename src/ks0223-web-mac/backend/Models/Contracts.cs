@@ -143,3 +143,43 @@ public sealed record HealthDto(
     StatusDto Control,
     CameraStatusDto Camera,
     SensorBridgeStatusDto Sensors);
+
+public sealed record ModelInfoDto(
+    string ModelId,
+    string Name,
+    string Version,
+    string Source,
+    DateTimeOffset CreatedAtUtc,
+    bool IsActive,
+    string ArtifactPath,
+    string MetadataPath,
+    string MetricsPath);
+
+public sealed record ActivateModelRequest(string ModelId);
+
+public sealed record StartAutopilotRequest(
+    string ClientId,
+    string RuntimeMode,
+    string? AgentId = null,
+    string? ModelId = null,
+    int? LoopIntervalMs = null);
+
+public sealed record StopAutopilotRequest(
+    string? ClientId = null,
+    string? RuntimeMode = null);
+
+public sealed record AutopilotStatusDto(
+    bool IsRunning,
+    string? ClientId,
+    string? RuntimeMode,
+    string? AgentId,
+    string? ModelId,
+    DateTimeOffset? StartedAtUtc,
+    DateTimeOffset? LastStepAtUtc,
+    long StepsTotal,
+    long CommandsSent,
+    string? LastCommand,
+    float LastThrottle,
+    float LastSteer,
+    string? LastError,
+    string Mode);

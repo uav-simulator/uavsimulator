@@ -28,6 +28,8 @@
 - `rusim runtime remove latest`
 - `rusim scenario validate configs/scenarios/ks0223-demo.yaml`
 - `rusim scenario reset configs/scenarios/ks0223-demo.yaml --base-url http://127.0.0.1:8000`
+- `rusim scenario validate configs/scenarios/ab-corridor-v1.yaml`
+- `rusim scenario reset configs/scenarios/ab-corridor-v1.yaml --base-url http://127.0.0.1:8000`
 - `rusim step --base-url http://127.0.0.1:8000 --throttle 0.2 --steer 0.1`
 
 CLI нужен как минимальный продуктовый entrypoint для:
@@ -89,6 +91,16 @@ Registry build-артефактов и runtime state:
 - Native запуск: `make ros-bridge`
 - Mock запуск без ROS: `make ros-mock`
 - Docker demo flow: `make demo-up` + `make demo-status`
+
+## Training artifacts (A->B)
+- Док: `python/training/README.md`
+- Генерация baseline ONNX:
+  - `python3 -m pip install onnx numpy`
+  - `python3 python/training/build_ab_policy_artifact.py`
+- Выход:
+  - `python/training/artifacts/ab_corridor_policy_v1/ab_corridor_policy_v1.onnx`
+  - `metadata.json`
+  - `metrics.json`
 
 ## Next steps
 - Добавить helpers для типизированных telemetry DTO в Python.

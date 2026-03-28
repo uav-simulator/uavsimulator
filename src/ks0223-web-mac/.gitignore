@@ -8,3 +8,6 @@ frontend/dist/
 
 # Runtime logs
 logs/session_*.jsonl
+
+# Backend runtime model registry data (local state)
+backend/runtime-data/
