@@ -46,6 +46,23 @@ curl -X POST "http://localhost:5058/api/command" \
   -H "content-type: application/json" \
   -d '{"clientId":"tab-a","runtimeMode":"unity-sim","command":"DirForward","agentId":"car-a"}'
 
+# model upload
+curl -X POST "http://localhost:5058/api/models/upload" \
+  -F "file=@ab_corridor_policy_v1.onnx" \
+  -F "name=ab-corridor-policy-v1" \
+  -F "version=1.0.0" \
+  -F "source=python-rl-api"
+
+# activate model
+curl -X POST "http://localhost:5058/api/models/activate" \
+  -H "content-type: application/json" \
+  -d '{"modelId":"model-20260328-xxxx"}'
+
+# start autopilot
+curl -X POST "http://localhost:5058/api/autopilot/start" \
+  -H "content-type: application/json" \
+  -d '{"clientId":"tab-a","runtimeMode":"unity-sim","agentId":"car-a","loopIntervalMs":140}'
+
 # unity world-level selection (track/vehicle/agents reset)
 curl -X POST "http://localhost:5058/api/unity/runtime-selection" \
   -H "content-type: application/json" \
@@ -71,6 +88,19 @@ curl -X POST "http://localhost:5058/api/unity/client-selection" \
 - `disconnect` отцепляет только этого клиента; world останавливается, когда attached clients = 0.
 - `runtime-selection` меняет world config (track/vehicle/agents).
 - `client-selection` меняет только выбор agent для этой вкладки (control/camera), без reset.
+
+## Model lifecycle API (v1)
+
+- `POST /api/models/upload` — multipart upload (`file`, optional `name/version/source/metadata/metrics`).
+- `GET /api/models` — список моделей.
+- `GET /api/models/active` — активная модель.
+- `POST /api/models/activate` — сделать модель активной.
+- `POST /api/autopilot/start` — запустить inference loop.
+- `POST /api/autopilot/stop` — остановить loop.
+- `GET /api/autopilot/status` — текущий статус автопилота.
+
+Manual safety:
+- Любая ручная команда через `/api/command` автоматически останавливает автопилот для данного `clientId/runtimeMode`.
 
 ## Real robot camera bootstrap
 

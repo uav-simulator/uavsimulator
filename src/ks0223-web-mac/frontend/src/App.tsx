@@ -4,12 +4,16 @@ import { AppBar, Box, Container, CssBaseline, Tab, Tabs, Toolbar, Typography } f
 import { createTheme, ThemeProvider } from '@mui/material/styles'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
+  activateModel,
   cameraMjpegUrl,
   connectPi,
   disconnectPi,
+  fetchActiveModel,
+  fetchAutopilotStatus,
   fetchCameraStatus,
   fetchHealth,
   fetchLogFiles,
+  fetchModels,
   fetchSensorLatest,
   fetchSensorStatus,
   fetchStatus,
@@ -20,30 +24,36 @@ import {
   openLogsFolder,
   resolveHubUrl,
   sendCommand,
+  startAutopilot,
   setUnityClientSelection,
   setUnityRuntimeSelection,
+  stopAutopilot,
   setUltrasonicAutoScan,
   setUltrasonicPosition,
   startLogging,
   stopLogging,
+  uploadModelArtifact,
   updateSensorConfig,
 } from './api'
 import { ControlPage } from './pages/ControlPage'
 import { LedPage } from './pages/LedPage'
 import { LogsPage } from './pages/LogsPage'
+import { ModelControlPage } from './pages/ModelControlPage'
 import { SensorsPage } from './pages/SensorsPage'
 import type {
+  AutopilotStatusDto,
   CameraStatusDto,
   HealthDto,
   IncomingMessageDto,
   LogFileInfo,
+  ModelInfoDto,
   SensorBridgeStatusDto,
   SensorTelemetryDto,
   StatusDto,
   UnityRuntimeCatalogDto,
 } from './types'
 
-type TabKey = 'dashboard' | 'sensors' | 'led' | 'logs'
+type TabKey = 'dashboard' | 'sensors' | 'led' | 'logs' | 'models'
 type RuntimeMode = 'real-robot' | 'unity-sim'
 type UnityAgentDraft = { agentId?: string; vehicleId?: string; isPrimary?: boolean }
 type UnityPendingSelection = { trackId: string; vehicleId: string; cameraMode: string; agents: UnityAgentDraft[] }
@@ -256,6 +266,9 @@ function App() {
   const [health, setHealth] = useState<HealthDto | null>(null)
   const [sensorStatus, setSensorStatus] = useState<SensorBridgeStatusDto | null>(null)
   const [sensorTelemetry, setSensorTelemetry] = useState<SensorTelemetryDto | null>(null)
+  const [models, setModels] = useState<ModelInfoDto[]>([])
+  const [activeModel, setActiveModel] = useState<ModelInfoDto | null>(null)
+  const [autopilotStatus, setAutopilotStatus] = useState<AutopilotStatusDto | null>(null)
   const [busy, setBusy] = useState(false)
   const [tab, setTab] = useState<TabKey>('dashboard')
   const [selectedRuntimeMode, setSelectedRuntimeMode] = useState<RuntimeMode>(() => {
@@ -327,6 +340,17 @@ function App() {
     setSensorStatus(nextSensorStatus)
     setSensorTelemetry(nextSensorTelemetry)
   }, [clientInstanceId, selectedRuntimeMode])
+
+  const syncModelControl = useCallback(async () => {
+    const [nextModels, nextActiveModel, nextAutopilot] = await Promise.all([
+      fetchModels(),
+      fetchActiveModel(),
+      fetchAutopilotStatus(),
+    ])
+    setModels(nextModels)
+    setActiveModel(nextActiveModel)
+    setAutopilotStatus(nextAutopilot)
+  }, [])
 
   const syncUnityCatalog = useCallback(
     async (hostOverride?: string, portOverride?: number) => {
@@ -417,6 +441,7 @@ function App() {
     void syncStatus()
     void syncFiles()
     void syncDiagnostics()
+    void syncModelControl()
 
     const hub = new HubConnectionBuilder()
       .withUrl(resolveHubUrl())
@@ -453,7 +478,7 @@ function App() {
     return () => {
       void hub.stop()
     }
-  }, [clientInstanceId, syncDiagnostics, syncFiles, syncStatus])
+  }, [clientInstanceId, syncDiagnostics, syncFiles, syncModelControl, syncStatus])
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -464,6 +489,16 @@ function App() {
       window.clearInterval(timer)
     }
   }, [syncDiagnostics])
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      void syncModelControl()
+    }, 4000)
+
+    return () => {
+      window.clearInterval(timer)
+    }
+  }, [syncModelControl])
 
   useEffect(() => {
     window.localStorage.setItem(RUNTIME_MODE_STORAGE_KEY, selectedRuntimeMode)
@@ -862,6 +897,59 @@ function App() {
     await syncDiagnostics()
   }, [clientInstanceId, selectedRuntimeMode, syncDiagnostics])
 
+  const handleModelUpload = useCallback(
+    async (payload: {
+      file: File
+      name?: string
+      version?: string
+      source?: string
+      metadata?: string
+      metrics?: string
+    }) => {
+      await guarded(async () => {
+        await uploadModelArtifact(payload)
+        await syncModelControl()
+      })
+    },
+    [guarded, syncModelControl],
+  )
+
+  const handleModelActivate = useCallback(
+    async (modelId: string) => {
+      await guarded(async () => {
+        await activateModel(modelId)
+        await syncModelControl()
+      })
+    },
+    [guarded, syncModelControl],
+  )
+
+  const handleAutopilotStart = useCallback(
+    async (payload: { modelId?: string; agentId?: string; loopIntervalMs?: number }) => {
+      await guarded(async () => {
+        await startAutopilot({
+          clientId: clientInstanceId,
+          runtimeMode: selectedRuntimeMode,
+          modelId: payload.modelId,
+          agentId: payload.agentId,
+          loopIntervalMs: payload.loopIntervalMs,
+        })
+        await syncModelControl()
+      })
+    },
+    [clientInstanceId, guarded, selectedRuntimeMode, syncModelControl],
+  )
+
+  const handleAutopilotStop = useCallback(async () => {
+    await guarded(async () => {
+      await stopAutopilot({
+        clientId: clientInstanceId,
+        runtimeMode: selectedRuntimeMode,
+      })
+      await syncModelControl()
+    })
+  }, [clientInstanceId, guarded, selectedRuntimeMode, syncModelControl])
+
   const content = useMemo(() => {
     if (tab === 'logs') {
       return (
@@ -895,6 +983,24 @@ function App() {
           onSetPattern={handleLedSetPattern}
           onSetCustomFrame={handleLedSetCustomFrame}
           onClear={handleLedClear}
+        />
+      )
+    }
+
+    if (tab === 'models') {
+      return (
+        <ModelControlPage
+          models={models}
+          activeModel={activeModel}
+          autopilot={autopilotStatus}
+          runtimeMode={activeRuntimeMode}
+          unityControlAgentId={unityControlAgentId}
+          busy={busy}
+          onRefresh={syncModelControl}
+          onUpload={handleModelUpload}
+          onActivate={handleModelActivate}
+          onStartAutopilot={handleAutopilotStart}
+          onStopAutopilot={handleAutopilotStop}
         />
       )
     }
@@ -965,10 +1071,14 @@ function App() {
     sensorStatus,
     sensorTelemetry,
     files,
+    models,
+    activeModel,
+    autopilotStatus,
     handleStartLogging,
     handleStopLogging,
     handleOpenFolder,
     syncFiles,
+    syncModelControl,
     busy,
     selectedRuntimeMode,
     activeRuntimeMode,
@@ -1000,6 +1110,10 @@ function App() {
     handleLedSetPattern,
     handleLedSetCustomFrame,
     handleLedClear,
+    handleModelUpload,
+    handleModelActivate,
+    handleAutopilotStart,
+    handleAutopilotStop,
   ])
 
   return (
@@ -1029,6 +1143,7 @@ function App() {
             <Tab value="dashboard" label="Пульт и телеметрия" />
             <Tab value="sensors" label="Сенсоры KS0223" />
             <Tab value="led" label="LED панель" />
+            <Tab value="models" label="Model Control" />
             <Tab value="logs" label="Логи" />
           </Tabs>
 

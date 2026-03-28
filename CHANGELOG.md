@@ -19,6 +19,10 @@
 #### Added
 - Добавлен отдельный журнал изменений спринта: `docs/report/prediploma-practice/sprint-1-changelog.md`.
 - Добавлена задача `docs/tasks/task-64-sprint-1-product-hardening-and-evidence.md` для доведения продуктового контура до следующей контрольной точки практики.
+- Добавлен backend model lifecycle v1: реестр моделей (`upload/list/activate/active`) и autopilot API (`start/stop/status`).
+- Добавлена frontend вкладка `Model Control` для загрузки/активации моделей и управления автопилотом.
+- Добавлен baseline training builder: `python/training/build_ab_policy_artifact.py`.
+- Добавлены материалы преддипломной практики для следующего этапа: `sprint-2/3 changelog`, черновики `interim/final` и генераторы `build_interim_report_2.py`, `build_final_report.py`.
 
 #### Changed
 - Зафиксированы и систематизированы выполненные работы по преддипломной практике за период 2026-03-21 — 2026-03-28 в формате, пригодном для отправки в электронный курс.

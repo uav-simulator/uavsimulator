@@ -14,10 +14,18 @@
 ## Состав папки
 - `НМГоровенко_ПреддипломнаяПрактика_ПромежуточныйОтчет1.docx` — итоговый DOCX промежуточного отчета №1.
 - `build_interim_report_1.py` — генератор итогового DOCX на основе принятого отчета-донора.
+- `build_interim_report_2.py` — генератор промежуточного отчета №2 (donor-first).
+- `build_final_report.py` — генератор финального отчета (donor-first).
 - `sprint-1-changelog.md` — журнал изменений по Спринту 1 (21.03.2026-04.04.2026) для загрузки в электронный курс.
+- `sprint-2-changelog.md` — журнал изменений по Спринту 2 (05.04.2026-18.04.2026).
+- `sprint-3-changelog.md` — журнал изменений по Спринту 3 (19.04.2026-02.05.2026).
+- `model-lifecycle-contract.md` — контракт train/install/run и API модели.
+- `ab-corridor-simulation-spec.md` — спецификация сценария A->B и KPI.
 - `individual_assignment_draft.md` — рекомендуемый черновик индивидуального задания.
 - `calendar_plan.md` — календарный план прохождения практики с привязкой к контрольным точкам курса.
 - `interim_report_1_draft.md` — заготовка промежуточного отчета №1.
+- `interim_report_2_draft.md` — заготовка промежуточного отчета №2.
+- `final_report_draft.md` — заготовка финального отчета.
 - `source/vypiska_trebovaniya_md_2026.pdf` — приложенная выписка по магистерской диссертации.
 - `source/prediplomnaya_praktika_programma.pdf` — приложенная программа преддипломной практики.
 
@@ -38,3 +46,10 @@
 - Итоговый файл называть по шаблону `ИнициалыФамилия_ТипДокумента_ВерсияИлиЭтап.docx`.
 - Перед сдачей проверять итог через Word/PDF-рендер, особенно титульник, содержание, переходы страниц и подписи.
 - Если автоматическое содержание в Word ведет себя нестабильно, фиксировать итоговый вариант как детерминированный статический блок.
+
+## Сборка DOCX
+- Использовать проектный `.venv` с `python-docx`.
+- Команды:
+  - `.venv/bin/python docs/report/prediploma-practice/build_interim_report_1.py`
+  - `.venv/bin/python docs/report/prediploma-practice/build_interim_report_2.py`
+  - `.venv/bin/python docs/report/prediploma-practice/build_final_report.py`

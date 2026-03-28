@@ -149,6 +149,13 @@ Backend слушает: `http://localhost:5058`
   - body: `{ "clientId":"tab-a","runtimeMode":"unity-sim","trackId":"...","vehicleId":"...","cameraMode":"spectator","agents":[],"applyImmediately":true }`
 - `POST /api/unity/client-selection`
   - body: `{ "clientId":"tab-a","runtimeMode":"unity-sim","controlAgentId":"car-a","cameraAgentId":"car-a" }`
+- `POST /api/models/upload` (`multipart/form-data`, поле `file=.onnx`)
+- `GET /api/models`
+- `GET /api/models/active`
+- `POST /api/models/activate` body: `{ "modelId":"..." }`
+- `POST /api/autopilot/start` body: `{ "clientId":"tab-a","runtimeMode":"unity-sim","agentId":"car-a" }`
+- `POST /api/autopilot/stop` body: `{ "clientId":"tab-a","runtimeMode":"unity-sim" }`
+- `GET /api/autopilot/status`
 - SignalR hub: `/hub/telemetry`
 
 Важно: в SignalR после подключения клиент вызывает `BindClient(clientId)`. Для `real-robot` события идут в `client:{clientId}`, для `unity-sim` — в group shared world endpoint-а.

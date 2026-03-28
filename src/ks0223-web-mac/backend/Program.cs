@@ -28,6 +28,8 @@ builder.Services.AddCors(options =>
 builder.Services.AddSingleton<SessionLogger>();
 builder.Services.AddSingleton<TelemetryParser>();
 builder.Services.AddSingleton<RuntimeSessionManager>();
+builder.Services.AddSingleton<ModelRegistryService>();
+builder.Services.AddSingleton<AutopilotService>();
 builder.Services.AddHostedService(serviceProvider => serviceProvider.GetRequiredService<RuntimeSessionManager>());
 
 var app = builder.Build();
@@ -78,6 +80,91 @@ app.MapPost("/api/connection/disconnect", async (DisconnectRequest request, Runt
     {
         return Results.BadRequest(new { error = ex.Message });
     }
+});
+
+app.MapPost("/api/models/upload", async (HttpRequest http, ModelRegistryService modelRegistry, CancellationToken cancellationToken) =>
+{
+    if (!http.HasFormContentType)
+    {
+        return Results.BadRequest(new { error = "multipart/form-data is required" });
+    }
+
+    try
+    {
+        var form = await http.ReadFormAsync(cancellationToken);
+        var file = form.Files.GetFile("file");
+        if (file is null || file.Length <= 0)
+        {
+            return Results.BadRequest(new { error = "Model artifact file is required in `file` field" });
+        }
+
+        await using var stream = file.OpenReadStream();
+        var uploaded = await modelRegistry.UploadAsync(
+            stream,
+            file.FileName,
+            ReadFormValue(form, "name"),
+            ReadFormValue(form, "version"),
+            ReadFormValue(form, "source"),
+            ReadFormValue(form, "metadata"),
+            ReadFormValue(form, "metrics"),
+            cancellationToken);
+        return Results.Ok(uploaded);
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+});
+
+app.MapGet("/api/models", (ModelRegistryService modelRegistry) =>
+{
+    var models = modelRegistry.ListModels();
+    return Results.Ok(models);
+});
+
+app.MapGet("/api/models/active", (ModelRegistryService modelRegistry) =>
+{
+    var model = modelRegistry.GetActiveModel();
+    return model is null
+        ? Results.NotFound(new { error = "Active model is not selected" })
+        : Results.Ok(model);
+});
+
+app.MapPost("/api/models/activate", (ActivateModelRequest request, ModelRegistryService modelRegistry) =>
+{
+    try
+    {
+        var active = modelRegistry.Activate(request.ModelId);
+        return Results.Ok(active);
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+});
+
+app.MapPost("/api/autopilot/start", async (StartAutopilotRequest request, AutopilotService autopilotService, CancellationToken cancellationToken) =>
+{
+    try
+    {
+        var status = await autopilotService.StartAsync(request, cancellationToken);
+        return Results.Ok(status);
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+});
+
+app.MapPost("/api/autopilot/stop", async (StopAutopilotRequest request, AutopilotService autopilotService, CancellationToken cancellationToken) =>
+{
+    var status = await autopilotService.StopAsync(request, cancellationToken);
+    return Results.Ok(status);
+});
+
+app.MapGet("/api/autopilot/status", (AutopilotService autopilotService) =>
+{
+    return Results.Ok(autopilotService.GetStatus());
 });
 
 app.MapGet("/api/connection/target", (HttpRequest http, RuntimeSessionManager runtimeSessionManager) =>
@@ -301,8 +388,9 @@ app.MapGet("/api/camera/mjpeg", async (HttpContext context, RuntimeSessionManage
     }
 });
 
-app.MapPost("/api/command", async (CommandRequest request, RuntimeSessionManager runtimeSessionManager, CancellationToken cancellationToken) =>
+app.MapPost("/api/command", async (CommandRequest request, RuntimeSessionManager runtimeSessionManager, AutopilotService autopilotService, CancellationToken cancellationToken) =>
 {
+    await autopilotService.HandleManualOverrideAsync(request.ClientId, request.RuntimeMode, cancellationToken);
     var response = await runtimeSessionManager.SendCommandAsync(
         request.ClientId,
         request.RuntimeMode,
@@ -586,4 +674,15 @@ static string ReadRuntimeMode(HttpRequest request, JsonElement body)
     }
 
     return runtimeMode.Trim();
+}
+
+static string? ReadFormValue(IFormCollection form, string key)
+{
+    if (!form.TryGetValue(key, out var value))
+    {
+        return null;
+    }
+
+    var raw = value.FirstOrDefault();
+    return string.IsNullOrWhiteSpace(raw) ? null : raw.Trim();
 }

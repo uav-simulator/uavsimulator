@@ -38,3 +38,8 @@ npm run build
 - Разделение Unity API:
   - `/api/unity/runtime-selection` — world-level (track/vehicle/agents/reset);
   - `/api/unity/client-selection` — client-level (control/camera agent без reset).
+- Вкладка `Model Control`:
+  - загрузка ONNX в backend registry;
+  - активация версии модели;
+  - запуск/остановка autopilot loop;
+  - просмотр состояния (`manual/autopilot`, шаги, последняя команда, last error).

@@ -38,11 +38,14 @@
 
 ### 25.03.2026-28.03.2026
 - Систематизирована продуктовая документация проекта (wiki/product-first слой) и актуализированы канонические документы по установке, запуску, архитектуре, API, плагинам, релизной модели и контрактам.
-- Подготовлена база для продолжения Спринта 1: формальный журнал изменений и приоритизированный фокус на продуктовую надежность.
+- Реализован v1-срез model lifecycle в продукте: backend API для моделей и автопилота, web-ui вкладка `Model Control`, baseline training artifact builder.
+- Подготовлен полный пакет материалов для следующих этапов: changelog Спринт 2/3, черновики отчетов, генераторы DOCX, спецификация карты `A->B` и контракт lifecycle.
 
 Артефакты:
 - `docs/tasks/task-63-product-wiki-rebuild-and-actualization.md`
 - `docs/tasks/task-64-sprint-1-product-hardening-and-evidence.md`
+- `docs/tasks/task-65-model-lifecycle-api-and-web-control.md`
+- `docs/tasks/task-66-prediploma-sprint2-sprint3-and-report-pack.md`
 - `CHANGELOG.md`
 
 ## Что делаем до закрытия спринта (29.03.2026-04.04.2026)
