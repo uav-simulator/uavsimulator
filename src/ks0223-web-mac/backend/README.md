@@ -53,6 +53,9 @@ curl -X POST "http://localhost:5058/api/models/upload" \
   -F "version=1.0.0" \
   -F "source=python-rl-api"
 
+# or via product CLI
+./rusim model install python/training/artifacts/ab_corridor_policy_v1/ab_corridor_policy_v1.onnx
+
 # activate model
 curl -X POST "http://localhost:5058/api/models/activate" \
   -H "content-type: application/json" \
@@ -97,7 +100,7 @@ curl -X POST "http://localhost:5058/api/unity/client-selection" \
 - `POST /api/models/activate` — сделать модель активной.
 - `POST /api/autopilot/start` — запустить inference loop.
 - `POST /api/autopilot/stop` — остановить loop.
-- `GET /api/autopilot/status` — текущий статус автопилота.
+- `GET /api/autopilot/status` — текущий статус автопилота; поддерживает optional `clientId/runtimeMode` для scoped UI-состояния.
 
 Manual safety:
 - Любая ручная команда через `/api/command` автоматически останавливает автопилот для данного `clientId/runtimeMode`.

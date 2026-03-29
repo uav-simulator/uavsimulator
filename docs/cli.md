@@ -10,7 +10,7 @@
 Актуальная reference-страница по текущим командам CLI.
 
 **Проверено по**  
-`./rusim --help`, `./rusim server --help`, `./rusim runtime --help`, `./rusim scenario --help`
+`./rusim --help`, `./rusim model --help`, `./rusim server --help`, `./rusim runtime --help`, `./rusim scenario --help`
 
 ## Назначение
 `rusim` — канонический CLI платформы для:
@@ -55,6 +55,7 @@ rusim help
 - `list`
 - `inspect`
 - `reset`
+- `model`
 - `runtime`
 - `server`
 - `scenario`
@@ -205,7 +206,36 @@ rusim inspect vehicle vehicle.arcade.blue.v1 --base-url http://127.0.0.1:8000
 - подключение идёт к общему runtime;
 - выбор активной машинки делается через `rusim reset`.
 
-## 7. Прямой выбор track и vehicle
+## 7. Модели управления
+
+```bash
+rusim model install python/training/artifacts/ab_corridor_policy_v1/ab_corridor_policy_v1.onnx
+rusim model list
+rusim model active
+rusim model activate model-20260329-xxxx
+```
+
+Назначение:
+- загружать `.onnx` модель в backend model registry через продуктовый CLI-контур;
+- автоматически подхватывать соседние `metadata.json` и `metrics.json`, если они лежат рядом с артефактом;
+- активировать нужную модель перед запуском из `web-ui`.
+
+Поддерживаемые подкоманды:
+- `rusim model install <artifact.onnx>`
+- `rusim model list`
+- `rusim model active`
+- `rusim model activate <model_id>`
+
+Аргументы `model install`:
+- `--backend-url`
+- `--name`
+- `--version`
+- `--source`
+- `--metadata`
+- `--metrics`
+- `--activate`
+
+## 8. Прямой выбор track и vehicle
 
 ```bash
 rusim reset --base-url http://127.0.0.1:8000 --track-id track.roadsystem_arena.v1 --vehicle-id vehicle.arcade.blue.v1
