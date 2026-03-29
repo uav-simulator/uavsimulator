@@ -30,3 +30,12 @@ curl -X POST "http://localhost:5058/api/models/upload" \
   -F "metadata=$(cat python/training/artifacts/ab_corridor_policy_v1/metadata.json)" \
   -F "metrics=$(cat python/training/artifacts/ab_corridor_policy_v1/metrics.json)"
 ```
+
+## Установка через rusim
+
+```bash
+./rusim model install python/training/artifacts/ab_corridor_policy_v1/ab_corridor_policy_v1.onnx
+./rusim model active
+```
+
+`rusim` автоматически подхватит соседние `metadata.json` и `metrics.json`, если они лежат рядом с `.onnx`.

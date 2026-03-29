@@ -101,6 +101,34 @@ def build_parser() -> argparse.ArgumentParser:
     reset_cmd.add_argument("--seed", type=int, default=0)
     reset_cmd.add_argument("--time-scale", type=float, default=1.0)
 
+    model = subparsers.add_parser("model", help="Install and manage backend model registry entries.")
+    model.set_defaults(_parser=model)
+    model_sub = model.add_subparsers(dest="model_command")
+
+    model_install = model_sub.add_parser("install", help="Upload ONNX model artifact into backend model registry.")
+    model_install.set_defaults(_parser=model_install)
+    model_install.add_argument("artifact")
+    model_install.add_argument("--backend-url", default="http://127.0.0.1:5058")
+    model_install.add_argument("--name", default="")
+    model_install.add_argument("--version", default="")
+    model_install.add_argument("--source", default="rusim-cli")
+    model_install.add_argument("--metadata", default="")
+    model_install.add_argument("--metrics", default="")
+    model_install.add_argument("--activate", action="store_true", help="Kept for explicit product flow; uploaded model becomes active.")
+
+    model_list = model_sub.add_parser("list", help="List models from backend registry.")
+    model_list.set_defaults(_parser=model_list)
+    model_list.add_argument("--backend-url", default="http://127.0.0.1:5058")
+
+    model_activate = model_sub.add_parser("activate", help="Activate model in backend registry.")
+    model_activate.set_defaults(_parser=model_activate)
+    model_activate.add_argument("model_id")
+    model_activate.add_argument("--backend-url", default="http://127.0.0.1:5058")
+
+    model_active = model_sub.add_parser("active", help="Show active model from backend registry.")
+    model_active.set_defaults(_parser=model_active)
+    model_active.add_argument("--backend-url", default="http://127.0.0.1:5058")
+
     runtime = subparsers.add_parser("runtime", help="Build and inspect standalone runtime.")
     runtime.set_defaults(_parser=runtime)
     runtime_sub = runtime.add_subparsers(dest="runtime_command")
@@ -259,6 +287,8 @@ def main(argv: list[str] | None = None) -> int:
             return _inspect_entity(args)
         if args.command == "reset":
             return _reset_runtime(args)
+        if args.command == "model":
+            return _model(args)
         if args.command == "runtime":
             return _runtime(args)
         if args.command == "server":
@@ -593,6 +623,21 @@ def _runtime(args: argparse.Namespace) -> int:
     raise ValueError(f"Unknown runtime command: {args.runtime_command}")
 
 
+def _model(args: argparse.Namespace) -> int:
+    if not args.model_command:
+        args._parser.print_help()
+        return 0
+    if args.model_command == "install":
+        return _model_install(args)
+    if args.model_command == "list":
+        return _model_list(args)
+    if args.model_command == "activate":
+        return _model_activate(args)
+    if args.model_command == "active":
+        return _model_active(args)
+    raise ValueError(f"Unknown model command: {args.model_command}")
+
+
 def _server(args: argparse.Namespace) -> int:
     if not args.server_command:
         args._parser.print_help()
@@ -685,6 +730,75 @@ def _step(base_url: str, throttle: float, steer: float, brake: float, agent_id: 
             indent=2,
         )
     )
+    return 0
+
+
+def _model_install(args: argparse.Namespace) -> int:
+    artifact_path = Path(args.artifact).expanduser().resolve()
+    if not artifact_path.exists():
+        raise FileNotFoundError(f"Model artifact not found: {artifact_path}")
+    if artifact_path.suffix.lower() != ".onnx":
+        raise ValueError("Only .onnx artifacts are supported")
+
+    metadata_path = _resolve_optional_model_sidecar(args.metadata, artifact_path, "metadata.json")
+    metrics_path = _resolve_optional_model_sidecar(args.metrics, artifact_path, "metrics.json")
+    metadata_json = metadata_path.read_text(encoding="utf-8") if metadata_path else ""
+    metrics_json = metrics_path.read_text(encoding="utf-8") if metrics_path else ""
+
+    client = SimClient(base_url=args.backend_url)
+    uploaded = client.upload_model(
+        artifact_path,
+        name=args.name.strip(),
+        version=args.version.strip(),
+        source=args.source.strip(),
+        metadata_json=metadata_json,
+        metrics_json=metrics_json,
+    )
+
+    activated = uploaded
+    if args.activate and uploaded.get("modelId"):
+        activated = client.activate_model(str(uploaded["modelId"]))
+
+    result = {
+        "backendUrl": args.backend_url,
+        "artifact": str(artifact_path),
+        "metadata": str(metadata_path) if metadata_path else None,
+        "metrics": str(metrics_path) if metrics_path else None,
+        "uploaded": uploaded,
+        "active": activated,
+    }
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0
+
+
+def _model_list(args: argparse.Namespace) -> int:
+    client = SimClient(base_url=args.backend_url)
+    models = client.list_models()
+    print(
+        json.dumps(
+            {
+                "backendUrl": args.backend_url,
+                "count": len(models) if isinstance(models, list) else None,
+                "items": models,
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
+    return 0
+
+
+def _model_activate(args: argparse.Namespace) -> int:
+    client = SimClient(base_url=args.backend_url)
+    active = client.activate_model(args.model_id)
+    print(json.dumps({"backendUrl": args.backend_url, "active": active}, ensure_ascii=False, indent=2))
+    return 0
+
+
+def _model_active(args: argparse.Namespace) -> int:
+    client = SimClient(base_url=args.backend_url)
+    active = client.get_active_model()
+    print(json.dumps({"backendUrl": args.backend_url, "active": active}, ensure_ascii=False, indent=2))
     return 0
 
 
@@ -1181,6 +1295,17 @@ def _ensure_executable_file(path: Path) -> Path:
         return path
     path.chmod(mode | 0o755)
     return path
+
+
+def _resolve_optional_model_sidecar(raw_path: str, artifact_path: Path, default_name: str) -> Path | None:
+    if raw_path.strip():
+        sidecar = Path(raw_path).expanduser().resolve()
+        if not sidecar.exists():
+            raise FileNotFoundError(f"Model sidecar file not found: {sidecar}")
+        return sidecar
+
+    candidate = artifact_path.with_name(default_name)
+    return candidate if candidate.exists() else None
 
 
 def _path_contains(path_entry: str, path_env: str) -> bool:
