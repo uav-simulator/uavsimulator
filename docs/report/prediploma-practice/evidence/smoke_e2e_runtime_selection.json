@@ -1,0 +1,15 @@
+{
+  "selectedTrackId": "track.basic_arena.v1",
+  "selectedVehicleId": "vehicle.prometeo.sport.v1",
+  "selectedCameraMode": "spectator",
+  "selectedControlAgentId": "ego",
+  "selectedCameraAgentId": "ego",
+  "agents": [
+    {
+      "agentId": "ego",
+      "vehicleId": "vehicle.prometeo.sport.v1",
+      "displayName": "vehicle.prometeo.sport.v1",
+      "isPrimary": true
+    }
+  ]
+}

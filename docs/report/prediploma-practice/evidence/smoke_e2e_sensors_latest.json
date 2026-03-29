@@ -1,0 +1,33 @@
+{
+  "timestamp": "2026-03-29T12:03:09.329373+00:00",
+  "sourceUrl": "http://127.0.0.1:8000/step",
+  "flat": {
+    "drive.left_pwm_norm": "0",
+    "drive.right_pwm_norm": "0",
+    "sensor.speedometer.mps": "0",
+    "sensor.ultrasonic.front.m": "3.5",
+    "sensor.line_tracker.s1_norm": "0.333",
+    "sensor.line_tracker.s2_norm": "0.667",
+    "sensor.line_tracker.s3_norm": "1",
+    "sensor.line_tracker.s4_norm": "0.667",
+    "sensor.line_tracker.s5_norm": "0.333",
+    "power.battery.voltage_v": "8.4",
+    "power.battery.current_a": "0.114",
+    "power.motor.estimated_w": "0.96",
+    "control.brake_norm": "0",
+    "config.auto_scan_enabled": "false",
+    "config.ultrasonic_servo_pin": "5",
+    "ultrasonic.scan_servo_angle_deg": "90",
+    "camera.pan_deg": "90",
+    "camera.tilt_deg": "90",
+    "camera.mode": "spectator",
+    "control.agent_id": "ego",
+    "ultrasonic.distance_cm": "350",
+    "ultrasonic.scan.left_cm": "350",
+    "ultrasonic.scan.center_cm": "350",
+    "ultrasonic.scan.right_cm": "350",
+    "tracking.left": "0",
+    "tracking.center": "1",
+    "tracking.right": "0"
+  }
+}

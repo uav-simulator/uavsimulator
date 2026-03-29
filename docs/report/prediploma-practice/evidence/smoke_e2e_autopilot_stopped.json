@@ -1,0 +1,15 @@
+{
+  "isRunning": false,
+  "clientId": "smoke-e2e",
+  "runtimeMode": "unity-sim",
+  "agentId": "ego",
+  "modelId": "model-20260329-120319-adfe6a2d",
+  "stepsTotal": 22,
+  "commandsSent": 22,
+  "lastCommand": "DirForward",
+  "lastThrottle": 0.6896039,
+  "lastSteer": -1.9907949E-9,
+  "lastError": null,
+  "mode": "manual",
+  "lastStepAtUtc": "2026-03-29T12:03:22.990875+00:00"
+}

@@ -1,0 +1,10 @@
+{
+  "desiredConnection": true,
+  "tcpConnected": true,
+  "runtimeMode": "unity-sim",
+  "runtimeLabel": "vehicle.arcade.blue.v1",
+  "targetHost": "127.0.0.1",
+  "targetPort": 8000,
+  "lastError": null,
+  "hasParsedTelemetry": true
+}
