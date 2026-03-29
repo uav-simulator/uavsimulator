@@ -264,8 +264,16 @@ export async function stopAutopilot(payload?: { clientId?: string; runtimeMode?:
   return handleJson<AutopilotStatusDto>(response)
 }
 
-export async function fetchAutopilotStatus(): Promise<AutopilotStatusDto> {
-  const response = await fetch(withBase('/api/autopilot/status'))
+export async function fetchAutopilotStatus(clientId?: string, runtimeMode?: string): Promise<AutopilotStatusDto> {
+  const params = new URLSearchParams()
+  if (clientId?.trim()) {
+    params.set('clientId', clientId.trim())
+  }
+  if (runtimeMode?.trim()) {
+    params.set('runtimeMode', runtimeMode.trim())
+  }
+  const suffix = params.size > 0 ? `?${params.toString()}` : ''
+  const response = await fetch(withBase(`/api/autopilot/status${suffix}`))
   return handleJson<AutopilotStatusDto>(response)
 }
 

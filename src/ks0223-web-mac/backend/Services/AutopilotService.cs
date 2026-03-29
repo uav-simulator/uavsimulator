@@ -27,10 +27,28 @@ public sealed class AutopilotService
         this.logger = logger;
     }
 
-    public AutopilotStatusDto GetStatus()
+    public AutopilotStatusDto GetStatus(string? clientId = null, string? runtimeMode = null)
     {
         lock (gate)
         {
+            if (state.IsRunning)
+            {
+                if (!string.IsNullOrWhiteSpace(clientId) &&
+                    !string.Equals(state.ClientId, clientId.Trim(), StringComparison.Ordinal))
+                {
+                    return AutopilotState.Stopped().ToDto();
+                }
+
+                if (!string.IsNullOrWhiteSpace(runtimeMode))
+                {
+                    var normalizedMode = RuntimeModes.Normalize(runtimeMode);
+                    if (!string.Equals(state.RuntimeMode, normalizedMode, StringComparison.Ordinal))
+                    {
+                        return AutopilotState.Stopped().ToDto();
+                    }
+                }
+            }
+
             return state.ToDto();
         }
     }
@@ -151,11 +169,26 @@ public sealed class AutopilotService
         catch (Exception ex)
         {
             logger.LogWarning(ex, "Autopilot loop failed");
+            try
+            {
+                await runtimeSessionManager.SendCommandAsync(
+                    running.ClientId!,
+                    running.RuntimeMode!,
+                    "DirStop",
+                    running.AgentId,
+                    CancellationToken.None);
+            }
+            catch (Exception stopEx)
+            {
+                logger.LogDebug(stopEx, "Failed to send DirStop after autopilot failure");
+            }
+
+            running.Predictor?.Dispose();
             lock (gate)
             {
                 if (ReferenceEquals(state, running))
                 {
-                    running.LastError = ex.Message;
+                    state = AutopilotState.StoppedFrom(running, ex.Message);
                 }
             }
         }
@@ -222,8 +255,9 @@ public sealed class AutopilotService
         {
             if (ReferenceEquals(state, snapshot))
             {
-                state = AutopilotState.Stopped(
-                    lastError: reason == "manual-command" ? "Autopilot stopped by manual override" : null);
+                state = AutopilotState.StoppedFrom(
+                    snapshot,
+                    reason == "manual-command" ? "Autopilot stopped by manual override" : null);
             }
         }
 
@@ -325,41 +359,42 @@ public sealed class AutopilotService
     private sealed class PolicyPredictor : IDisposable
     {
         private readonly ILogger logger;
-        private readonly InferenceSession? onnxSession;
-        private readonly string? inputName;
-        private readonly int inputSize;
+        private readonly InferenceSession? onnxSession = null;
+        private readonly string? inputName = null;
+        private readonly int inputSize = 0;
 
         public PolicyPredictor(ModelRuntimeSpec model, ILogger logger)
         {
             this.logger = logger;
             try
             {
-                if (File.Exists(model.ArtifactPath))
+                if (!File.Exists(model.ArtifactPath))
                 {
-                    onnxSession = new InferenceSession(model.ArtifactPath);
-                    var firstInput = onnxSession.InputMetadata.FirstOrDefault();
-                    inputName = firstInput.Key;
-                    inputSize = ResolveInputSize(firstInput.Value?.Dimensions);
-                    this.logger.LogInformation("Loaded ONNX model {ModelId} from {Path}", model.ModelId, model.ArtifactPath);
+                    throw new InvalidOperationException($"Model artifact not found: {model.ArtifactPath}");
                 }
+
+                onnxSession = new InferenceSession(model.ArtifactPath);
+                var firstInput = onnxSession.InputMetadata.FirstOrDefault();
+                inputName = firstInput.Key;
+                inputSize = ResolveInputSize(firstInput.Value?.Dimensions);
+                if (string.IsNullOrWhiteSpace(inputName))
+                {
+                    throw new InvalidOperationException("ONNX model has no declared inputs");
+                }
+
+                this.logger.LogInformation("Loaded ONNX model {ModelId} from {Path}", model.ModelId, model.ArtifactPath);
             }
             catch (Exception ex)
             {
-                this.logger.LogWarning(ex, "Failed to load ONNX model {ModelId}; fallback heuristic will be used", model.ModelId);
                 onnxSession?.Dispose();
-                onnxSession = null;
-                inputName = null;
-                inputSize = 0;
+                throw new InvalidOperationException(
+                    $"Failed to load ONNX model '{model.ModelId}' for autopilot runtime",
+                    ex);
             }
         }
 
         public (float throttle, float steer) Predict(float[] observation)
         {
-            if (onnxSession is null || string.IsNullOrWhiteSpace(inputName))
-            {
-                return Heuristic(observation);
-            }
-
             try
             {
                 var size = inputSize <= 0 ? observation.Length : inputSize;
@@ -370,17 +405,17 @@ public sealed class AutopilotService
                     tensor[0, index] = observation[index];
                 }
 
-                using var results = onnxSession.Run(new[] { NamedOnnxValue.CreateFromTensor(inputName, tensor) });
+                using var results = onnxSession!.Run(new[] { NamedOnnxValue.CreateFromTensor(inputName!, tensor) });
                 var first = results.FirstOrDefault();
                 if (first is null)
                 {
-                    return Heuristic(observation);
+                    throw new InvalidOperationException("ONNX model produced no outputs");
                 }
 
                 var output = first.AsEnumerable<float>().ToArray();
                 if (output.Length == 0)
                 {
-                    return Heuristic(observation);
+                    throw new InvalidOperationException("ONNX model produced an empty action tensor");
                 }
 
                 var throttle = Math.Clamp(output[0], -1f, 1f);
@@ -389,32 +424,8 @@ public sealed class AutopilotService
             }
             catch (Exception ex)
             {
-                logger.LogDebug(ex, "ONNX inference failed; fallback heuristic will be used for this tick");
-                return Heuristic(observation);
+                throw new InvalidOperationException("ONNX inference failed during autopilot loop", ex);
             }
-        }
-
-        private static (float throttle, float steer) Heuristic(IReadOnlyList<float> observation)
-        {
-            var left = observation.Count > 0 ? observation[0] : 0f;
-            var center = observation.Count > 1 ? observation[1] : 0f;
-            var right = observation.Count > 2 ? observation[2] : 0f;
-            var distanceNorm = observation.Count > 3 ? observation[3] : 0f;
-            var speedNorm = observation.Count > 4 ? observation[4] : 0f;
-
-            var steer = Math.Clamp((right - left) * 1.8f, -1f, 1f);
-            var throttle = distanceNorm < 0.2f ? 0.1f : 0.62f;
-            if (center < 0.35f)
-            {
-                throttle = 0.38f;
-            }
-
-            if (speedNorm > 0.8f)
-            {
-                throttle *= 0.75f;
-            }
-
-            return (throttle, steer);
         }
 
         private static int ResolveInputSize(int[]? dimensions)
@@ -490,6 +501,24 @@ public sealed class AutopilotService
             new()
             {
                 IsRunning = false,
+                LastError = lastError,
+            };
+
+        public static AutopilotState StoppedFrom(AutopilotState previous, string? lastError = null) =>
+            new()
+            {
+                IsRunning = false,
+                ClientId = previous.ClientId,
+                RuntimeMode = previous.RuntimeMode,
+                AgentId = previous.AgentId,
+                ModelId = previous.ModelId,
+                StartedAtUtc = previous.StartedAtUtc,
+                LastStepAtUtc = previous.LastStepAtUtc,
+                StepsTotal = previous.StepsTotal,
+                CommandsSent = previous.CommandsSent,
+                LastCommand = previous.LastCommand,
+                LastThrottle = previous.LastThrottle,
+                LastSteer = previous.LastSteer,
                 LastError = lastError,
             };
 

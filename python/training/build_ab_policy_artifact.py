@@ -30,6 +30,8 @@ METRICS_FILENAME = "metrics.json"
 class PolicyConfig:
     input_size: int = 6
     output_size: int = 2
+    opset_version: int = 10
+    ir_version: int = 10
 
 
 def create_linear_policy_model(config: PolicyConfig) -> onnx.ModelProto:
@@ -81,8 +83,9 @@ def create_linear_policy_model(config: PolicyConfig) -> onnx.ModelProto:
     model = helper.make_model(
         graph,
         producer_name="uav-simulator/python-training",
-        opset_imports=[helper.make_operatorsetid("", 13)],
+        opset_imports=[helper.make_operatorsetid("", config.opset_version)],
     )
+    model.ir_version = config.ir_version
     onnx.checker.check_model(model)
     return model
 
