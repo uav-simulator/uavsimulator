@@ -1,0 +1,329 @@
+{
+  "scenario": "<repo>/configs/scenarios/ab-corridor-v1.yaml",
+  "model": "<repo>/python/training/artifacts/ab_corridor_policy_v1/ab_corridor_policy_v1.onnx",
+  "baseUrl": "http://127.0.0.1:8000",
+  "episodes": 20,
+  "maxSteps": 220,
+  "successCount": 0,
+  "successRate": 0.0,
+  "terminationCounts": {
+    "out_of_bounds": 20
+  },
+  "corridor": {
+    "widthM": 1.2,
+    "oobMarginM": 0.15,
+    "oobThresholdM": 0.75,
+    "goalRadiusM": 1.0,
+    "reachDistanceM": 1.0
+  },
+  "limitations": [
+    "goal_reached и timeout считаются строго по StepResult.done/maxSteps",
+    "out_of_bounds вычисляется внешне по расстоянию до маршрута и corridor.width_m",
+    "collision не экспонируется текущим runtime-контрактом и в эту сводку не входит"
+  ],
+  "averages": {
+    "steps": 203.9
+  },
+  "episodesData": [
+    {
+      "episodeIndex": 0,
+      "seed": 73,
+      "termination": "out_of_bounds",
+      "steps": 203,
+      "routeIndex": 2,
+      "remainingWaypoints": 3,
+      "distanceToTargetM": 3.635,
+      "maxRouteDistanceM": 0.7723,
+      "finalPosition": {
+        "x": -5.6129255294799805,
+        "y": 0.0,
+        "z": -0.027123257517814636
+      }
+    },
+    {
+      "episodeIndex": 1,
+      "seed": 74,
+      "termination": "out_of_bounds",
+      "steps": 211,
+      "routeIndex": 2,
+      "remainingWaypoints": 3,
+      "distanceToTargetM": 3.654,
+      "maxRouteDistanceM": 0.75,
+      "finalPosition": {
+        "x": -5.607913017272949,
+        "y": 0.0,
+        "z": -0.0597238764166832
+      }
+    },
+    {
+      "episodeIndex": 2,
+      "seed": 75,
+      "termination": "out_of_bounds",
+      "steps": 199,
+      "routeIndex": 2,
+      "remainingWaypoints": 3,
+      "distanceToTargetM": 3.816,
+      "maxRouteDistanceM": 0.7565,
+      "finalPosition": {
+        "x": -5.704225540161133,
+        "y": 0.0,
+        "z": -0.1924484819173813
+      }
+    },
+    {
+      "episodeIndex": 3,
+      "seed": 76,
+      "termination": "out_of_bounds",
+      "steps": 203,
+      "routeIndex": 2,
+      "remainingWaypoints": 3,
+      "distanceToTargetM": 3.63,
+      "maxRouteDistanceM": 0.7632,
+      "finalPosition": {
+        "x": -5.6037445068359375,
+        "y": -7.450580596923828e-09,
+        "z": -0.029658762738108635
+      }
+    },
+    {
+      "episodeIndex": 4,
+      "seed": 77,
+      "termination": "out_of_bounds",
+      "steps": 204,
+      "routeIndex": 2,
+      "remainingWaypoints": 3,
+      "distanceToTargetM": 3.654,
+      "maxRouteDistanceM": 0.75,
+      "finalPosition": {
+        "x": -5.607913017272949,
+        "y": 0.0,
+        "z": -0.05972398817539215
+      }
+    },
+    {
+      "episodeIndex": 5,
+      "seed": 78,
+      "termination": "out_of_bounds",
+      "steps": 208,
+      "routeIndex": 2,
+      "remainingWaypoints": 3,
+      "distanceToTargetM": 3.654,
+      "maxRouteDistanceM": 0.75,
+      "finalPosition": {
+        "x": -5.607913017272949,
+        "y": 0.0,
+        "z": -0.0597238764166832
+      }
+    },
+    {
+      "episodeIndex": 6,
+      "seed": 79,
+      "termination": "out_of_bounds",
+      "steps": 203,
+      "routeIndex": 2,
+      "remainingWaypoints": 3,
+      "distanceToTargetM": 3.851,
+      "maxRouteDistanceM": 0.7566,
+      "finalPosition": {
+        "x": -5.724150657653809,
+        "y": 0.0,
+        "z": -0.22225874662399292
+      }
+    },
+    {
+      "episodeIndex": 7,
+      "seed": 80,
+      "termination": "out_of_bounds",
+      "steps": 208,
+      "routeIndex": 2,
+      "remainingWaypoints": 3,
+      "distanceToTargetM": 3.722,
+      "maxRouteDistanceM": 0.7535,
+      "finalPosition": {
+        "x": -5.648956298828125,
+        "y": 0.0,
+        "z": -0.11502061039209366
+      }
+    },
+    {
+      "episodeIndex": 8,
+      "seed": 81,
+      "termination": "out_of_bounds",
+      "steps": 208,
+      "routeIndex": 2,
+      "remainingWaypoints": 3,
+      "distanceToTargetM": 3.69,
+      "maxRouteDistanceM": 0.7571,
+      "finalPosition": {
+        "x": -5.633033752441406,
+        "y": 0.0,
+        "z": -0.08462206274271011
+      }
+    },
+    {
+      "episodeIndex": 9,
+      "seed": 82,
+      "termination": "out_of_bounds",
+      "steps": 203,
+      "routeIndex": 2,
+      "remainingWaypoints": 3,
+      "distanceToTargetM": 3.89,
+      "maxRouteDistanceM": 0.7629,
+      "finalPosition": {
+        "x": -5.750686168670654,
+        "y": -4.470348358154297e-08,
+        "z": -0.2506963908672333
+      }
+    },
+    {
+      "episodeIndex": 10,
+      "seed": 83,
+      "termination": "out_of_bounds",
+      "steps": 207,
+      "routeIndex": 2,
+      "remainingWaypoints": 3,
+      "distanceToTargetM": 3.654,
+      "maxRouteDistanceM": 0.75,
+      "finalPosition": {
+        "x": -5.607913017272949,
+        "y": 0.0,
+        "z": -0.05972398817539215
+      }
+    },
+    {
+      "episodeIndex": 11,
+      "seed": 84,
+      "termination": "out_of_bounds",
+      "steps": 206,
+      "routeIndex": 2,
+      "remainingWaypoints": 3,
+      "distanceToTargetM": 3.692,
+      "maxRouteDistanceM": 0.7593,
+      "finalPosition": {
+        "x": -5.636099815368652,
+        "y": -7.450580596923828e-09,
+        "z": -0.08529498428106308
+      }
+    },
+    {
+      "episodeIndex": 12,
+      "seed": 85,
+      "termination": "out_of_bounds",
+      "steps": 202,
+      "routeIndex": 2,
+      "remainingWaypoints": 3,
+      "distanceToTargetM": 3.817,
+      "maxRouteDistanceM": 0.7561,
+      "finalPosition": {
+        "x": -5.7045793533325195,
+        "y": 0.0,
+        "z": -0.193814218044281
+      }
+    },
+    {
+      "episodeIndex": 13,
+      "seed": 86,
+      "termination": "out_of_bounds",
+      "steps": 201,
+      "routeIndex": 2,
+      "remainingWaypoints": 3,
+      "distanceToTargetM": 3.69,
+      "maxRouteDistanceM": 0.7571,
+      "finalPosition": {
+        "x": -5.633033752441406,
+        "y": -7.450580596923828e-09,
+        "z": -0.0846221074461937
+      }
+    },
+    {
+      "episodeIndex": 14,
+      "seed": 87,
+      "termination": "out_of_bounds",
+      "steps": 198,
+      "routeIndex": 2,
+      "remainingWaypoints": 3,
+      "distanceToTargetM": 3.816,
+      "maxRouteDistanceM": 0.7565,
+      "finalPosition": {
+        "x": -5.704225540161133,
+        "y": 0.0,
+        "z": -0.19244852662086487
+      }
+    },
+    {
+      "episodeIndex": 15,
+      "seed": 88,
+      "termination": "out_of_bounds",
+      "steps": 206,
+      "routeIndex": 2,
+      "remainingWaypoints": 3,
+      "distanceToTargetM": 3.691,
+      "maxRouteDistanceM": 0.7556,
+      "finalPosition": {
+        "x": -5.632723331451416,
+        "y": -2.9802322387695312e-08,
+        "z": -0.08698797225952148
+      }
+    },
+    {
+      "episodeIndex": 16,
+      "seed": 89,
+      "termination": "out_of_bounds",
+      "steps": 204,
+      "routeIndex": 2,
+      "remainingWaypoints": 3,
+      "distanceToTargetM": 3.726,
+      "maxRouteDistanceM": 0.7611,
+      "finalPosition": {
+        "x": -5.656448841094971,
+        "y": 0.0,
+        "z": -0.11250665038824081
+      }
+    },
+    {
+      "episodeIndex": 17,
+      "seed": 90,
+      "termination": "out_of_bounds",
+      "steps": 196,
+      "routeIndex": 2,
+      "remainingWaypoints": 3,
+      "distanceToTargetM": 3.852,
+      "maxRouteDistanceM": 0.7591,
+      "finalPosition": {
+        "x": -5.72667121887207,
+        "y": 1.4901161193847656e-08,
+        "z": -0.2214585840702057
+      }
+    },
+    {
+      "episodeIndex": 18,
+      "seed": 91,
+      "termination": "out_of_bounds",
+      "steps": 200,
+      "routeIndex": 2,
+      "remainingWaypoints": 3,
+      "distanceToTargetM": 3.628,
+      "maxRouteDistanceM": 0.7603,
+      "finalPosition": {
+        "x": -5.600606441497803,
+        "y": 0.0,
+        "z": -0.03027946501970291
+      }
+    },
+    {
+      "episodeIndex": 19,
+      "seed": 92,
+      "termination": "out_of_bounds",
+      "steps": 208,
+      "routeIndex": 2,
+      "remainingWaypoints": 3,
+      "distanceToTargetM": 3.622,
+      "maxRouteDistanceM": 0.7507,
+      "finalPosition": {
+        "x": -5.589925289154053,
+        "y": 0.0,
+        "z": -0.03159966319799423
+      }
+    }
+  ]
+}

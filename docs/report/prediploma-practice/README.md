@@ -21,6 +21,7 @@
 - `sprint-3-changelog.md` — журнал изменений по Спринту 3 (19.04.2026-02.05.2026).
 - `model-lifecycle-contract.md` — контракт train/install/run и API модели.
 - `ab-corridor-simulation-spec.md` — спецификация сценария A->B и KPI.
+- `ab-corridor-kpi-2026-03-29.md` — первый честный KPI-срез baseline-модели на карте `A->B`.
 - `individual_assignment_draft.md` — рекомендуемый черновик индивидуального задания.
 - `calendar_plan.md` — календарный план прохождения практики с привязкой к контрольным точкам курса.
 - `interim_report_1_draft.md` — заготовка промежуточного отчета №1.
