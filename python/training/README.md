@@ -39,3 +39,26 @@ curl -X POST "http://localhost:5058/api/models/upload" \
 ```
 
 `rusim` автоматически подхватит соседние `metadata.json` и `metrics.json`, если они лежат рядом с `.onnx`.
+
+## KPI-оценка в unity-sim
+
+Скрипт `evaluate_ab_policy.py` прогоняет серию эпизодов напрямую через `unity-sim` API (`/reset` + `/step`) и сохраняет:
+- JSON-сводку по эпизодам;
+- SVG с траекториями.
+
+Запуск:
+
+```bash
+/opt/homebrew/bin/python3.13 -m venv /tmp/uavsim-eval-venv313
+/tmp/uavsim-eval-venv313/bin/pip install requests PyYAML numpy onnxruntime
+/tmp/uavsim-eval-venv313/bin/python python/training/evaluate_ab_policy.py \
+  --episodes 20 \
+  --max-steps 220 \
+  --output-json docs/report/prediploma-practice/evidence/ab-corridor-kpi-2026-03-29.json \
+  --output-svg docs/report/prediploma-practice/evidence/ab-corridor-kpi-2026-03-29.svg
+```
+
+Ограничения текущего evaluator:
+- `goal_reached` и `timeout` считаются строго;
+- `out_of_bounds` считается внешне по геометрии коридора;
+- `collision` пока не входит в KPI-сводку, потому что runtime-контракт его явно не отдает.
