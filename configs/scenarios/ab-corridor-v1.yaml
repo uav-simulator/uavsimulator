@@ -13,7 +13,7 @@ world:
   trackId: track.basic_arena.v1
 
 vehicle:
-  vehicleId: vehicle.ks0223.v1
+  vehicleId: vehicle.prometeo.sport.v1
   params:
     camera.profile: high
 
