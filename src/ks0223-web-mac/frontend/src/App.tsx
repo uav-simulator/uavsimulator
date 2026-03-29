@@ -345,12 +345,12 @@ function App() {
     const [nextModels, nextActiveModel, nextAutopilot] = await Promise.all([
       fetchModels(),
       fetchActiveModel(),
-      fetchAutopilotStatus(),
+      fetchAutopilotStatus(clientInstanceId, selectedRuntimeMode),
     ])
     setModels(nextModels)
     setActiveModel(nextActiveModel)
     setAutopilotStatus(nextAutopilot)
-  }, [])
+  }, [clientInstanceId, selectedRuntimeMode])
 
   const syncUnityCatalog = useCallback(
     async (hostOverride?: string, portOverride?: number) => {

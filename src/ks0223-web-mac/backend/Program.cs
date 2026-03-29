@@ -162,9 +162,11 @@ app.MapPost("/api/autopilot/stop", async (StopAutopilotRequest request, Autopilo
     return Results.Ok(status);
 });
 
-app.MapGet("/api/autopilot/status", (AutopilotService autopilotService) =>
+app.MapGet("/api/autopilot/status", (HttpRequest http, AutopilotService autopilotService) =>
 {
-    return Results.Ok(autopilotService.GetStatus());
+    var clientId = ReadOptionalClientIdQuery(http);
+    var runtimeMode = ReadOptionalRuntimeModeQuery(http);
+    return Results.Ok(autopilotService.GetStatus(clientId, runtimeMode));
 });
 
 app.MapGet("/api/connection/target", (HttpRequest http, RuntimeSessionManager runtimeSessionManager) =>
@@ -643,6 +645,12 @@ static string ReadClientIdQuery(HttpRequest request)
     return clientId.Trim();
 }
 
+static string? ReadOptionalClientIdQuery(HttpRequest request)
+{
+    var clientId = ReadStringQuery(request, "clientId", "client_id");
+    return string.IsNullOrWhiteSpace(clientId) ? null : clientId.Trim();
+}
+
 static string ReadRuntimeModeQuery(HttpRequest request)
 {
     var runtimeMode = ReadStringQuery(request, "runtimeMode", "runtime_mode");
@@ -652,6 +660,12 @@ static string ReadRuntimeModeQuery(HttpRequest request)
     }
 
     return runtimeMode.Trim();
+}
+
+static string? ReadOptionalRuntimeModeQuery(HttpRequest request)
+{
+    var runtimeMode = ReadStringQuery(request, "runtimeMode", "runtime_mode");
+    return string.IsNullOrWhiteSpace(runtimeMode) ? null : runtimeMode.Trim();
 }
 
 static string ReadClientId(HttpRequest request, JsonElement body)

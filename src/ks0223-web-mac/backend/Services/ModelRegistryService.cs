@@ -1,4 +1,5 @@
 using Ks0223.Web.Backend.Models;
+using Microsoft.ML.OnnxRuntime;
 using System.Text.Json;
 
 namespace Ks0223.Web.Backend.Services;
@@ -100,8 +101,19 @@ public sealed class ModelRegistryService
             await artifactStream.CopyToAsync(target, cancellationToken);
         }
 
-        await File.WriteAllTextAsync(metadataPath, metadataJson, cancellationToken);
-        await File.WriteAllTextAsync(metricsPath, metricsJson, cancellationToken);
+        try
+        {
+            ValidateArtifactForBackend(artifactPath);
+            await File.WriteAllTextAsync(metadataPath, metadataJson, cancellationToken);
+            await File.WriteAllTextAsync(metricsPath, metricsJson, cancellationToken);
+        }
+        catch
+        {
+            TryDeleteFile(artifactPath);
+            TryDeleteFile(metadataPath);
+            TryDeleteFile(metricsPath);
+            throw;
+        }
 
         ModelRecord model;
         lock (gate)
@@ -228,6 +240,44 @@ public sealed class ModelRegistryService
 
     private static string BuildModelId() =>
         $"model-{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss}-{Guid.NewGuid().ToString("N")[..8]}";
+
+    private static void ValidateArtifactForBackend(string artifactPath)
+    {
+        try
+        {
+            using var session = new InferenceSession(artifactPath);
+            if (session.InputMetadata.Count == 0)
+            {
+                throw new InvalidOperationException("ONNX model has no inputs");
+            }
+
+            if (session.OutputMetadata.Count == 0)
+            {
+                throw new InvalidOperationException("ONNX model has no outputs");
+            }
+        }
+        catch (Exception ex) when (ex is not InvalidOperationException)
+        {
+            throw new InvalidOperationException(
+                $"Model artifact is incompatible with backend ONNX runtime: {ex.Message}",
+                ex);
+        }
+    }
+
+    private static void TryDeleteFile(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+        catch
+        {
+            // Best effort cleanup for failed uploads.
+        }
+    }
 
     private sealed class RegistryState
     {

@@ -5,6 +5,8 @@
 - `metadata.json`
 - `metrics.json`
 
+Артефакт собирается в backend-compatible формате для текущего `Microsoft.ML.OnnxRuntime`.
+
 ## Запуск
 
 ```bash
