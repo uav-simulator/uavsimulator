@@ -7,6 +7,13 @@ edit_uri: blob/develop/docs/
 docs_dir: docs
 site_dir: .mkdocs-site
 strict: false
+exclude_docs: |
+  tasks.md
+  tasks/**
+  engineering-log.md
+  research-index.md
+  documentation-cleanup-plan.md
+  reports/**
 
 theme:
   name: material
