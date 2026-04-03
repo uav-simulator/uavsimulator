@@ -12,7 +12,7 @@
 ### Если нужно понять устройство системы
 1. Прочитать [Архитектуру](architecture.md).
 2. Открыть [API](api.md).
-3. При необходимости перейти к [Плагинам](plugins.md) и [Model Lifecycle](model-lifecycle.md).
+3. При необходимости перейти к [Model Lifecycle](model-lifecycle.md).
 
 ### Если нужно работать с моделью
 1. Открыть [CLI `rusim`](cli.md).
@@ -27,7 +27,6 @@
 - [Архитектура](architecture.md)
 - [API](api.md)
 - [Model Lifecycle](model-lifecycle.md)
-- [Плагины](plugins.md)
 - [Преддипломная практика](prediploma-practice.md)
 
 ## Текущий продуктовый контур
@@ -41,4 +40,3 @@
 - Для продуктовых команд: [CLI `rusim`](cli.md)
 - Для интеграции с runtime: [API](api.md)
 - Для работы с моделью: [Model Lifecycle](model-lifecycle.md)
-- Для расширения каталога треков и роботов: [Плагины](plugins.md)
