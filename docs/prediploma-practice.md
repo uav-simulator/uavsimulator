@@ -20,10 +20,10 @@
 
 ## Основные материалы раздела
 
-- [Обзор папки преддипломной практики](report/prediploma-practice/README.md)
-- [Контракт model lifecycle](report/prediploma-practice/model-lifecycle-contract.md)
-- [Спецификация сценария A->B](report/prediploma-practice/ab-corridor-simulation-spec.md)
-- [Промежуточный KPI-срез](report/prediploma-practice/ab-corridor-kpi-2026-03-29.md)
+- [Model Lifecycle](model-lifecycle.md)
+- [Спринт 1](report/prediploma-practice/sprint-1-changelog.md)
+- [Спринт 2](report/prediploma-practice/sprint-2-changelog.md)
+- [Спринт 3](report/prediploma-practice/sprint-3-changelog.md)
 
 ## Что уже есть в wiki
 
@@ -34,4 +34,4 @@ Product wiki описывает рабочие части платформы:
 - [CLI `rusim`](cli.md)
 - [Плагины](plugins.md)
 
-Раздел преддипломной практики нужен не вместо этих страниц, а как слой фиксации этапов магистерской работы и отчетных материалов.
+Раздел преддипломной практики нужен как слой фиксации этапов магистерской работы и спринтовой отчетности.
