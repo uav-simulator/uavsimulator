@@ -84,7 +84,7 @@ rusim step --base-url http://127.0.0.1:8000 --agent-id npc-red --throttle 0.3 --
 
 Для Unity runtime UI поддерживает:
 - выбор `track`;
-- выбор основной машинки;
+- выбор основного робота;
 - список дополнительных `agents[]`;
 - `control agent`;
 - `camera agent`;

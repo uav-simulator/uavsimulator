@@ -19,7 +19,7 @@ flowchart LR
     RuntimeApi --> SimCore["SimulationManager"]
     SimCore --> Plugins["PluginRegistry"]
     Plugins --> Track["Track plugins"]
-    Plugins --> Vehicle["Vehicle plugins"]
+    Plugins --> Vehicle["Robot plugins"]
     Python["Python training / eval"] --> RuntimeApi
 ```
 
@@ -35,7 +35,7 @@ flowchart LR
 
 Unity runtime отвечает за:
 - запуск сцены;
-- загрузку каталога треков и машинок;
+- загрузку каталога треков и роботов;
 - `reset` и `step` цикл;
 - выдачу состояния, телеметрии и camera frame;
 - выполнение сценариев поверх активного runtime.
@@ -91,7 +91,7 @@ Python-контур отвечает за:
 - fallback из `BuiltinPluginFactory`, если assets не найдены.
 
 Это дает:
-- расширяемый каталог машинок и треков;
+- расширяемый каталог роботов и треков;
 - стабильные product IDs;
 - единый источник данных для runtime, CLI и contract discovery.
 

@@ -51,7 +51,7 @@ Subscribe:
 - `rqt_image_view`: просмотр камеры (по умолчанию открывается с `.../camera/front/image_raw`).
 - `rqt_publisher` или `rqt_robot_steering`: ручная отправка `cmd_vel`.
 
-## Управление машинкой через ROS2
+## Управление роботом через ROS2
 1. Поднять сим и ROS-контур:
    - `make sim-public` (в Unity нажать Play)
    - `make demo-up`

@@ -62,8 +62,8 @@ nav:
       - Спринт 3: report/prediploma-practice/sprint-3-changelog.md
   - Плагины:
       - Обзор: plugins.md
-      - Машинки: vehicles.md
-      - Как добавить новую машинку: plugin-vehicle-guide.md
+      - Роботы: vehicles.md
+      - Как добавить робота: plugin-vehicle-guide.md
   - Сборка и релизы:
       - Локальная сборка и запуск: build.md
       - Поставка и обновление: release-distribution-model.md
