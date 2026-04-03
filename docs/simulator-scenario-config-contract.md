@@ -1,16 +1,5 @@
 # Simulator Scenario Config Contract
 
-**Что это**  
-Описание текущего YAML-формата, которым задаётся продуктовый сценарий запуска Unity runtime.
-
-**Для кого**  
-Для разработчика CLI, автора сценариев и пользователя, который запускает runtime через `rusim server up --scenario ...`.
-
-**Статус**  
-Канонический документ по текущему формату сценариев.
-
-**Проверено по**  
-`configs/scenarios/demo.yaml`, `configs/scenarios/demo-multi-agent.yaml`, `python/sim_client/cli.py`
 
 ## Назначение
 Сценарий задаёт:

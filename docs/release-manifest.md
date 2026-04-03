@@ -1,16 +1,5 @@
 # Release Manifest
 
-**Что это**  
-Машинно-читаемый JSON-документ, который описывает опубликованный runtime release.
-
-**Для кого**  
-Для разработчика release-потока и для `rusim upgrade`.
-
-**Статус**  
-Текущая схема manifest, используемая в проекте.
-
-**Проверено по**  
-`scripts/generate_release_manifest.py`, `.github/workflows/release-manifest.yml`, `python/sim_client/cli.py`
 
 ## Назначение
 Manifest нужен, чтобы:

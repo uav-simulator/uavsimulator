@@ -1,26 +1,22 @@
 # Плагины
 
-**Что это**  
-Обзор текущей plugin-архитектуры симулятора и актуального каталога машинок и треков.
-
-**Для кого**  
-Для разработчика, который добавляет новый track или vehicle plugin.
-
-**Статус**  
-Каноническая reference-страница по plugin catalog.
-
-**Проверено по**  
-`Assets/Resources/UavSimulator/PluginRegistry.asset`, `Assets/Resources/UavSimulator/Plugins/`, `Assets/Scripts/Plugins/`
+Plugin architecture используется для расширения каталога машинок и треков без изменения внешнего product API.
 
 ## Как устроен каталог
-- Основной реестр: `Assets/Resources/UavSimulator/PluginRegistry.asset`
-- Дополнительные descriptor assets автоматически подхватываются из:
-  - `Assets/Resources/UavSimulator/Plugins/Vehicles`
-  - `Assets/Resources/UavSimulator/Plugins/Tracks`
-- Если assets недоступны, runtime может использовать fallback из `BuiltinPluginFactory`.
+
+Каталог строится из трех источников:
+- `Assets/Resources/UavSimulator/PluginRegistry.asset`
+- descriptor assets в `Assets/Resources/UavSimulator/Plugins/`
+- fallback из `BuiltinPluginFactory`, если assets недоступны
+
+Это позволяет:
+- держать стабильные product IDs;
+- использовать единый каталог в runtime, CLI и contract discovery;
+- расширять каталог без ручной правки внешних интерфейсов.
 
 ## Vehicle plugin
-Содержит:
+
+Vehicle plugin содержит:
 - `id`
 - `displayName`
 - `description`
@@ -28,14 +24,16 @@
 - `DeviceContractDescriptorAsset`
 
 ## Track plugin
-Содержит:
-- `trackId`
+
+Track plugin содержит:
+- `id`
 - `displayName`
 - `description`
 - optional prefab
-- JSON schema для `trackParams`
+- JSON schema для параметров окружения
 
 ## Актуальный каталог машинок
+
 - `vehicle.prometeo.sport.v1`
 - `vehicle.arcade.blue.v1`
 - `vehicle.arcade.red.v1`
@@ -43,21 +41,47 @@
 - `vehicle.arcade.purple.v1`
 - `vehicle.drone.simple.v1`
 
-Legacy IDs `vehicle.ks0223.*` больше не считаются каноническими для симуляторного каталога.
+Legacy IDs `vehicle.ks0223.*` не считаются каноническими для симуляторного каталога.
 
 ## Актуальный каталог треков
+
 - `track.basic_arena.v1`
 - `track.roadsystem_arena.v1`
 - `track.roadsystem_realistic.v2`
 
-## Синхронизация built-in каталога
-Editor utility:
+## Проверка каталога
+
+Через runtime API:
+- `GET /contract`
+- `GET /health`
+
+Через CLI:
+
+```bash
+rusim list tracks --base-url http://127.0.0.1:8000
+rusim list vehicles --base-url http://127.0.0.1:8000
+rusim inspect vehicle vehicle.prometeo.sport.v1 --base-url http://127.0.0.1:8000
+```
+
+## Установка пользовательских плагинов
+
+```bash
+rusim plugin install ./my-plugin.rusim-plugin.zip
+rusim plugin list
+rusim plugin remove vehicle.custom.racer.v1
+```
+
+Это относится к пользовательскому каталогу поверх built-in плагинов runtime.
+
+## Editor utility
+
+Для синхронизации built-in каталога:
 
 ```text
 UavSimulator/Plugins/Sync Builtin Plugin Catalog
 ```
 
-Batchmode вызов:
+Batchmode-вызов:
 
 ```bash
 "/Applications/Unity/Hub/Editor/6000.1.8f1/Unity.app/Contents/MacOS/Unity" \
@@ -66,12 +90,8 @@ Batchmode вызов:
   -executeMethod UavSimulator.EditorTools.PluginCatalogSeeder.SyncBuiltinPluginCatalog
 ```
 
-## Проверка каталога
-- `GET /contract`
-- `rusim list tracks`
-- `rusim list vehicles`
-- `rusim inspect vehicle ...`
-
 ## Связанные страницы
+- [Архитектура](architecture.md)
+- [CLI `rusim`](cli.md)
 - [Машинки](vehicles.md)
 - [Как добавить новую машинку](plugin-vehicle-guide.md)

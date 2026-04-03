@@ -1,16 +1,5 @@
 # Использование
 
-**Что это**  
-Практическая страница про текущие пользовательские и разработческие сценарии работы с платформой.
-
-**Для кого**  
-Для оператора, разработчика и интегратора, которые уже подняли проект и хотят работать с runtime, Web UI и CLI.
-
-**Статус**  
-Канонический guide по текущему использованию.
-
-**Проверено по**  
-`python/sim_client/cli.py`, `configs/scenarios/demo.yaml`, `configs/scenarios/demo-multi-agent.yaml`, `src/ks0223-web-mac/backend/Services/UnityKs0223RuntimeProvider.cs`
 
 ## Основные режимы работы
 - `unity-sim`

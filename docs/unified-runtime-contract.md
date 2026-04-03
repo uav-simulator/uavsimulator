@@ -1,16 +1,5 @@
 # Unified Runtime Contract
 
-**Что это**  
-Главный контракт продуктового слоя между frontend, backend и runtime-адаптерами.
-
-**Для кого**  
-Для разработчика backend, frontend и runtime provider-ов.
-
-**Статус**  
-Канонический операторский контракт проекта.
-
-**Проверено по**  
-`src/ks0223-web-mac/backend/Services/`, `docs/api.md`, `docs/usage.md`
 
 ## Назначение
 Контракт фиксирует:

@@ -1,16 +1,5 @@
 # Поставка и обновление
 
-**Что это**  
-Текущая модель поставки runtime и Python package наружу.
-
-**Для кого**  
-Для разработчика, который публикует release или поддерживает update flow через `rusim`.
-
-**Статус**  
-Актуальная схема дистрибуции. Полноценной cloud-сборки runtime в GitHub Actions сейчас нет.
-
-**Проверено по**  
-`.github/workflows/release-manifest.yml`, `.github/workflows/release-rusim.yml`, `python/sim_client/cli.py`
 
 ## Что публикуется сейчас
 - standalone runtime archive, собранный локально;
