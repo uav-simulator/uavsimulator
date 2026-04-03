@@ -13,6 +13,7 @@ exclude_docs: |
   engineering-log.md
   research-index.md
   documentation-cleanup-plan.md
+  roadmap.md
   reports/**
 
 theme:
