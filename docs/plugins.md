@@ -1,6 +1,6 @@
 # Плагины
 
-Plugin architecture используется для расширения каталога машинок и треков без изменения внешнего product API.
+Plugin architecture используется для расширения каталога роботов и треков без изменения внешнего product API.
 
 ## Как устроен каталог
 
@@ -14,9 +14,9 @@ Plugin architecture используется для расширения кат�
 - использовать единый каталог в runtime, CLI и contract discovery;
 - расширять каталог без ручной правки внешних интерфейсов.
 
-## Vehicle plugin
+## Плагин робота (`vehicle plugin`)
 
-Vehicle plugin содержит:
+Плагин робота содержит:
 - `id`
 - `displayName`
 - `description`
@@ -32,7 +32,7 @@ Track plugin содержит:
 - optional prefab
 - JSON schema для параметров окружения
 
-## Актуальный каталог машинок
+## Актуальный каталог роботов
 
 - `vehicle.prometeo.sport.v1`
 - `vehicle.arcade.blue.v1`
@@ -41,7 +41,7 @@ Track plugin содержит:
 - `vehicle.arcade.purple.v1`
 - `vehicle.drone.simple.v1`
 
-Legacy IDs `vehicle.ks0223.*` не считаются каноническими для симуляторного каталога.
+Legacy IDs `vehicle.ks0223.*` не считаются основными для симуляторного каталога.
 
 ## Актуальный каталог треков
 
@@ -93,5 +93,5 @@ Batchmode-вызов:
 ## Связанные страницы
 - [Архитектура](architecture.md)
 - [CLI `rusim`](cli.md)
-- [Машинки](vehicles.md)
-- [Как добавить новую машинку](plugin-vehicle-guide.md)
+- [Роботы](vehicles.md)
+- [Как добавить робота](plugin-vehicle-guide.md)

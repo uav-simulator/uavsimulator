@@ -1,7 +1,7 @@
 # Сборка и локальный запуск
 
 
-## Канонический product lifecycle
+## Базовый product lifecycle
 - `rusim server up`
 - `rusim server status`
 - `rusim server down`
@@ -49,7 +49,7 @@ make demo-proof
 make demo-down
 ```
 
-`make demo-*` используют канонический demo-сценарий:
+`make demo-*` используют базовый demo-сценарий:
 
 ```text
 configs/scenarios/demo.yaml
@@ -58,7 +58,7 @@ configs/scenarios/demo.yaml
 ## Runtime behaviour
 - `RuntimeSceneBootstrap` поднимает `SimulationManager` и `HttpJsonApiHost`.
 - `GET /health` и `GET /contract` используются как базовая проверка готовности.
-- runtime не спавнит машинку автоматически при старте сцены: нужен явный `reset` или запуск сценария.
+- runtime не создает робота автоматически при старте сцены: нужен явный `reset` или запуск сценария.
 
 ## Текущий каталог built-in и asset-based сущностей
 Треки:
@@ -66,7 +66,7 @@ configs/scenarios/demo.yaml
 - `track.roadsystem_arena.v1`
 - `track.roadsystem_realistic.v2`
 
-Машинки:
+Роботы:
 - `vehicle.prometeo.sport.v1`
 - `vehicle.arcade.blue.v1`
 - `vehicle.arcade.red.v1`

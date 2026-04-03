@@ -5,7 +5,7 @@
 Контракт фиксирует:
 - что frontend получает от backend;
 - какие runtime-режимы поддерживаются;
-- какие пользовательские действия считаются каноническими;
+- какие пользовательские действия считаются базовыми;
 - где заканчивается product-core и начинается research-layer.
 
 ## Поддерживаемые runtime-режимы
@@ -27,7 +27,7 @@ Frontend работает только с нормализованным backend
 в механику конкретного runtime provider-а.
 
 ## Product API backend
-Канонические точки операторского backend:
+Основные точки операторского backend:
 - `POST /api/connection/connect`
 - `POST /api/connection/disconnect`
 - `GET /api/status`
@@ -59,7 +59,7 @@ Frontend работает только с нормализованным backend
 - адресный camera flow для конкретного агента;
 - разные browser tabs для разных агентов одного runtime.
 
-## Что не входит в этот контракт
+## Границы контракта
 - ROS2 message layer;
 - Jupyter/notebook flow;
 - внутренние детали Unity scene graph;

@@ -5,7 +5,7 @@
 Сценарий задаёт:
 - runtime mode;
 - трек;
-- машинку;
+- робота;
 - route и spawn;
 - multi-agent конфигурацию;
 - logging.
@@ -29,7 +29,7 @@
 - `sensors`
 
 ## Актуальный product baseline
-Канонический demo entrypoint:
+Базовый demo entrypoint:
 
 ```text
 configs/scenarios/demo.yaml
@@ -39,7 +39,7 @@ configs/scenarios/demo.yaml
 - `track.roadsystem_realistic.v2`
 - `vehicle.arcade.blue.v1`
 
-Канонический multi-agent пример:
+Базовый multi-agent пример:
 
 ```text
 configs/scenarios/demo-multi-agent.yaml
