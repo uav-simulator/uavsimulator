@@ -12,7 +12,7 @@
 ### Если нужно понять устройство системы
 1. Прочитать [Архитектуру](architecture.md).
 2. Открыть [API](api.md).
-3. При необходимости перейти к [Плагинам](plugins.md) и [Контрактам](contracts.md).
+3. При необходимости перейти к [Плагинам](plugins.md) и [Model Lifecycle](model-lifecycle.md).
 
 ### Если нужно работать с моделью
 1. Открыть [CLI `rusim`](cli.md).
@@ -26,15 +26,9 @@
 - [CLI `rusim`](cli.md)
 - [Архитектура](architecture.md)
 - [API](api.md)
+- [Model Lifecycle](model-lifecycle.md)
 - [Плагины](plugins.md)
-- [Сборка и релизы](build.md)
-
-## Контракты
-- [Обзор контрактов](contracts.md)
-- [Product Definition](product-definition.md)
-- [Unified Runtime Contract](unified-runtime-contract.md)
-- [Autopilot Integration Contract](autopilot-integration-contract.md)
-- [Simulator Scenario Config Contract](simulator-scenario-config-contract.md)
+- [Преддипломная практика](prediploma-practice.md)
 
 ## Текущий продуктовый контур
 1. Unity runtime поднимает сцену, плагины треков и машинок, а также HTTP JSON API.
@@ -46,4 +40,5 @@
 - Для ручного запуска и управления: [Использование](usage.md)
 - Для продуктовых команд: [CLI `rusim`](cli.md)
 - Для интеграции с runtime: [API](api.md)
-- Для расширения каталога треков и машинок: [Плагины](plugins.md)
+- Для работы с моделью: [Model Lifecycle](model-lifecycle.md)
+- Для расширения каталога треков и роботов: [Плагины](plugins.md)
