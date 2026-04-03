@@ -33,16 +33,16 @@
 
 | # | Задача | Статус |
 |---|--------|--------|
-| 1 | Организационный старт: календарный план, индивидуальное задание, промежуточный отчёт №1 | ✅ Выполнено |
-| 2 | Систематизация и подготовка документации проекта | ✅ Выполнено |
-| 3 | Реализация продуктового контура `train → install → activate → run` | ✅ Выполнено |
-| 4 | Backend API для управления моделями и автопилотом | ✅ Выполнено |
-| 5 | Web UI — вкладка `Model Control` | ✅ Выполнено |
-| 6 | CLI `rusim model install` — загрузка модели через командную строку | ✅ Выполнено |
-| 7 | Baseline-артефакт модели для отладки pipeline | ✅ Выполнено |
-| 8 | KPI-evaluator — автоматическая оценка модели в серии эпизодов | ✅ Выполнено |
-| 9 | E2E smoke-верификация полного цикла | ✅ Выполнено |
-| 10 | Первый KPI-срез и фиксация проблем baseline-модели | ✅ Выполнено |
+| 1 | Организационный старт: календарный план, индивидуальное задание, промежуточный отчёт №1 | Выполнено |
+| 2 | Систематизация и подготовка документации проекта | Выполнено |
+| 3 | Реализация продуктового контура `train → install → activate → run` | Выполнено |
+| 4 | Backend API для управления моделями и автопилотом | Выполнено |
+| 5 | Web UI — вкладка `Model Control` | Выполнено |
+| 6 | CLI `rusim model install` — загрузка модели через командную строку | Выполнено |
+| 7 | Baseline-артефакт модели для отладки pipeline | Выполнено |
+| 8 | KPI-evaluator — автоматическая оценка модели в серии эпизодов | Выполнено |
+| 9 | E2E smoke-верификация полного цикла | Выполнено |
+| 10 | Первый KPI-срез и фиксация проблем baseline-модели | Выполнено |
 
 ---
 
@@ -65,28 +65,28 @@
 
 ```mermaid
 graph TB
-    subgraph "🖥️ Web UI"
+    subgraph "Web UI"
         A1[Подключение к runtime]
         A2[Ручное управление]
         A3[Камера и телеметрия]
         A4[Model Control]
     end
 
-    subgraph "⌨️ CLI rusim"
+    subgraph "CLI rusim"
         B1[Установка и bootstrap]
         B2[Управление runtime]
         B3[Работа со сценариями]
         B4[Установка моделей]
     end
 
-    subgraph "🎮 Unity Simulator"
+    subgraph "Unity Simulator"
         C1[SimulationManager]
         C2[HTTP JSON API]
         C3[Plugin Architecture]
         C4[Сенсоры и физика]
     end
 
-    subgraph "🐍 Python Training/Eval"
+    subgraph "Python Training/Eval"
         D1[Обучение модели]
         D2[Сборка артефакта ONNX]
         D3[KPI-оценка в симуляторе]
@@ -113,7 +113,7 @@ graph TB
 
 ```mermaid
 flowchart LR
-    User["👤 Оператор"]
+    User["Оператор"]
     UI["Web UI\n(React)"]
     CLI["rusim CLI\n(Python)"]
     Backend["ASP.NET Core\nBackend"]
@@ -346,15 +346,15 @@ classDiagram
 
 | Тип | ID | Описание |
 |-----|-----|----------|
-| 🚗 Vehicle | `vehicle.prometeo.sport.v1` | Основная машинка для экспериментов |
-| 🚗 Vehicle | `vehicle.arcade.blue.v1` | Arcade Racing Car (синяя) |
-| 🚗 Vehicle | `vehicle.arcade.red.v1` | Arcade Racing Car (красная) |
-| 🚗 Vehicle | `vehicle.arcade.gray.v1` | Arcade Racing Car (серая) |
-| 🚗 Vehicle | `vehicle.arcade.purple.v1` | Arcade Racing Car (фиолетовая) |
-| 🚁 Vehicle | `vehicle.drone.simple.v1` | Простой квадрокоптер |
-| 🏁 Track | `track.basic_arena.v1` | Базовая арена |
-| 🏁 Track | `track.roadsystem_arena.v1` | Арена с дорожной системой |
-| 🏁 Track | `track.roadsystem_realistic.v2` | Реалистичная трасса |
+| Vehicle | `vehicle.prometeo.sport.v1` | Основная машинка для экспериментов |
+| Vehicle | `vehicle.arcade.blue.v1` | Arcade Racing Car (синяя) |
+| Vehicle | `vehicle.arcade.red.v1` | Arcade Racing Car (красная) |
+| Vehicle | `vehicle.arcade.gray.v1` | Arcade Racing Car (серая) |
+| Vehicle | `vehicle.arcade.purple.v1` | Arcade Racing Car (фиолетовая) |
+| Vehicle | `vehicle.drone.simple.v1` | Простой квадрокоптер |
+| Track | `track.basic_arena.v1` | Базовая арена |
+| Track | `track.roadsystem_arena.v1` | Арена с дорожной системой |
+| Track | `track.roadsystem_realistic.v2` | Реалистичная трасса |
 
 **Контракт плагина:**
 
@@ -362,10 +362,10 @@ classDiagram
 
 | Контракт | Назначение | Обязательность |
 |----------|------------|:--------------:|
-| `PluginDescriptorBase` | Метаданные: id, displayName, version, description | ✅ |
-| `DeviceContractDescriptor` | Описание сенсоров, актуаторов, observation/action schema | ✅ для Vehicle |
-| `Prefab` | Unity prefab объекта (машинка, окружение) | ✅ |
-| `parametersSchemaJson` | JSON-схема параметров окружения (seed, time scale и др.) | ✅ для Track |
+| `PluginDescriptorBase` | Метаданные: id, displayName, version, description | Да |
+| `DeviceContractDescriptor` | Описание сенсоров, актуаторов, observation/action schema | Да, для Vehicle |
+| `Prefab` | Unity prefab объекта (машинка, окружение) | Да |
+| `parametersSchemaJson` | JSON-схема параметров окружения (seed, time scale и др.) | Да, для Track |
 
 **Соглашение по именованию ID:**
 - Машинки: `vehicle.{brand}.{model}.v{major}` (например, `vehicle.prometeo.sport.v1`)
@@ -465,7 +465,7 @@ rusim plugin remove vehicle.custom.racer.v1
 | Сценарий | Разработчик (Unity Editor) | Оператор / исследователь (только runtime) |
 |----------|:------:|:------:|
 | Использовать встроенные плагины | Доступны сразу | Доступны сразу |
-| Создать новый плагин с нуля | ✅ Unity Editor + SDK симулятора | ❌ Требует Unity Editor |
+| Создать новый плагин с нуля | Да, через Unity Editor + SDK симулятора | Нет, без Unity Editor |
 | Установить готовый плагин | `rusim plugin install *.zip` | `rusim plugin install *.zip` |
 | Обновить runtime со встроенными плагинами | `rusim runtime build` | `rusim upgrade --tag <версия>` |
 
@@ -756,9 +756,9 @@ rusim server down
 
 | Режим | Что делает | Камера | Когда использовать |
 |-------|-----------|--------|-------------------|
-| `windowed` | Обычное окно Unity с рендером | ✅ Работает | Ручная отладка, визуальная работа, демонстрация |
-| `background` | Без окна, но с graphics device | ✅ Работает | Автоматизация, автопилот, CI когда нужна камера |
-| `headless` | `-batchmode -nographics` | ❌ Недоступна | Серверный режим, training без видео, CI |
+| `windowed` | Обычное окно Unity с рендером | Работает | Ручная отладка, визуальная работа, демонстрация |
+| `background` | Без окна, но с graphics device | Работает | Автоматизация, автопилот, CI когда нужна камера |
+| `headless` | `-batchmode -nographics` | Недоступна | Серверный режим, training без видео, CI |
 
 ```mermaid
 flowchart LR
@@ -881,7 +881,7 @@ rusim model install \
 
 # Посмотреть все зарегистрированные модели
 rusim model list
-# → [1] model-20260329-143022-a1b2c3d4  ab-corridor-policy-v1  v1.0.0  ★ active
+# → [1] model-20260329-143022-a1b2c3d4  ab-corridor-policy-v1  v1.0.0  active
 # → [2] model-20260328-091500-x9y8z7w6  old-baseline          v0.9.0
 
 # Какая модель сейчас активна?
@@ -1316,11 +1316,11 @@ UAV Simulator Docs
 
 ```mermaid
 flowchart LR
-    Train["🐍 Train\n(Python)"] --> Build["📦 Build\nONNX artifact"]
-    Build --> Install["⌨️ Install\nrusim model install"]
-    Install --> Upload["☁️ Upload\nBackend Registry"]
-    Upload --> Activate["✅ Activate\nВыбор модели"]
-    Activate --> Run["🚀 Run\nAutopilot loop"]
+    Train["Train\n(Python)"] --> Build["Build\nONNX artifact"]
+    Build --> Install["Install\nrusim model install"]
+    Install --> Upload["Upload\nBackend Registry"]
+    Upload --> Activate["Activate\nВыбор модели"]
+    Activate --> Run["Run\nAutopilot loop"]
 
     style Train fill:#fef3c7,stroke:#d97706
     style Build fill:#fef3c7,stroke:#d97706
@@ -1641,14 +1641,14 @@ rusim server up --build latest --mode background --port 8000
 ### 7.5 E2E верификация (29.03 — 04.04)
 
 - Проведена полная E2E smoke-верификация контура:
-  1. Сборка backend (`dotnet build`) → ✅
-  2. Сборка frontend (`npm run build`) → ✅
-  3. Валидация сценария (`rusim scenario validate`) → ✅
-  4. API smoke: `/api/models`, `/api/models/active`, `/api/autopilot/status` → ✅
+  1. Сборка backend (`dotnet build`) выполнена.
+  2. Сборка frontend (`npm run build`) выполнена.
+  3. Валидация сценария (`rusim scenario validate`) выполнена.
+  4. API smoke: `/api/models`, `/api/models/active`, `/api/autopilot/status` выполнен.
   5. Product E2E:
      - `rusim server up` → Unity runtime поднят, `/health = ok`;
      - `POST /api/connection/connect` → `tcpConnected = true`;
-     - Runtime selection: трек + машинка → ✅;
+     - Runtime selection: трек + машинка выполнен;
      - `GET /api/sensors/latest` → unified telemetry поступает;
      - `rusim model install *.onnx --activate` → модель загружена и активирована;
      - `POST /api/autopilot/start` → autopilot запущен, 22 шага за ~3 сек;
@@ -1680,16 +1680,16 @@ rusim server up --build latest --mode background --port 8000
 
 | # | Задача | Приоритет |
 |---|--------|-----------|
-| 1 | Реализовать RL training loop (PPO / SAC) для сценария A→B | 🔴 Критический |
-| 2 | Обучить модель до `successRate > 0%` в серии из 20 эпизодов | 🔴 Критический |
-| 3 | Провести сравнительную KPI-оценку: baseline vs trained | 🟡 Высокий |
-| 4 | Зафиксировать гиперпараметры, reward-shaping и архитектуру сети | 🟡 Высокий |
-| 5 | Доработать evaluator: batch comparison, seed reproducibility | 🟢 Средний |
-| 6 | Исследовать добавление collision signal в runtime-контракт | 🟢 Средний |
+| 1 | Реализовать RL training loop (PPO / SAC) для сценария A→B | Критический |
+| 2 | Обучить модель до `successRate > 0%` в серии из 20 эпизодов | Критический |
+| 3 | Провести сравнительную KPI-оценку: baseline vs trained | Высокий |
+| 4 | Зафиксировать гиперпараметры, reward-shaping и архитектуру сети | Высокий |
+| 5 | Доработать evaluator: batch comparison, seed reproducibility | Средний |
+| 6 | Исследовать добавление collision signal в runtime-контракт | Средний |
 
 ### Ожидаемый результат
 
-По итогам Спринта 2 должна быть получена обученная модель, демонстрирующая прогресс по сравнению с baseline, и зафиксированы экспериментальные данные для включения в промежуточный отчёт №2.
+По итогам Спринта 2 требуется получить обученную модель с измеримым улучшением относительно baseline и зафиксировать экспериментальные данные для включения в промежуточный отчёт №2.
 
 ```mermaid
 gantt
@@ -1715,4 +1715,4 @@ gantt
 
 ---
 
-> **Итог Спринта 1:** продуктовый и инструментальный контур для экспериментов полностью собран и верифицирован. Контур `train → install → activate → run` работает end-to-end. KPI-evaluator корректно фиксирует результаты. Выявлена необходимость перехода от синтетической baseline-модели к полноценному RL-обучению — это главная задача следующего спринта.
+> **Итог Спринта 1:** в `unity-sim` собран и проверен базовый контур для экспериментов. Цепочка `train → install → activate → run` проходит end-to-end на уровне интеграции. KPI-evaluator фиксирует результаты, но baseline-модель не решает задачу прохождения маршрута и требует замены на обучаемую политику в следующем спринте.

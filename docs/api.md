@@ -1,34 +1,24 @@
 # API
 
-**Что это**  
-Текущее описание HTTP JSON API Unity runtime и его роли в продукте.
+В проекте есть два уровня API:
+- Unity runtime API;
+- operator backend API.
 
-**Для кого**  
-Для разработчика, автора CLI, backend-интегратора и Python tooling.
+## 1. Unity runtime API
 
-**Статус**  
-Каноническая reference-страница по runtime API.
+Unity runtime поднимает HTTP JSON API, которое используется `rusim`, backend и Python tooling.
 
-**Проверено по**  
-`Assets/Scripts/Api/`, `Assets/Scripts/Core/SimulationManager.cs`, `python/sim_client/http_client.py`, `python/sim_client/cli.py`
-
-## Назначение API
-HTTP JSON API используется как базовый интерфейс между Unity runtime и внешними клиентами:
-- `rusim`
-- operator backend
-- Python tooling
-- bridge-процессами
-
-## Актуальные endpoint-ы
+### Актуальные endpoint-ы
 - `GET /health`
 - `GET /contract`
 - `POST /reset`
 - `POST /step`
 
-## `GET /health`
+### `GET /health`
 Назначение:
 - проверить доступность runtime;
-- получить активный трек, машинку и диагностическую сводку.
+- получить активный трек и машинку;
+- увидеть диагностическую сводку по текущему runtime.
 
 Типичный ответ:
 
@@ -39,37 +29,38 @@ HTTP JSON API используется как базовый интерфейс 
   "availableVehicles": 6,
   "availableTracks": 3,
   "activeAgentId": "ego",
-  "activeVehicleId": "vehicle.arcade.blue.v1",
+  "activeVehicleId": "vehicle.prometeo.sport.v1",
   "activeTrackId": "track.roadsystem_realistic.v2",
   "activeVehicleCount": 1
 }
 ```
 
-## `GET /contract`
-Назначение:
-- вернуть каталог доступных треков и машинок;
-- показать их сенсоры, актуаторы и схемы.
+### `GET /contract`
+Возвращает:
+- каталог машинок;
+- каталог треков;
+- сенсоры, актуаторы и схемы устройства.
 
 Используется командами:
 - `rusim contract`
 - `rusim list ...`
 - `rusim inspect ...`
 
-## `POST /reset`
-Назначение:
-- выбрать track и vehicle;
-- применить сценарную конфигурацию;
-- создать или пересоздать активную среду.
+### `POST /reset`
+Используется для:
+- выбора track и vehicle;
+- применения сценария;
+- переинициализации активной среды.
 
-Используется:
+Основные клиенты:
 - `rusim reset`
 - `rusim scenario reset`
-- backend connect/reset path для Unity runtime
+- backend connect/reset path для `unity-sim`
 
-## `POST /step`
-Назначение:
-- передать один шаг управления;
-- получить новое состояние, telemetry и camera frame.
+### `POST /step`
+Используется для:
+- передачи одного шага управления;
+- получения нового состояния, телеметрии и camera frame.
 
 Типовые поля управления:
 - `throttle`
@@ -77,24 +68,52 @@ HTTP JSON API используется как базовый интерфейс 
 - `brake`
 - `targetAgentId`
 - `targetVehicleId`
-- `extensions[]`
 
-## Camera frame
-Текущий HTTP fallback возвращает кадр в `StepResult.frame` как `jpeg + base64`.
+## 2. Operator backend API
 
-Это используется для:
-- CLI smoke и diagnostics;
-- backend camera layer;
-- Python tooling;
-- bridge-слоёв.
+Backend предоставляет единый операторский слой поверх `unity-sim` и `real-robot`.
 
-## Multi-agent
-Для multi-agent сценариев runtime поддерживает:
-- адресацию по `targetAgentId`;
-- список активных агентов в health/step ответах;
-- адресный camera flow через product backend.
+### Подключение и runtime control
+Основные направления:
+- подключение к runtime;
+- чтение телеметрии и камеры;
+- ручное управление;
+- запуск и остановка автопилота.
+
+### Model lifecycle API
+
+Актуальные endpoint-ы:
+- `POST /api/models/upload`
+- `GET /api/models`
+- `POST /api/models/activate`
+- `GET /api/models/active`
+
+Назначение:
+- загрузка ONNX-артефакта;
+- хранение модели в registry;
+- выбор активной версии;
+- выдача метаданных и статуса активной модели.
+
+### Autopilot API
+
+Актуальные endpoint-ы:
+- `POST /api/autopilot/start`
+- `POST /api/autopilot/stop`
+- `GET /api/autopilot/status`
+
+Назначение:
+- запуск inference loop на активной модели;
+- остановка автопилота и возврат в ручной режим;
+- диагностика шагов, ошибок и текущего состояния.
+
+## Runtime roles в продукте
+
+- Unity runtime API — базовый интерфейс симулятора.
+- Backend API — операторский и продуктовый слой.
+- `rusim` использует оба контура: напрямую runtime API и backend API для моделей.
 
 ## Связанные страницы
-- [Unified Runtime Contract](unified-runtime-contract.md)
-- [Simulator Scenario Config Contract](simulator-scenario-config-contract.md)
+- [Архитектура](architecture.md)
 - [CLI `rusim`](cli.md)
+- [Unified Runtime Contract](unified-runtime-contract.md)
+- [Autopilot Integration Contract](autopilot-integration-contract.md)

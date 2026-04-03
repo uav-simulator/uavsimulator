@@ -1,16 +1,5 @@
 # CI/CD
 
-**Что это**  
-Текущее состояние автоматических проверок, публикации Pages и release workflow.
-
-**Для кого**  
-Для разработчика, который меняет код, документацию или release-поток.
-
-**Статус**  
-Фактическое описание текущих GitHub Actions workflow.
-
-**Проверено по**  
-`.github/workflows/ci.yml`, `.github/workflows/pages.yml`, `.github/workflows/release-manifest.yml`, `.github/workflows/release-rusim.yml`
 
 ## CI
 Основной workflow:

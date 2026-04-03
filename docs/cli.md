@@ -1,24 +1,6 @@
 # CLI `rusim`
 
-**Что это**  
-`rusim` — канонический CLI платформы.
-
-**Для кого**  
-Для пользователя и разработчика, которым нужно управлять runtime, сценариями и локальными build-ами без ручной возни по проекту.
-
-**Статус**  
-Актуальная reference-страница по текущим командам CLI.
-
-**Проверено по**  
-`./rusim --help`, `./rusim model --help`, `./rusim server --help`, `./rusim runtime --help`, `./rusim scenario --help`
-
-## Назначение
-`rusim` — канонический CLI платформы для:
-- bootstrap и установки;
-- проверки runtime;
-- выбора сцен и машинок;
-- запуска Unity runtime;
-- scenario-driven reset flow.
+`rusim` — основной CLI платформы для установки, запуска и диагностики runtime, а также для работы со сценариями, плагинами и моделями.
 
 Если команда не найдена в `zsh`, сначала выполнить:
 
@@ -27,206 +9,104 @@
 source ~/.zshrc
 ```
 
-или использовать локальный wrapper из корня репозитория:
+Или использовать локальный wrapper из корня репозитория:
 
 ```bash
 ./rusim --help
 ```
 
-Поведение справки:
-- `rusim` без аргументов печатает корневую справку;
-- `rusim help` делает то же самое;
-- `rusim runtime`, `rusim server`, `rusim inspect`, `rusim scenario`, `rusim list` печатают справку по разделу, а не завершаются ошибкой;
-- `rusim help runtime` и `rusim help server` также поддерживаются.
+## Основные группы команд
 
-## Полный список команд верхнего уровня
-
-```bash
-rusim --help
-rusim help
-```
-
-Доступные команды:
-- `version`
 - `install`
+- `version`
 - `upgrade`
 - `doctor`
 - `contract`
 - `list`
 - `inspect`
 - `reset`
+- `step`
+- `scenario`
 - `model`
+- `plugin`
 - `runtime`
 - `server`
-- `scenario`
-- `step`
 
-## 1. Установка CLI
-
-```bash
-rusim install --help
-```
-
-Назначение:
-- установить symlink `rusim` в пользовательский `PATH`;
-- при необходимости дописать `PATH` в `~/.zshrc`.
-
-Пример:
+## 1. Установка и bootstrap
 
 ```bash
 rusim install --write-shell-config
-source ~/.zshrc
-```
-
-Поддерживаемые аргументы:
-- `--bin-dir`
-- `--rc-file`
-- `--write-shell-config`
-
-## 2. Версия и metadata
-
-```bash
 rusim version
+rusim upgrade --repo NMGorovenko/uav-simulator --tag latest --check-only
 ```
 
 Назначение:
-- показать версию CLI;
-- показать git sha;
-- показать `rusim home`;
-- показать `latest` и `favorite` build, если они уже есть.
+- установить CLI;
+- проверить версию и локальный runtime registry;
+- скачать и зарегистрировать runtime build из GitHub Release.
 
-## 3. Upgrade runtime из GitHub Release
+## 2. Runtime lifecycle
 
 ```bash
-rusim upgrade --repo NMGorovenko/uav-simulator --tag latest --check-only
-rusim upgrade --repo NMGorovenko/uav-simulator --tag v0.1.0
-rusim runtime upgrade --repo NMGorovenko/uav-simulator --tag latest --check-only
+rusim runtime build --project-path src/UnityProject/uav-simulator
+rusim runtime list
+rusim runtime favorite set latest
+rusim server up --build latest --mode background --port 8000
+rusim server status
+rusim server down
 ```
 
 Назначение:
-- скачать `rusim-release-manifest.json` из GitHub Release;
-- выбрать runtime asset по текущей платформе;
-- скачать runtime archive;
-- проверить `sha256` (если checksum есть в manifest);
-- распаковать и зарегистрировать build в локальном runtime registry.
+- собрать standalone runtime;
+- выбрать рабочий build;
+- поднять и остановить runtime.
 
-Поддерживаемые аргументы:
-- `--repo`
-- `--tag` (`latest` или конкретный tag)
-- `--manifest-url` (ручная ссылка на manifest)
-- `--platform`
-- `--channel`
-- `--check-only`
-- `--force`
-- `--no-set-favorite`
-- `--github-token` (по умолчанию берётся из `GITHUB_TOKEN`)
-
-Примечание для private репозитория:
-- задайте `GITHUB_TOKEN` (или `--github-token`), иначе скачивание release assets может вернуть `404`.
-
-`runtime upgrade`:
-- `rusim runtime upgrade ...` — алиас к тому же upgrade flow;
-- удобно использовать рядом с `rusim runtime list/run/favorite`.
-- при `--tag latest` runtime-upgrade выбирает самый новый Release, где есть `rusim-release-manifest.json`.
-
-## 4. Диагностика runtime
-
-### Проверка health и contract
+## 3. Диагностика и discovery
 
 ```bash
 rusim doctor --base-url http://127.0.0.1:8000
+rusim contract --base-url http://127.0.0.1:8000
+rusim list tracks --base-url http://127.0.0.1:8000
+rusim list vehicles --base-url http://127.0.0.1:8000
+rusim inspect vehicle vehicle.prometeo.sport.v1 --base-url http://127.0.0.1:8000
 ```
 
 Назначение:
 - проверить доступность runtime;
-- получить краткую сводку по `health` и `contract`.
+- получить contract;
+- увидеть доступные треки и машинки;
+- инспектировать конкретный plugin descriptor.
 
-Ключевые поля в выводе `doctor`:
-- `pluginRegistrySource`: откуда загружены плагины (`RegistryAsset`, `ResourcesDescriptorsFolder` или fallback из `BuiltinPluginFactory`);
-- `activeTrackId` и `activeVehicleId`: какая сцена/машинка активны после последнего `reset`;
-- `healthAvailableVehicles` и `healthAvailableTracks`: количество плагинов по данным `/health`.
-
-### Получение полного contract
+## 4. Управление симуляцией
 
 ```bash
-rusim contract --base-url http://127.0.0.1:8000
+rusim reset --base-url http://127.0.0.1:8000 --track-id track.roadsystem_arena.v1 --vehicle-id vehicle.prometeo.sport.v1
+rusim step --base-url http://127.0.0.1:8000 --throttle 0.3 --steer 0.1
+rusim scenario validate configs/scenarios/ab-corridor-v1.yaml
+rusim scenario print-reset configs/scenarios/ab-corridor-v1.yaml
+rusim scenario reset configs/scenarios/ab-corridor-v1.yaml --base-url http://127.0.0.1:8000
 ```
 
-## 5. Discovery команд для tracks/scenes и vehicles
+Назначение:
+- переключать активный track и vehicle;
+- отправлять один шаг управления;
+- валидировать и применять YAML-сценарии.
 
-### Список tracks
-
-```bash
-rusim list tracks --base-url http://127.0.0.1:8000
-```
-
-### Список scenes
+## 5. Управление моделями
 
 ```bash
-rusim list scenes --base-url http://127.0.0.1:8000
-```
-
-`scene` в CLI является alias для `track plugin`.
-
-### Список машинок
-
-```bash
-rusim list vehicles --base-url http://127.0.0.1:8000
-```
-
-## 6. Inspect команд
-
-### Inspect track
-
-```bash
-rusim inspect track track.roadsystem_arena.v1 --base-url http://127.0.0.1:8000
-```
-
-### Inspect scene
-
-```bash
-rusim inspect scene track.roadsystem_arena.v1 --base-url http://127.0.0.1:8000
-```
-
-### Inspect vehicle
-
-```bash
-rusim inspect vehicle vehicle.arcade.blue.v1 --base-url http://127.0.0.1:8000
-```
-
-Команда возвращает:
-- идентификатор машинки;
-- тип машинки;
-- список сенсоров и актуаторов;
-- observation/action schema;
-- пример команды `reset`.
-
-Важно:
-- к отдельной машинке в Unity не подключаются через отдельный порт;
-- подключение идёт к общему runtime;
-- выбор активной машинки делается через `rusim reset`.
-
-## 7. Модели управления
-
-```bash
-rusim model install python/training/artifacts/ab_corridor_policy_v1/ab_corridor_policy_v1.onnx
+rusim model install python/training/artifacts/ab_corridor_policy_v1/ab_corridor_policy_v1.onnx --activate
 rusim model list
 rusim model active
 rusim model activate model-20260329-xxxx
 ```
 
 Назначение:
-- загружать `.onnx` модель в backend model registry через продуктовый CLI-контур;
-- автоматически подхватывать соседние `metadata.json` и `metrics.json`, если они лежат рядом с артефактом;
-- активировать нужную модель перед запуском из `web-ui`.
+- загрузить ONNX-модель в backend registry;
+- автоматически подхватить `metadata.json` и `metrics.json` из той же директории;
+- активировать выбранную модель перед запуском автопилота.
 
-Поддерживаемые подкоманды:
-- `rusim model install <artifact.onnx>`
-- `rusim model list`
-- `rusim model active`
-- `rusim model activate <model_id>`
-
-Аргументы `model install`:
+Поддерживаемые аргументы `model install`:
 - `--backend-url`
 - `--name`
 - `--version`
@@ -235,220 +115,39 @@ rusim model activate model-20260329-xxxx
 - `--metrics`
 - `--activate`
 
-## 8. Прямой выбор track и vehicle
+## 6. Управление плагинами
 
 ```bash
-rusim reset --base-url http://127.0.0.1:8000 --track-id track.roadsystem_arena.v1 --vehicle-id vehicle.arcade.blue.v1
-```
-
-Поддерживаемые аргументы:
-- `--track-id`
-- `--vehicle-id`
-- `--seed`
-- `--time-scale`
-
-Назначение:
-- переключить активную сцену/track;
-- переключить активную машинку;
-- отправить нормализованный `reset` payload в runtime.
-
-## 8. Standalone runtime build
-
-```bash
-rusim runtime build --project-path src/UnityProject/uav-simulator
+rusim plugin install ./my-plugin.rusim-plugin.zip
+rusim plugin list
+rusim plugin remove vehicle.custom.racer.v1
 ```
 
 Назначение:
-- собрать standalone macOS runtime без необходимости вручную открывать Unity Editor для пользователя.
+- установить пользовательский plugin;
+- увидеть built-in и user plugins;
+- удалить пользовательский plugin из каталога runtime.
 
-По умолчанию build получает versioned name вида:
-
-```text
-uav-simulator-2026.03.12-153000+abc123.app
-```
-
-Можно задать свой label:
+## Типовой продуктовый сценарий
 
 ```bash
-rusim runtime build --label demo
-```
+# 1. Поднять runtime
+rusim server up --build latest --mode background --port 8000
 
-После сборки build автоматически попадает в registry.
+# 2. Применить сценарий
+rusim scenario reset configs/scenarios/ab-corridor-v1.yaml --base-url http://127.0.0.1:8000
 
-### Список и inspect build-артефактов
+# 3. Установить модель
+rusim model install python/training/artifacts/ab_corridor_policy_v1/ab_corridor_policy_v1.onnx --activate
 
-```bash
-rusim runtime list
-rusim runtime inspect latest
-```
-
-### Favorite build
-
-```bash
-rusim runtime favorite show
-rusim runtime favorite set latest
-```
-
-### Удаление build-артефакта
-
-```bash
-rusim runtime remove latest
-```
-
-По умолчанию команда:
-- удаляет build из registry;
-- удаляет `.app` bundle с диска;
-- если этот build сейчас запущен через `rusim`, сначала останавливает его.
-
-Если нужно оставить файлы на диске и убрать только запись из registry:
-
-```bash
-rusim runtime remove latest --keep-files
-```
-
-Ограничение:
-- если проект уже открыт в Unity Editor, batch build может быть заблокирован стандартным Unity project lock.
-
-## 9. Управление runtime process
-
-### Запуск через Unity project path
-
-```bash
-rusim server up --mode windowed
-rusim server up --mode background --port 8011
-rusim server up --mode headless --port 8011
-```
-
-### Запуск через standalone runtime
-
-```bash
-rusim server up --runtime-app build/runtime/macos/uav-simulator.app --mode windowed --port 8011
-rusim server up --runtime-app build/runtime/macos/uav-simulator.app --mode background --port 8011
-rusim server up --runtime-app build/runtime/macos/uav-simulator.app --mode headless --port 8011
-```
-
-### Запуск по registry id
-
-```bash
-rusim server up --build latest --mode background --port 8011
-rusim server up --build favorite --mode windowed --port 8011
-```
-
-Каноническая lifecycle-модель:
-- `rusim server up`
-- `rusim server status`
-- `rusim server down`
-
-Совместимость:
-- `rusim server start/stop` сохранены как alias;
-- `rusim runtime run` сохранён как alias для запуска build через lifecycle-контур `server`.
-
-### Значение режимов
-
-- `windowed`
-  - обычный запуск с видимым окном;
-  - нужен для ручной отладки и визуальной работы в симуляции.
-
-- `background`
-  - запуск без полноценного пользовательского окна, но с сохранением graphics device;
-  - нужен, когда требуется камера и рендер, но не нужен обычный UI рантайма.
-
-- `headless`
-  - запуск с `-batchmode -nographics`;
-  - подходит для серверных, CI и training-сценариев, где видео не требуется;
-  - в этом режиме камера может быть недоступна, потому что Unity идёт без graphics device.
-
-Практический вывод по текущей реализации:
-- `background` уже подтверждён на standalone runtime: после `reset` команда `step` возвращает camera frame;
-- `headless` следует использовать только там, где видеопоток не нужен по определению.
-
-### Статус и остановка
-
-```bash
-rusim server status --port 8011
-rusim server down
-```
-
-Runtime state и logs хранятся в:
-
-```text
-$RUSIM_HOME/runtime/
-```
-
-По умолчанию:
-
-```text
-.rusim/runtime/
-```
-
-## 10. Scenario-команды
-
-### Проверка scenario-файла
-
-```bash
-rusim scenario validate configs/scenarios/demo.yaml
-```
-
-### Печать reset payload
-
-```bash
-rusim scenario print-reset configs/scenarios/demo.yaml
-```
-
-### Применение scenario
-
-```bash
-rusim scenario reset configs/scenarios/demo.yaml --base-url http://127.0.0.1:8000
-```
-
-Важно:
-- `configs/scenarios/demo.yaml` является каноническим demo-сценарием для `make demo-reset` и `make demo-proof`.
-- Для разовых экспериментов можно использовать любые другие scenario-файлы, но базовый runbook проекта опирается именно на `demo.yaml`.
-- Для multi-agent flow добавлен референсный сценарий:
-
-```bash
-rusim server up --mode background --port 8000 --scenario configs/scenarios/demo-multi-agent.yaml
-```
-
-Этот сценарий поднимает две машинки на одном треке и выставляет `agents.seeEachOther=true`, `agents.collisionsEnabled=false`.
-
-## 11. Одиночный step
-
-```bash
-rusim step --base-url http://127.0.0.1:8000 --throttle 0.2 --steer 0.1 --brake 0.0
-```
-
-Для адресного управления в multi-agent runtime:
-
-```bash
-rusim step --base-url http://127.0.0.1:8000 --agent-id npc-red --throttle 0.3 --steer 0.0 --brake 0.0
-```
-
-Назначение:
-- отправить один control step в runtime;
-- получить краткий ответ по state/reward/frame.
-- при наличии нескольких машинок `--agent-id` адресует конкретный экземпляр;
-- `--vehicle-id` поддерживается как fallback, но только если такой `vehicleId` в runtime не дублируется.
-
-## 11. Рекомендуемый smoke-test
-
-Если Unity runtime уже запущен:
-
-```bash
+# 4. Проверить runtime
 rusim doctor --base-url http://127.0.0.1:8000
-rusim list tracks --base-url http://127.0.0.1:8000
-rusim list vehicles --base-url http://127.0.0.1:8000
-rusim inspect vehicle vehicle.arcade.blue.v1 --base-url http://127.0.0.1:8000
-rusim reset --base-url http://127.0.0.1:8000 --track-id track.roadsystem_arena.v1 --vehicle-id vehicle.arcade.blue.v1
 ```
 
-Если проверяется build registry:
+Дальше запуск автопилота выполняется через `web-ui` или backend API.
 
-```bash
-rusim version
-rusim runtime list
-rusim runtime inspect latest
-rusim runtime favorite set latest
-rusim runtime favorite show
-rusim server up --build latest --mode background --port 8011
-```
+## Связанные страницы
+- [Использование](usage.md)
+- [API](api.md)
+- [Плагины](plugins.md)
+- [Сборка и релизы](build.md)

@@ -55,6 +55,11 @@ nav:
   - CLI: cli.md
   - Архитектура: architecture.md
   - API: api.md
+  - Преддипломная практика:
+      - Обзор: prediploma-practice.md
+      - Спринт 1: report/prediploma-practice/sprint-1-changelog.md
+      - Спринт 2: report/prediploma-practice/sprint-2-changelog.md
+      - Спринт 3: report/prediploma-practice/sprint-3-changelog.md
   - Плагины:
       - Обзор: plugins.md
       - Машинки: vehicles.md
@@ -73,6 +78,3 @@ nav:
   - Статус проекта:
       - Roadmap: roadmap.md
       - Definition of Done MVP: definition-of-done-mvp.md
-  - Дополнительно:
-      - Research и магистерская: research-index.md
-      - Инженерный журнал: engineering-log.md

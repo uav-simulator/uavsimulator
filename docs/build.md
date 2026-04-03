@@ -1,16 +1,5 @@
 # Сборка и локальный запуск
 
-**Что это**  
-Практическая страница про локальную сборку, запуск и developer flow вокруг Unity runtime, CLI и demo automation.
-
-**Для кого**  
-Для разработчика и пользователя, который работает с репозиторием локально.
-
-**Статус**  
-Актуальный guide по локальному запуску.
-
-**Проверено по**  
-`Makefile`, `python/sim_client/cli.py`, `configs/scenarios/demo.yaml`, `src/UnityProject/uav-simulator/Assets/Scenes/`
 
 ## Канонический product lifecycle
 - `rusim server up`

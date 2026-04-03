@@ -1,16 +1,5 @@
 # Машинки
 
-**Что это**  
-Краткий обзор текущих vehicle plugin-ов и общих требований к их устройству.
-
-**Для кого**  
-Для разработчика, который расширяет каталог машинок или проверяет актуальные `vehicleId`.
-
-**Статус**  
-Reference-страница по vehicle catalog.
-
-**Проверено по**  
-`Assets/Resources/UavSimulator/Plugins/Vehicles/`, `Assets/Resources/UavSimulator/Contracts/`
 
 ## Актуальные `vehicleId`
 - `vehicle.prometeo.sport.v1`

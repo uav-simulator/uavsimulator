@@ -1,16 +1,5 @@
 # Контракты
 
-**Что это**  
-Набор канонических документов, которые фиксируют границы продукта и текущие интерфейсы.
-
-**Для кого**  
-Для разработчика, интегратора и автора документации, которым нужно отличать источник истины от guide-страниц и research-заметок.
-
-**Статус**  
-Канонический раздел публичной wiki.
-
-**Проверено по**  
-`docs/product-definition.md`, `docs/unified-runtime-contract.md`, `docs/autopilot-integration-contract.md`, `docs/simulator-scenario-config-contract.md`, `docs/api.md`
 
 ## Набор канонических контрактов
 ### 1. Product Definition
