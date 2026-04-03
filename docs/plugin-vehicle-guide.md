@@ -1,18 +1,17 @@
 # Как добавить робота
 
-## Назначение
-Эта страница описывает практический процесс добавления нового робота и его подключения к симулятору без правок core API.
+Короткая внутренняя инструкция по добавлению нового robot plugin.
 
-## Что считается plugin-роботом
-Новый робот в проекте состоит из трёх частей:
-- runtime-компонент Unity, наследующий `VehicleBase`;
-- prefab с физикой и визуалом;
-- descriptor assets:
-  - `VehiclePluginDescriptor`;
-  - `DeviceContractDescriptorAsset`.
+## Что нужно создать
 
-## Шаг 1. Реализовать runtime-компонент
-Создай компонент-наследник `VehicleBase`, например:
+1. Компонент Unity на базе `VehicleBase`.
+2. Prefab робота.
+3. `DeviceContractDescriptorAsset`.
+4. `VehiclePluginDescriptor`.
+
+## Компонент runtime
+
+Минимальный шаблон:
 
 ```csharp
 public sealed class MyCarVehicle : VehicleBase
@@ -27,13 +26,14 @@ public sealed class MyCarVehicle : VehicleBase
 }
 ```
 
-Минимум, который должен уметь runtime-компонент:
+Компонент должен:
 - принимать `ControlCommand`;
 - возвращать `VehicleState`;
 - по возможности отдавать `CameraFrame`;
 - корректно отрабатывать `ResetVehicle`.
 
-## Шаг 2. Собрать prefab
+## Prefab
+
 Prefab должен содержать:
 - корневой `GameObject`;
 - collider;
@@ -45,8 +45,9 @@ Prefab должен содержать:
 - `SimulationManager` ищет `VehicleBase` внутри prefab;
 - если в prefab нет `VehicleBase`, плагин не будет создан.
 
-## Шаг 3. Создать контракт устройства
-Создай `DeviceContractDescriptorAsset` и опиши в нём:
+## Контракт устройства
+
+В `DeviceContractDescriptorAsset` нужно описать:
 - `deviceId`;
 - `deviceType`;
 - sensors;
@@ -60,8 +61,9 @@ Prefab должен содержать:
 - дальномер: `sensor.range`
 - дифференциальные моторы: `drive.left_pwm_norm`, `drive.right_pwm_norm`
 
-## Шаг 4. Создать descriptor робота
-Создай `VehiclePluginDescriptor` и заполни:
+## Descriptor
+
+В `VehiclePluginDescriptor` нужно заполнить:
 - `id`
 - `displayName`
 - `description`
@@ -74,16 +76,15 @@ Prefab должен содержать:
 Assets/Resources/UavSimulator/Plugins/Vehicles
 ```
 
-Это важно, потому что runtime подхватывает роботов через `Resources`.
+## Подключение к каталогу
 
-## Шаг 5. Подключить робота к каталогу
-Есть два режима:
+Есть два варианта:
 
-### Вариант A. Auto-discovery
+### Auto-discovery
 Если descriptor asset лежит в `Assets/Resources/UavSimulator/Plugins/Vehicles`, он будет найден автоматически.
 
-### Вариант B. Curated registry
-Если нужно зафиксировать каталог явно, добавь asset в:
+### Curated registry
+Если нужен явный список, добавь asset в:
 
 ```text
 Assets/Resources/UavSimulator/PluginRegistry.asset
@@ -93,9 +94,8 @@ Assets/Resources/UavSimulator/PluginRegistry.asset
 - entries из `PluginRegistry.asset`;
 - entries из `Resources/UavSimulator/Plugins`.
 
-Поэтому новый робот может быть подключен без правки core-кода.
+## Проверка
 
-## Шаг 6. Проверить подключение
 Проверка через runtime:
 
 ```bash
@@ -103,23 +103,14 @@ Assets/Resources/UavSimulator/PluginRegistry.asset
 curl -s http://127.0.0.1:8000/contract
 ```
 
-Проверка через web UI:
-- открыть popup выбора робота;
-- убедиться, что новый робот появился в списке;
-- выбрать её и выполнить reset/connect.
-
-## Шаг 7. Если нужна sim-to-real интеграция
-Если новый робот должен работать не только в Unity, но и с реальным стендом:
+Если робот нужен и в sim-to-real контуре:
 - сохраняй тот же `deviceId` и sensor/action schema;
 - делай отдельный hardware adapter вне Unity core;
-- не меняй `SimulationConfig`, `ControlCommand`, `StepResult` ради одной модели.
+- симулятор и реальный робот должны делить один контракт управления и наблюдений.
 
-Правильный путь:
-- симулятор и реальный робот делят один контракт;
-- transport/runtime adapter отличается, а не API.
+## Встроенный каталог
 
-## Для встроенных профилей проекта
-Для текущих built-in роботов есть utility:
+Для built-in профилей есть utility:
 
 ```text
 UavSimulator/Plugins/Sync Builtin Plugin Catalog

@@ -62,4 +62,3 @@ Frontend не работает напрямую с transport-деталями к
 - [CLI `rusim`](cli.md)
 - [Архитектура](architecture.md)
 - [API](api.md)
-- [Плагины](plugins.md)

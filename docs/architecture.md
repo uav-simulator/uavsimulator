@@ -112,5 +112,4 @@ flowchart LR
 - [О продукте](about-simulator.md)
 - [API](api.md)
 - [CLI `rusim`](cli.md)
-- [Плагины](plugins.md)
 - [Unified Runtime Contract](unified-runtime-contract.md)

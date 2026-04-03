@@ -20,6 +20,8 @@ exclude_docs: |
   experiments.md
   mlagents.md
   overview.md
+  plugin-vehicle-guide.md
+  plugins.md
   product-definition.md
   release-distribution-model.md
   release-manifest.md
@@ -46,6 +48,7 @@ exclude_docs: |
   simulator-scenario-config-contract.md
   stack.md
   unified-runtime-contract.md
+  vehicles.md
 
 theme:
   name: material
@@ -100,7 +103,3 @@ nav:
       - Спринт 1: report/prediploma-practice/sprint-1-changelog.md
       - Спринт 2: report/prediploma-practice/sprint-2-changelog.md
       - Спринт 3: report/prediploma-practice/sprint-3-changelog.md
-  - Плагины:
-      - Обзор: plugins.md
-      - Роботы: vehicles.md
-      - Как добавить робота: plugin-vehicle-guide.md
