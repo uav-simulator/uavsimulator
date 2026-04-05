@@ -1,0 +1,20 @@
+{
+  "name": "com.uav-simulator.plugin-sdk",
+  "version": "0.1.0",
+  "displayName": "UAV Simulator Plugin SDK",
+  "description": "SDK for developing plugins (vehicles, tracks) for the uav-simulator platform. Provides base classes, contracts, editor tools for validation and export.",
+  "unity": "6000.1",
+  "keywords": [
+    "uav-simulator",
+    "plugin",
+    "sdk",
+    "vehicle",
+    "track",
+    "sim-to-real"
+  ],
+  "author": {
+    "name": "Nikita Gorovenko",
+    "url": "https://github.com/NMGorovenko"
+  },
+  "type": "library"
+}

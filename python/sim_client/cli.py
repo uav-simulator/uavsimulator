@@ -241,6 +241,31 @@ def build_parser() -> argparse.ArgumentParser:
     print_reset_cmd.set_defaults(_parser=print_reset_cmd)
     print_reset_cmd.add_argument("file")
 
+    plugin = subparsers.add_parser("plugin", help="Manage simulator plugins (install, list, remove).")
+    plugin.set_defaults(_parser=plugin)
+    plugin_sub = plugin.add_subparsers(dest="plugin_command")
+
+    plugin_install = plugin_sub.add_parser("install", help="Install plugin from .rusim-plugin.zip archive.")
+    plugin_install.set_defaults(_parser=plugin_install)
+    plugin_install.add_argument("archive", help="Path to .rusim-plugin.zip archive.")
+
+    plugin_list = plugin_sub.add_parser("list", help="List installed plugins (built-in and user).")
+    plugin_list.set_defaults(_parser=plugin_list)
+    plugin_list.add_argument("--json", action="store_true", help="Output as JSON.")
+
+    plugin_remove = plugin_sub.add_parser("remove", help="Remove a user-installed plugin.")
+    plugin_remove.set_defaults(_parser=plugin_remove)
+    plugin_remove.add_argument("plugin_id", help="Plugin ID to remove.")
+
+    plugin_new = plugin_sub.add_parser("new", help="Scaffold a new plugin project from template.")
+    plugin_new.set_defaults(_parser=plugin_new)
+    plugin_new.add_argument("plugin_id", help="Plugin ID (e.g. vehicle.my_brand.racer.v1).")
+    plugin_new.add_argument("--type", choices=["vehicle", "track"], required=True, help="Plugin type.")
+    plugin_new.add_argument("--display-name", default="", help="Human-readable plugin name.")
+    plugin_new.add_argument("--description", default="", help="Plugin description.")
+    plugin_new.add_argument("--author", default="", help="Author name or email.")
+    plugin_new.add_argument("--output-dir", default=".", help="Directory to create plugin project in.")
+
     step = subparsers.add_parser("step", help="Send a single control step.")
     step.set_defaults(_parser=step)
     step.add_argument("--base-url", default="http://127.0.0.1:8000")
@@ -295,6 +320,8 @@ def main(argv: list[str] | None = None) -> int:
             return _server(args)
         if args.command == "scenario":
             return _scenario(args)
+        if args.command == "plugin":
+            return _plugin(args)
         if args.command == "step":
             return _step(args.base_url, args.throttle, args.steer, args.brake, args.agent_id, args.vehicle_id)
     except Exception as exc:  # pragma: no cover - CLI boundary
@@ -699,6 +726,216 @@ def _scenario(args: argparse.Namespace) -> int:
             indent=2,
         )
     )
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# Plugin management
+# ---------------------------------------------------------------------------
+
+_BUILTIN_PLUGINS: List[Dict[str, str]] = [
+    {"pluginId": "vehicle.prometeo.sport.v1", "type": "vehicle", "displayName": "PROMETEO Sport Car", "version": "1.0.0"},
+    {"pluginId": "vehicle.arcade.blue.v1", "type": "vehicle", "displayName": "Arcade Free Racing Car (Blue)", "version": "1.0.0"},
+    {"pluginId": "vehicle.arcade.red.v1", "type": "vehicle", "displayName": "Arcade Free Racing Car (Red)", "version": "1.0.0"},
+    {"pluginId": "vehicle.arcade.gray.v1", "type": "vehicle", "displayName": "Arcade Free Racing Car (Gray)", "version": "1.0.0"},
+    {"pluginId": "vehicle.arcade.purple.v1", "type": "vehicle", "displayName": "Arcade Free Racing Car (Purple)", "version": "1.0.0"},
+    {"pluginId": "vehicle.drone.simple.v1", "type": "vehicle", "displayName": "Simple Quadcopter", "version": "1.0.0"},
+    {"pluginId": "track.basic_arena.v1", "type": "track", "displayName": "Basic Arena", "version": "1.0.0"},
+    {"pluginId": "track.roadsystem_arena.v1", "type": "track", "displayName": "Road System Arena", "version": "1.0.0"},
+    {"pluginId": "track.roadsystem_realistic.v2", "type": "track", "displayName": "Road System Realistic", "version": "2.0.0"},
+]
+
+_BUILTIN_IDS = frozenset(p["pluginId"] for p in _BUILTIN_PLUGINS)
+
+_PLUGIN_MANIFEST_REQUIRED_KEYS = ("pluginId", "type", "displayName", "version")
+
+
+def _plugins_dir() -> Path:
+    return _rusim_home() / "plugins"
+
+
+def _plugin_registry_path() -> Path:
+    return _rusim_home() / "plugin-registry.json"
+
+
+def _load_plugin_registry() -> Dict[str, Any]:
+    path = _plugin_registry_path()
+    if not path.exists():
+        return {"schemaVersion": 1, "plugins": []}
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _save_plugin_registry(registry: Dict[str, Any]) -> None:
+    path = _plugin_registry_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(registry, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def _plugin(args: argparse.Namespace) -> int:
+    if not args.plugin_command:
+        args._parser.print_help()
+        return 0
+    if args.plugin_command == "install":
+        return _plugin_install(args)
+    if args.plugin_command == "list":
+        return _plugin_list(args)
+    if args.plugin_command == "remove":
+        return _plugin_remove(args)
+    if args.plugin_command == "new":
+        return _plugin_new(args)
+    raise ValueError(f"Unknown plugin command: {args.plugin_command}")
+
+
+def _plugin_install(args: argparse.Namespace) -> int:
+    archive_path = Path(args.archive).expanduser().resolve()
+    if not archive_path.exists():
+        raise FileNotFoundError(f"Plugin archive not found: {archive_path}")
+    if not zipfile.is_zipfile(archive_path):
+        raise ValueError(f"Not a valid zip archive: {archive_path}")
+
+    with zipfile.ZipFile(archive_path, "r") as zf:
+        names = zf.namelist()
+        if "manifest.json" not in names:
+            raise ValueError("Plugin archive must contain manifest.json at the root")
+        manifest = json.loads(zf.read("manifest.json").decode("utf-8"))
+
+    missing = [k for k in _PLUGIN_MANIFEST_REQUIRED_KEYS if k not in manifest or not manifest[k]]
+    if missing:
+        raise ValueError(f"manifest.json missing required keys: {', '.join(missing)}")
+
+    plugin_id = manifest["pluginId"]
+    plugin_type = manifest["type"]
+    if plugin_type not in ("vehicle", "track"):
+        raise ValueError(f"Invalid plugin type: {plugin_type!r} (expected 'vehicle' or 'track')")
+    if plugin_id in _BUILTIN_IDS:
+        raise ValueError(f"Cannot overwrite built-in plugin: {plugin_id}")
+
+    dest = _plugins_dir() / plugin_id
+    if dest.exists():
+        shutil.rmtree(dest)
+    dest.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(archive_path, "r") as zf:
+        zf.extractall(dest)
+
+    registry = _load_plugin_registry()
+    plugins = [p for p in registry["plugins"] if p.get("pluginId") != plugin_id]
+    plugins.append({
+        "pluginId": plugin_id,
+        "type": plugin_type,
+        "displayName": manifest["displayName"],
+        "version": manifest["version"],
+        "author": manifest.get("author", ""),
+        "compatibleRuntime": manifest.get("compatibleRuntime", ""),
+        "installedFrom": str(archive_path),
+        "installedAt": datetime.now().isoformat(timespec="seconds"),
+    })
+    registry["plugins"] = plugins
+    _save_plugin_registry(registry)
+
+    print(json.dumps({
+        "action": "install",
+        "pluginId": plugin_id,
+        "type": plugin_type,
+        "displayName": manifest["displayName"],
+        "version": manifest["version"],
+        "installedTo": str(dest),
+    }, ensure_ascii=False, indent=2))
+    return 0
+
+
+def _plugin_list(args: argparse.Namespace) -> int:
+    registry = _load_plugin_registry()
+    user_plugins = registry.get("plugins", [])
+
+    items: List[Dict[str, str]] = []
+    for p in _BUILTIN_PLUGINS:
+        items.append({**p, "source": "built-in"})
+    for p in user_plugins:
+        items.append({
+            "pluginId": p["pluginId"],
+            "type": p.get("type", ""),
+            "displayName": p.get("displayName", ""),
+            "version": p.get("version", ""),
+            "source": "user",
+        })
+
+    if getattr(args, "json", False):
+        print(json.dumps({"count": len(items), "items": items}, ensure_ascii=False, indent=2))
+    else:
+        for item in items:
+            tag = f"[{item['source']}]"
+            print(f"  {tag:<12} {item['pluginId']:<40} {item['displayName']:<35} {item['version']}")
+
+    return 0
+
+
+def _plugin_remove(args: argparse.Namespace) -> int:
+    plugin_id = args.plugin_id
+    if plugin_id in _BUILTIN_IDS:
+        raise ValueError(f"Cannot remove built-in plugin: {plugin_id}")
+
+    registry = _load_plugin_registry()
+    existing = [p for p in registry["plugins"] if p.get("pluginId") == plugin_id]
+    if not existing:
+        raise ValueError(f"Plugin not found in registry: {plugin_id}")
+
+    dest = _plugins_dir() / plugin_id
+    if dest.exists():
+        shutil.rmtree(dest)
+
+    registry["plugins"] = [p for p in registry["plugins"] if p.get("pluginId") != plugin_id]
+    _save_plugin_registry(registry)
+
+    print(json.dumps({
+        "action": "remove",
+        "pluginId": plugin_id,
+        "removed": True,
+    }, ensure_ascii=False, indent=2))
+    return 0
+
+
+def _plugin_new(args: argparse.Namespace) -> int:
+    plugin_id = args.plugin_id
+    plugin_type = args.type
+    display_name = args.display_name or plugin_id.replace(".", " ").replace("_", " ").title()
+    description = args.description or f"{display_name} plugin for uav-simulator."
+    author = args.author or ""
+
+    template_dir = REPO_ROOT / "templates" / f"plugin-{plugin_type}"
+    if not template_dir.is_dir():
+        raise FileNotFoundError(f"Template not found: {template_dir}")
+
+    output_root = Path(args.output_dir).expanduser().resolve() / plugin_id
+    if output_root.exists():
+        raise FileExistsError(f"Output directory already exists: {output_root}")
+
+    replacements = {
+        "{{PLUGIN_ID}}": plugin_id,
+        "{{DISPLAY_NAME}}": display_name,
+        "{{DESCRIPTION}}": description,
+        "{{AUTHOR}}": author,
+    }
+
+    output_root.mkdir(parents=True, exist_ok=True)
+    for src_file in template_dir.rglob("*"):
+        if not src_file.is_file():
+            continue
+        rel = src_file.relative_to(template_dir)
+        dst = output_root / rel
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        content = src_file.read_text(encoding="utf-8")
+        for placeholder, value in replacements.items():
+            content = content.replace(placeholder, value)
+        dst.write_text(content, encoding="utf-8")
+
+    print(json.dumps({
+        "action": "new",
+        "pluginId": plugin_id,
+        "type": plugin_type,
+        "displayName": display_name,
+        "createdAt": str(output_root),
+        "files": sorted(str(f.relative_to(output_root)) for f in output_root.rglob("*") if f.is_file()),
+    }, ensure_ascii=False, indent=2))
     return 0
 
 

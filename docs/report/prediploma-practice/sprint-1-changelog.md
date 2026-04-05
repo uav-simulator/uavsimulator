@@ -955,6 +955,20 @@ sequenceDiagram
 
 Это делает плагинную систему доступной не только для разработчиков с Unity, но и для операторов и исследователей, которые получают плагины в виде готовых архивов.
 
+**Создание нового плагина из шаблона:**
+
+Для быстрого старта разработки нового плагина `rusim` предоставляет встроенный scaffolding из шаблонов (`templates/plugin-vehicle`, `templates/plugin-track`):
+
+```bash
+# Создать проект нового vehicle-плагина
+rusim plugin new vehicle.my_brand.racer.v1 --type vehicle --display-name "My Racer"
+# → создаст каталог vehicle.my_brand.racer.v1/ с manifest.json,
+#   descriptor.json, device-contract.json и README.md
+
+# Создать проект нового track-плагина
+rusim plugin new track.custom_maze.v1 --type track --display-name "Custom Maze"
+```
+
 ---
 
 #### Полное дерево команд (справочник)
@@ -987,7 +1001,8 @@ rusim
 ├── plugin                           Управление плагинами
 │   ├── install <.zip>               Установка из архива
 │   ├── list                         Список установленных плагинов
-│   └── remove <id>                  Удаление плагина
+│   ├── remove <id>                  Удаление плагина
+│   └── new <id> --type vehicle|track  Создание из шаблона
 ├── runtime                          Управление build-артефактами
 │   ├── build                        Сборка standalone
 │   ├── list / inspect / remove      Управление registry
@@ -1622,7 +1637,8 @@ rusim server up --build latest --mode background --port 8000
 - Реализована группа команд `rusim plugin`:
   - `rusim plugin install` — установка плагина из `.rusim-plugin.zip` архива;
   - `rusim plugin list` — просмотр установленных плагинов (built-in и пользовательских);
-  - `rusim plugin remove` — удаление пользовательского плагина.
+  - `rusim plugin remove` — удаление пользовательского плагина;
+  - `rusim plugin new` — создание нового плагин-проекта из встроенного шаблона (`templates/plugin-vehicle`, `templates/plugin-track`).
 
 ### 7.4 Training и Evaluation (25.03 — 29.03)
 

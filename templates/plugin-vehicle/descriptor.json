@@ -1,0 +1,6 @@
+{
+  "id": "{{PLUGIN_ID}}",
+  "displayName": "{{DISPLAY_NAME}}",
+  "version": { "major": 1, "minor": 0, "patch": 0 },
+  "description": "{{DESCRIPTION}}"
+}
