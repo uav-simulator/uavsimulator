@@ -113,5 +113,4 @@ export RUSIM_HOME=/custom/path/to/rusim-home
 ## Связанные страницы
 - [Использование](usage.md)
 - [CLI `rusim`](cli.md)
-- [Сборка и локальный запуск](build.md)
-- [Поставка и обновление](release-distribution-model.md)
+- [Архитектура](architecture.md)

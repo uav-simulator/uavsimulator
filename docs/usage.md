@@ -122,4 +122,3 @@ Product-layer не требует отдельного frontend для физи�
 - [Установка](installation.md)
 - [CLI `rusim`](cli.md)
 - [API](api.md)
-- [Simulator Scenario Config Contract](simulator-scenario-config-contract.md)
