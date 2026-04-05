@@ -95,6 +95,19 @@ Python-контур отвечает за:
 - стабильные product IDs;
 - единый источник данных для runtime, CLI и contract discovery.
 
+### Инструментарий разработки плагинов
+
+Для внешних разработчиков доступны:
+
+- **Plugin SDK** (`packages/com.uav-simulator.plugin-sdk`) -- UPM-пакет с базовыми классами, контрактами и editor-инструментами;
+- **Plugin Templates** (`templates/plugin-vehicle`, `templates/plugin-track`) -- шаблоны для быстрого старта;
+- **Editor Tools**: `Tools > UavSimulator > Validate Plugins` и `Tools > UavSimulator > Export Plugin (.zip)`;
+- **CLI**: `rusim plugin new`, `rusim plugin install`, `rusim plugin list`, `rusim plugin remove`.
+
+### Формат плагина
+
+Плагин распространяется как `.rusim-plugin.zip` архив с `manifest.json` (pluginId, type, version, compatibleRuntime).
+
 ## Базовый продуктовый контур
 
 ```mermaid
@@ -112,4 +125,3 @@ flowchart LR
 - [О продукте](about-simulator.md)
 - [API](api.md)
 - [CLI `rusim`](cli.md)
-- [Unified Runtime Contract](unified-runtime-contract.md)

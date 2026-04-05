@@ -120,13 +120,16 @@ rusim model activate model-20260329-xxxx
 ```bash
 rusim plugin install ./my-plugin.rusim-plugin.zip
 rusim plugin list
+rusim plugin list --json
 rusim plugin remove vehicle.custom.racer.v1
+rusim plugin new vehicle.my_brand.racer.v1 --type vehicle --display-name "My Racer"
 ```
 
 Назначение:
-- установить пользовательский plugin;
+- установить пользовательский plugin из `.rusim-plugin.zip` архива;
 - увидеть built-in и user plugins;
-- удалить пользовательский plugin из каталога runtime.
+- удалить пользовательский plugin из каталога runtime;
+- создать новый plugin-проект из шаблона.
 
 ## Типовой продуктовый сценарий
 
@@ -149,5 +152,4 @@ rusim doctor --base-url http://127.0.0.1:8000
 ## Связанные страницы
 - [Использование](usage.md)
 - [API](api.md)
-- [Плагины](plugins.md)
-- [Сборка и релизы](build.md)
+- [Архитектура](architecture.md)

@@ -1,0 +1,18 @@
+{
+  "contractVersion": { "major": 1, "minor": 0, "patch": 0 },
+  "descriptor": {
+    "deviceId": "{{PLUGIN_ID}}",
+    "deviceType": "ground_robot_differential",
+    "sensors": [
+      { "id": "camera", "sensorType": "camera", "format": "jpeg_base64", "unit": "", "shape": [480, 640, 3], "rateHz": 30.0 },
+      { "id": "speedometer", "sensorType": "scalar", "format": "float32", "unit": "m/s", "shape": [1], "rateHz": 50.0 }
+    ],
+    "actuators": [
+      { "id": "throttle", "actuatorType": "continuous", "unit": "norm", "min": -1.0, "max": 1.0 },
+      { "id": "steer", "actuatorType": "continuous", "unit": "norm", "min": -1.0, "max": 1.0 },
+      { "id": "brake", "actuatorType": "continuous", "unit": "norm", "min": 0.0, "max": 1.0 }
+    ],
+    "observationSchemaJson": "",
+    "actionSchemaJson": ""
+  }
+}

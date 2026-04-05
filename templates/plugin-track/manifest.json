@@ -1,0 +1,8 @@
+{
+  "pluginId": "{{PLUGIN_ID}}",
+  "type": "track",
+  "displayName": "{{DISPLAY_NAME}}",
+  "version": "1.0.0",
+  "compatibleRuntime": ">=0.2.0",
+  "author": "{{AUTHOR}}"
+}
