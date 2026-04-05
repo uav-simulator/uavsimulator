@@ -101,3 +101,7 @@ output/*.log
 output/debug_turns/
 .rusim/
 dist/
+
+# Python training artifacts
+python/training/artifacts/
+python/training/logs/
