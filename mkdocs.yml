@@ -8,47 +8,8 @@ docs_dir: docs
 site_dir: .mkdocs-site
 strict: false
 exclude_docs: |
-  assets.md
-  autopilot-integration-contract.md
-  build.md
-  ci.md
-  contracts.md
-  definition-of-done-mvp.md
-  tasks.md
-  tasks/**
-  engineering-log.md
-  experiments.md
-  mlagents.md
-  overview.md
-  plugin-vehicle-guide.md
-  plugins.md
-  product-definition.md
-  release-distribution-model.md
-  release-manifest.md
-  research-index.md
-  report/ReportTemplates/**
-  report/practice/**
-  report/prediploma-practice/README.md
-  report/prediploma-practice/ab-corridor-kpi-2026-03-29.md
-  report/prediploma-practice/ab-corridor-simulation-spec.md
-  report/prediploma-practice/calendar_plan.md
-  report/prediploma-practice/final_report_draft.md
-  report/prediploma-practice/individual_assignment_draft.md
-  report/prediploma-practice/interim_report_1_draft.md
-  report/prediploma-practice/interim_report_2_draft.md
-  report/prediploma-practice/model-lifecycle-contract.md
-  report/prediploma-practice/source/**
-  report/prediploma-practice/verification-2026-03-29.md
   report/prediploma-practice/*.docx
-  robots/**
-  documentation-cleanup-plan.md
-  roadmap.md
   reports/**
-  ros2.md
-  simulator-scenario-config-contract.md
-  stack.md
-  unified-runtime-contract.md
-  vehicles.md
 
 theme:
   name: material

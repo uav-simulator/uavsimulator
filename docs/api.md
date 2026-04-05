@@ -115,5 +115,4 @@ Backend предоставляет единый операторский сло�
 ## Связанные страницы
 - [Архитектура](architecture.md)
 - [CLI `rusim`](cli.md)
-- [Unified Runtime Contract](unified-runtime-contract.md)
-- [Autopilot Integration Contract](autopilot-integration-contract.md)
+- [Model Lifecycle](model-lifecycle.md)
