@@ -2,6 +2,10 @@ using Ks0223.Web.Backend.Models;
 using Microsoft.ML.OnnxRuntime;
 using Microsoft.ML.OnnxRuntime.Tensors;
 using System.Globalization;
+using System.Text.Json;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.PixelFormats;
+using SixLabors.ImageSharp.Processing;
 
 namespace Ks0223.Web.Backend.Services;
 
@@ -122,8 +126,26 @@ public sealed class AutopilotService
                     continue;
                 }
 
-                var observation = BuildObservationVector(telemetry.Flat);
-                var (throttle, steer) = running.Predictor!.Predict(observation);
+                byte[]? frameBytes = null;
+                if (running.Predictor!.RequiresFrame)
+                {
+                    if (!runtimeSessionManager.TryGetLatestFrame(
+                            running.ClientId!,
+                            running.RuntimeMode!,
+                            running.AgentId,
+                            out var latestFrame,
+                            out _,
+                            out _,
+                            out _))
+                    {
+                        await Task.Delay(running.LoopIntervalMs, token);
+                        continue;
+                    }
+
+                    frameBytes = latestFrame;
+                }
+
+                var (throttle, steer) = running.Predictor!.Predict(telemetry.Flat, frameBytes);
                 var command = ResolveCommand(throttle, steer);
 
                 var response = await runtimeSessionManager.SendCommandAsync(
@@ -358,8 +380,14 @@ public sealed class AutopilotService
     {
         private readonly ILogger logger;
         private readonly InferenceSession? onnxSession = null;
-        private readonly string? inputName = null;
-        private readonly int inputSize = 0;
+        private readonly PredictorMode mode = PredictorMode.FlatVector;
+        private readonly string? flatInputName = null;
+        private readonly int flatInputSize = 0;
+        private readonly string? imageInputName = null;
+        private readonly string? ultrasonicInputName = null;
+        private readonly int imageHeight = 84;
+        private readonly int imageWidth = 84;
+        private readonly int imageChannels = 3;
 
         public PolicyPredictor(ModelRuntimeSpec model, ILogger logger)
         {
@@ -372,15 +400,31 @@ public sealed class AutopilotService
                 }
 
                 onnxSession = new InferenceSession(model.ArtifactPath);
-                var firstInput = onnxSession.InputMetadata.FirstOrDefault();
-                inputName = firstInput.Key;
-                inputSize = ResolveInputSize(firstInput.Value?.Dimensions);
-                if (string.IsNullOrWhiteSpace(inputName))
+                if (TryResolveVisionMode(onnxSession, model.MetadataPath, out var visionSpec))
                 {
-                    throw new InvalidOperationException("ONNX model has no declared inputs");
+                    mode = PredictorMode.ImageAndUltrasonic;
+                    imageInputName = visionSpec.ImageInputName;
+                    ultrasonicInputName = visionSpec.UltrasonicInputName;
+                    imageHeight = visionSpec.ImageHeight;
+                    imageWidth = visionSpec.ImageWidth;
+                    imageChannels = visionSpec.ImageChannels;
+                }
+                else
+                {
+                    var firstInput = onnxSession.InputMetadata.FirstOrDefault();
+                    flatInputName = firstInput.Key;
+                    flatInputSize = ResolveInputSize(firstInput.Value?.Dimensions);
+                    if (string.IsNullOrWhiteSpace(flatInputName))
+                    {
+                        throw new InvalidOperationException("ONNX model has no declared inputs");
+                    }
                 }
 
-                this.logger.LogInformation("Loaded ONNX model {ModelId} from {Path}", model.ModelId, model.ArtifactPath);
+                this.logger.LogInformation(
+                    "Loaded ONNX model {ModelId} from {Path} with autopilot mode {Mode}",
+                    model.ModelId,
+                    model.ArtifactPath,
+                    mode);
             }
             catch (Exception ex)
             {
@@ -391,19 +435,14 @@ public sealed class AutopilotService
             }
         }
 
-        public (float throttle, float steer) Predict(float[] observation)
+        public bool RequiresFrame => mode == PredictorMode.ImageAndUltrasonic;
+
+        public (float throttle, float steer) Predict(IReadOnlyDictionary<string, string> telemetry, byte[]? frameBytes)
         {
+            var inputs = BuildInputs(telemetry, frameBytes);
             try
             {
-                var size = inputSize <= 0 ? observation.Length : inputSize;
-                var tensor = new DenseTensor<float>(new[] { 1, size });
-                var copy = Math.Min(size, observation.Length);
-                for (var index = 0; index < copy; index += 1)
-                {
-                    tensor[0, index] = observation[index];
-                }
-
-                using var results = onnxSession!.Run(new[] { NamedOnnxValue.CreateFromTensor(inputName!, tensor) });
+                using var results = onnxSession!.Run(inputs);
                 var first = results.FirstOrDefault();
                 if (first is null)
                 {
@@ -424,6 +463,242 @@ public sealed class AutopilotService
             {
                 throw new InvalidOperationException("ONNX inference failed during autopilot loop", ex);
             }
+        }
+
+        private List<NamedOnnxValue> BuildInputs(IReadOnlyDictionary<string, string> telemetry, byte[]? frameBytes)
+        {
+            if (mode == PredictorMode.ImageAndUltrasonic)
+            {
+                if (frameBytes is null || frameBytes.Length == 0)
+                {
+                    throw new InvalidOperationException("Vision model requires the latest camera frame");
+                }
+
+                var imageTensor = BuildImageTensor(frameBytes, imageHeight, imageWidth, imageChannels);
+                var ultrasonicTensor = new DenseTensor<float>(new[] { 1, 1 });
+                ultrasonicTensor[0, 0] = ExtractNormalizedUltrasonic(telemetry);
+
+                return
+                [
+                    NamedOnnxValue.CreateFromTensor(imageInputName!, imageTensor),
+                    NamedOnnxValue.CreateFromTensor(ultrasonicInputName!, ultrasonicTensor),
+                ];
+            }
+
+            var observation = BuildObservationVector(telemetry);
+            var size = flatInputSize <= 0 ? observation.Length : flatInputSize;
+            var tensor = new DenseTensor<float>(new[] { 1, size });
+            var copy = Math.Min(size, observation.Length);
+            for (var index = 0; index < copy; index += 1)
+            {
+                tensor[0, index] = observation[index];
+            }
+
+            return [NamedOnnxValue.CreateFromTensor(flatInputName!, tensor)];
+        }
+
+        private static bool TryResolveVisionMode(
+            InferenceSession session,
+            string metadataPath,
+            out VisionInputSpec spec)
+        {
+            spec = new VisionInputSpec(string.Empty, string.Empty, 0, 0, 0);
+            var metadata = TryReadMetadata(metadataPath);
+            var imageEntry = FindImageInput(session);
+            var ultrasonicEntry = FindUltrasonicInput(session, imageEntry.Key);
+            if (string.IsNullOrWhiteSpace(imageEntry.Key) || string.IsNullOrWhiteSpace(ultrasonicEntry.Key))
+            {
+                return false;
+            }
+
+            if (!TryResolveImageShape(imageEntry.Value?.Dimensions, metadata.ImageShape, out var imageHeight, out var imageWidth, out var imageChannels))
+            {
+                return false;
+            }
+
+            spec = new VisionInputSpec(imageEntry.Key, ultrasonicEntry.Key, imageHeight, imageWidth, imageChannels);
+            return true;
+        }
+
+        private static KeyValuePair<string, NodeMetadata> FindImageInput(InferenceSession session)
+        {
+            foreach (var input in session.InputMetadata)
+            {
+                if (string.Equals(input.Key, "image", StringComparison.OrdinalIgnoreCase))
+                {
+                    return input;
+                }
+            }
+
+            foreach (var input in session.InputMetadata)
+            {
+                var dimensions = input.Value?.Dimensions;
+                if (dimensions is not null && dimensions.Length >= 4)
+                {
+                    return input;
+                }
+            }
+
+            return default;
+        }
+
+        private static KeyValuePair<string, NodeMetadata> FindUltrasonicInput(InferenceSession session, string imageInputName)
+        {
+            foreach (var input in session.InputMetadata)
+            {
+                if (string.Equals(input.Key, imageInputName, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                if (string.Equals(input.Key, "ultrasonic", StringComparison.OrdinalIgnoreCase))
+                {
+                    return input;
+                }
+            }
+
+            foreach (var input in session.InputMetadata)
+            {
+                if (string.Equals(input.Key, imageInputName, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                var size = ResolveInputSize(input.Value?.Dimensions);
+                if (size == 1)
+                {
+                    return input;
+                }
+            }
+
+            return default;
+        }
+
+        private static bool TryResolveImageShape(
+            int[]? onnxDimensions,
+            int[]? metadataShape,
+            out int imageHeight,
+            out int imageWidth,
+            out int imageChannels)
+        {
+            imageHeight = 0;
+            imageWidth = 0;
+            imageChannels = 0;
+
+            var fromOnnx = onnxDimensions?
+                .Where(value => value > 0)
+                .TakeLast(3)
+                .ToArray();
+            var candidate = fromOnnx is { Length: 3 }
+                ? fromOnnx
+                : metadataShape is { Length: >= 3 } ? metadataShape.Take(3).ToArray() : null;
+            if (candidate is null || candidate.Length < 3)
+            {
+                return false;
+            }
+
+            imageHeight = candidate[0];
+            imageWidth = candidate[1];
+            imageChannels = candidate[2];
+            return imageHeight > 0 && imageWidth > 0 && imageChannels > 0;
+        }
+
+        private static ModelMetadataSpec TryReadMetadata(string metadataPath)
+        {
+            if (string.IsNullOrWhiteSpace(metadataPath) || !File.Exists(metadataPath))
+            {
+                return ModelMetadataSpec.Empty;
+            }
+
+            try
+            {
+                using var document = JsonDocument.Parse(File.ReadAllText(metadataPath));
+                if (!document.RootElement.TryGetProperty("observationSchema", out var schema))
+                {
+                    return ModelMetadataSpec.Empty;
+                }
+
+                return new ModelMetadataSpec(
+                    ReadShape(schema, "image"),
+                    ReadShape(schema, "ultrasonic"));
+            }
+            catch
+            {
+                return ModelMetadataSpec.Empty;
+            }
+        }
+
+        private static int[]? ReadShape(JsonElement schema, string propertyName)
+        {
+            if (!schema.TryGetProperty(propertyName, out var entry))
+            {
+                return null;
+            }
+
+            if (!entry.TryGetProperty("shape", out var shapeElement) || shapeElement.ValueKind != JsonValueKind.Array)
+            {
+                return null;
+            }
+
+            var values = new List<int>();
+            foreach (var item in shapeElement.EnumerateArray())
+            {
+                if (item.ValueKind == JsonValueKind.Number && item.TryGetInt32(out var value))
+                {
+                    values.Add(value);
+                }
+            }
+
+            return values.Count == 0 ? null : values.ToArray();
+        }
+
+        private static DenseTensor<float> BuildImageTensor(byte[] frameBytes, int imageHeight, int imageWidth, int imageChannels)
+        {
+            using var image = Image.Load<Rgb24>(frameBytes);
+            image.Mutate(context => context.Resize(imageWidth, imageHeight));
+
+            var tensor = new DenseTensor<float>(new[] { 1, imageHeight, imageWidth, imageChannels });
+            for (var y = 0; y < imageHeight; y += 1)
+            {
+                for (var x = 0; x < imageWidth; x += 1)
+                {
+                    var pixel = image[x, y];
+                    if (imageChannels == 1)
+                    {
+                        tensor[0, y, x, 0] = ((0.299f * pixel.R) + (0.587f * pixel.G) + (0.114f * pixel.B));
+                        continue;
+                    }
+
+                    tensor[0, y, x, 0] = pixel.R;
+                    tensor[0, y, x, 1] = pixel.G;
+                    tensor[0, y, x, 2] = pixel.B;
+                }
+            }
+
+            return tensor;
+        }
+
+        private static float ExtractNormalizedUltrasonic(IReadOnlyDictionary<string, string> telemetry)
+        {
+            var frontMeters = ParseValue(
+                telemetry,
+                "sensor.ultrasonic.front.m",
+                "ultrasonic.front_m",
+                "ultrasonic.front.m");
+            if (frontMeters <= 0f)
+            {
+                var distanceCentimeters = ParseValue(
+                    telemetry,
+                    "sensor.range.front_cm",
+                    "ultrasonic.distance_cm",
+                    "ultrasonic.scan.center_cm");
+                if (distanceCentimeters > 0f)
+                {
+                    frontMeters = distanceCentimeters / 100f;
+                }
+            }
+
+            return Clamp01(frontMeters / 5f);
         }
 
         private static int ResolveInputSize(int[]? dimensions)
@@ -450,6 +725,24 @@ public sealed class AutopilotService
         public void Dispose()
         {
             onnxSession?.Dispose();
+        }
+
+        private enum PredictorMode
+        {
+            FlatVector,
+            ImageAndUltrasonic,
+        }
+
+        private sealed record VisionInputSpec(
+            string ImageInputName,
+            string UltrasonicInputName,
+            int ImageHeight,
+            int ImageWidth,
+            int ImageChannels);
+
+        private sealed record ModelMetadataSpec(int[]? ImageShape, int[]? UltrasonicShape)
+        {
+            public static ModelMetadataSpec Empty { get; } = new(null, null);
         }
     }
 
