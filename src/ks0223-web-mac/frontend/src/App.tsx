@@ -13,7 +13,8 @@ import {
   fetchCameraStatus,
   fetchHealth,
   fetchLogFiles,
-  fetchModels,
+  fetchModelBinding,
+  fetchModelCatalog,
   fetchSensorLatest,
   fetchSensorStatus,
   fetchStatus,
@@ -24,6 +25,7 @@ import {
   openLogsFolder,
   resolveHubUrl,
   sendCommand,
+  setModelBinding,
   startAutopilot,
   setUnityClientSelection,
   setUnityRuntimeSelection,
@@ -46,6 +48,8 @@ import type {
   HealthDto,
   IncomingMessageDto,
   LogFileInfo,
+  ModelBindingDto,
+  ModelCatalogEntryDto,
   ModelInfoDto,
   SensorBridgeStatusDto,
   SensorTelemetryDto,
@@ -266,8 +270,9 @@ function App() {
   const [health, setHealth] = useState<HealthDto | null>(null)
   const [sensorStatus, setSensorStatus] = useState<SensorBridgeStatusDto | null>(null)
   const [sensorTelemetry, setSensorTelemetry] = useState<SensorTelemetryDto | null>(null)
-  const [models, setModels] = useState<ModelInfoDto[]>([])
+  const [modelCatalog, setModelCatalog] = useState<ModelCatalogEntryDto[]>([])
   const [activeModel, setActiveModel] = useState<ModelInfoDto | null>(null)
+  const [modelBinding, setModelBindingState] = useState<ModelBindingDto | null>(null)
   const [autopilotStatus, setAutopilotStatus] = useState<AutopilotStatusDto | null>(null)
   const [busy, setBusy] = useState(false)
   const [tab, setTab] = useState<TabKey>('dashboard')
@@ -342,15 +347,18 @@ function App() {
   }, [clientInstanceId, selectedRuntimeMode])
 
   const syncModelControl = useCallback(async () => {
-    const [nextModels, nextActiveModel, nextAutopilot] = await Promise.all([
-      fetchModels(),
+    const targetAgentId = selectedRuntimeMode === 'unity-sim' ? unityControlAgentId || undefined : undefined
+    const [nextCatalog, nextActiveModel, nextBinding, nextAutopilot] = await Promise.all([
+      fetchModelCatalog(),
       fetchActiveModel(),
+      fetchModelBinding(clientInstanceId, selectedRuntimeMode, targetAgentId),
       fetchAutopilotStatus(clientInstanceId, selectedRuntimeMode),
     ])
-    setModels(nextModels)
+    setModelCatalog(nextCatalog)
     setActiveModel(nextActiveModel)
+    setModelBindingState(nextBinding)
     setAutopilotStatus(nextAutopilot)
-  }, [clientInstanceId, selectedRuntimeMode])
+  }, [clientInstanceId, selectedRuntimeMode, unityControlAgentId])
 
   const syncUnityCatalog = useCallback(
     async (hostOverride?: string, portOverride?: number) => {
@@ -924,13 +932,27 @@ function App() {
     [guarded, syncModelControl],
   )
 
+  const handleModelBind = useCallback(
+    async (modelId: string) => {
+      await guarded(async () => {
+        await setModelBinding({
+          clientId: clientInstanceId,
+          runtimeMode: selectedRuntimeMode,
+          modelId,
+          agentId: selectedRuntimeMode === 'unity-sim' ? unityControlAgentId || undefined : undefined,
+        })
+        await syncModelControl()
+      })
+    },
+    [clientInstanceId, guarded, selectedRuntimeMode, syncModelControl, unityControlAgentId],
+  )
+
   const handleAutopilotStart = useCallback(
-    async (payload: { modelId?: string; agentId?: string; loopIntervalMs?: number }) => {
+    async (payload: { agentId?: string; loopIntervalMs?: number }) => {
       await guarded(async () => {
         await startAutopilot({
           clientId: clientInstanceId,
           runtimeMode: selectedRuntimeMode,
-          modelId: payload.modelId,
           agentId: payload.agentId,
           loopIntervalMs: payload.loopIntervalMs,
         })
@@ -990,8 +1012,9 @@ function App() {
     if (tab === 'models') {
       return (
         <ModelControlPage
-          models={models}
+          catalog={modelCatalog}
           activeModel={activeModel}
+          binding={modelBinding}
           autopilot={autopilotStatus}
           runtimeMode={activeRuntimeMode}
           unityControlAgentId={unityControlAgentId}
@@ -999,6 +1022,7 @@ function App() {
           onRefresh={syncModelControl}
           onUpload={handleModelUpload}
           onActivate={handleModelActivate}
+          onBind={handleModelBind}
           onStartAutopilot={handleAutopilotStart}
           onStopAutopilot={handleAutopilotStop}
         />
@@ -1071,7 +1095,8 @@ function App() {
     sensorStatus,
     sensorTelemetry,
     files,
-    models,
+    modelCatalog,
+    modelBinding,
     activeModel,
     autopilotStatus,
     handleStartLogging,
@@ -1112,6 +1137,7 @@ function App() {
     handleLedClear,
     handleModelUpload,
     handleModelActivate,
+    handleModelBind,
     handleAutopilotStart,
     handleAutopilotStop,
   ])

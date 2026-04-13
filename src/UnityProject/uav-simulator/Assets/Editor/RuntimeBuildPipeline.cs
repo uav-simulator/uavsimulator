@@ -11,6 +11,9 @@ namespace UavSimulator.EditorTools
 
         public static void BuildMacOsRuntime()
         {
+            RuntimeShaderAssetSeeder.EnsureRuntimeShaderAssets();
+            PluginCatalogSeeder.SyncBuiltinPluginCatalog();
+
             var outputPath = Environment.GetEnvironmentVariable("RUSIM_BUILD_OUTPUT");
             if (string.IsNullOrWhiteSpace(outputPath))
             {

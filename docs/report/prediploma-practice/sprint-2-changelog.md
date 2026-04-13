@@ -8,6 +8,16 @@
 
 ---
 
+## Статус на 2026-04-11
+
+- В проект добавлен отдельный `sim-to-real` трек `track.cardboard_corridor.v1` для узкого L-коридора с ArUco-маркером.
+- Standalone runtime теперь публикует этот трек в catalog и принимает `reset` без ручного editor-only sync.
+- `python/training/ab_corridor_vision_env.py` и `python/training/train_cardboard_corridor.py` переведены на `configs/scenarios/cardboard-corridor-v1.yaml` как единый источник truth для spawn, route waypoints, corridor width и goal radius.
+- `basic_arena` остаётся отдельным контуром для baseline/KPI и не считается финальной `sim-to-real` трассой Sprint 2.
+- Открытое ограничение: camera stream ground vehicle в standalone build всё ещё не подтверждён как корректный corridor frame и требует отдельного фикса capture pipeline.
+
+---
+
 ## Оглавление
 
 1. [Цель и задачи спринта](#1-цель-и-задачи-спринта)

@@ -153,7 +153,34 @@ public sealed record ModelInfoDto(
     bool IsActive,
     string ArtifactPath,
     string MetadataPath,
-    string MetricsPath);
+    string MetricsPath,
+    CompatibilityHintsDto Compatibility);
+
+public sealed record CompatibilityHintsDto(
+    IReadOnlyList<string> RuntimeModes,
+    IReadOnlyList<string> VehicleIds,
+    IReadOnlyList<string> RobotKinds);
+
+public sealed record ModelCatalogEntryDto(
+    string Name,
+    IReadOnlyList<ModelInfoDto> Versions);
+
+public sealed record SetModelBindingRequest(
+    string ClientId,
+    string RuntimeMode,
+    string? AgentId,
+    string ModelId);
+
+public sealed record ModelBindingDto(
+    string ClientId,
+    string RuntimeMode,
+    string? AgentId,
+    string ModelId,
+    string Name,
+    string Version,
+    string Source,
+    DateTimeOffset BoundAtUtc,
+    CompatibilityHintsDto Compatibility);
 
 public sealed record ActivateModelRequest(string ModelId);
 

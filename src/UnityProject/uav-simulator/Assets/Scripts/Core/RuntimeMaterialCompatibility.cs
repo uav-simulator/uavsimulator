@@ -6,34 +6,49 @@ namespace UavSimulator.Core
 {
     public static class RuntimeMaterialCompatibility
     {
+        private const string UrpLitResourcePath = "UavSimulator/RuntimeShaders/RuntimeUrpLit";
+        private const string UrpUnlitResourcePath = "UavSimulator/RuntimeShaders/RuntimeUrpUnlit";
+        private const string UnlitColorResourcePath = "UavSimulator/RuntimeShaders/RuntimeUnlitColor";
+        private const string UnlitTextureResourcePath = "UavSimulator/RuntimeShaders/RuntimeUnlitTexture";
+        private const string StandardResourcePath = "UavSimulator/RuntimeShaders/RuntimeStandard";
+
+        private enum RenderPipelineKind
+        {
+            Unknown,
+            Builtin,
+            Universal,
+            Other,
+        }
+
         public static bool IsUrpActive()
         {
-            var pipeline = GraphicsSettings.currentRenderPipeline;
-            if (pipeline == null)
-            {
-                return false;
-            }
-
-            var typeName = pipeline.GetType().Name;
-            return typeName.Contains("UniversalRenderPipeline", StringComparison.Ordinal) ||
-                   typeName.Contains("URP", StringComparison.Ordinal);
+            return ResolvePipelineKind() == RenderPipelineKind.Universal;
         }
 
         public static Shader ResolveCompatibleLitShader()
         {
-            if (IsUrpActive())
+            var seededUrpLit = LoadShaderFromMaterialResource(UrpLitResourcePath);
+            if (seededUrpLit != null)
             {
-                var shader = Shader.Find("Universal Render Pipeline/Lit");
-                if (shader != null && shader.isSupported)
-                {
-                    return shader;
-                }
+                return seededUrpLit;
+            }
 
-                shader = Shader.Find("Universal Render Pipeline/Simple Lit");
-                if (shader != null && shader.isSupported)
-                {
-                    return shader;
-                }
+            var configuredShader = ResolveConfiguredDefaultLitShader();
+            if (configuredShader != null)
+            {
+                return configuredShader;
+            }
+
+            var urpLit = Shader.Find("Universal Render Pipeline/Lit");
+            if (urpLit != null)
+            {
+                return urpLit;
+            }
+
+            var urpSimpleLit = Shader.Find("Universal Render Pipeline/Simple Lit");
+            if (urpSimpleLit != null)
+            {
+                return urpSimpleLit;
             }
 
             var standard = Shader.Find("Standard");
@@ -42,13 +57,19 @@ namespace UavSimulator.Core
                 return standard;
             }
 
-            var unlitTexture = Shader.Find("Unlit/Texture");
+            var seededStandard = LoadShaderFromMaterialResource(StandardResourcePath);
+            if (seededStandard != null)
+            {
+                return seededStandard;
+            }
+
+            var unlitTexture = ResolveCompatibleUnlitTextureShader();
             if (unlitTexture != null && unlitTexture.isSupported)
             {
                 return unlitTexture;
             }
 
-            var unlitColor = Shader.Find("Unlit/Color");
+            var unlitColor = ResolveCompatibleUnlitColorShader();
             if (unlitColor != null && unlitColor.isSupported)
             {
                 return unlitColor;
@@ -61,6 +82,57 @@ namespace UavSimulator.Core
             }
 
             throw new MissingReferenceException("Unable to resolve a compatible runtime shader for the active render pipeline.");
+        }
+
+        public static Shader ResolveCompatibleUnlitShader()
+        {
+            var seededUrpUnlit = LoadShaderFromMaterialResource(UrpUnlitResourcePath);
+            if (seededUrpUnlit != null)
+            {
+                return seededUrpUnlit;
+            }
+
+            var urpUnlit = Shader.Find("Universal Render Pipeline/Unlit");
+            if (urpUnlit != null)
+            {
+                return urpUnlit;
+            }
+
+            return ResolveCompatibleUnlitColorShader() ?? ResolveCompatibleLitShader();
+        }
+
+        public static Shader ResolveCompatibleUnlitColorShader()
+        {
+            var seededUnlitColor = LoadShaderFromMaterialResource(UnlitColorResourcePath);
+            if (seededUnlitColor != null)
+            {
+                return seededUnlitColor;
+            }
+
+            var unlitColor = Shader.Find("Unlit/Color");
+            if (unlitColor != null)
+            {
+                return unlitColor;
+            }
+
+            return null;
+        }
+
+        public static Shader ResolveCompatibleUnlitTextureShader()
+        {
+            var seededUnlitTexture = LoadShaderFromMaterialResource(UnlitTextureResourcePath);
+            if (seededUnlitTexture != null)
+            {
+                return seededUnlitTexture;
+            }
+
+            var unlitTexture = Shader.Find("Unlit/Texture");
+            if (unlitTexture != null)
+            {
+                return unlitTexture;
+            }
+
+            return null;
         }
 
         public static bool NeedsReplacement(Material source)
@@ -76,6 +148,11 @@ namespace UavSimulator.Core
                 return true;
             }
 
+            if (ResolvePipelineKind() == RenderPipelineKind.Unknown)
+            {
+                return false;
+            }
+
             return !IsShaderCompatibleForCurrentPipeline(shader);
         }
 
@@ -87,16 +164,21 @@ namespace UavSimulator.Core
             }
 
             var name = shader.name ?? string.Empty;
-            if (IsUrpActive())
+            switch (ResolvePipelineKind())
             {
-                return name.StartsWith("Universal Render Pipeline/", StringComparison.OrdinalIgnoreCase);
+                case RenderPipelineKind.Universal:
+                    return name.StartsWith("Universal Render Pipeline/", StringComparison.OrdinalIgnoreCase);
+                case RenderPipelineKind.Builtin:
+                    return name.StartsWith("Standard", StringComparison.OrdinalIgnoreCase) ||
+                           name.StartsWith("Legacy Shaders/", StringComparison.OrdinalIgnoreCase) ||
+                           name.StartsWith("Unlit/", StringComparison.OrdinalIgnoreCase) ||
+                           name.StartsWith("Mobile/", StringComparison.OrdinalIgnoreCase) ||
+                           name.StartsWith("Particles/", StringComparison.OrdinalIgnoreCase);
+                case RenderPipelineKind.Unknown:
+                    return true;
+                default:
+                    return true;
             }
-
-            return name.StartsWith("Standard", StringComparison.OrdinalIgnoreCase) ||
-                   name.StartsWith("Legacy Shaders/", StringComparison.OrdinalIgnoreCase) ||
-                   name.StartsWith("Unlit/", StringComparison.OrdinalIgnoreCase) ||
-                   name.StartsWith("Mobile/", StringComparison.OrdinalIgnoreCase) ||
-                   name.StartsWith("Particles/", StringComparison.OrdinalIgnoreCase);
         }
 
         public static Material CreateReplacementMaterial(Material source, float defaultSmoothness = 0.2f, bool copyTextures = true)
@@ -192,6 +274,50 @@ namespace UavSimulator.Core
             }
 
             return source.color;
+        }
+
+        private static RenderPipelineKind ResolvePipelineKind()
+        {
+            var pipeline = ResolveConfiguredPipelineAsset();
+
+            if (pipeline == null)
+            {
+                return RenderPipelineKind.Unknown;
+            }
+
+            var typeName = pipeline.GetType().Name ?? string.Empty;
+            if (typeName.Contains("UniversalRenderPipeline", StringComparison.Ordinal) ||
+                typeName.Contains("URP", StringComparison.Ordinal))
+            {
+                return RenderPipelineKind.Universal;
+            }
+
+            return typeName.Length == 0 ? RenderPipelineKind.Unknown : RenderPipelineKind.Other;
+        }
+
+        private static RenderPipelineAsset ResolveConfiguredPipelineAsset()
+        {
+            return GraphicsSettings.currentRenderPipeline
+                ?? QualitySettings.renderPipeline
+                ?? GraphicsSettings.defaultRenderPipeline;
+        }
+
+        private static Shader ResolveConfiguredDefaultLitShader()
+        {
+            var pipeline = ResolveConfiguredPipelineAsset();
+            if (pipeline == null)
+            {
+                return null;
+            }
+
+            var defaultMaterial = pipeline.defaultMaterial;
+            return defaultMaterial != null ? defaultMaterial.shader : null;
+        }
+
+        private static Shader LoadShaderFromMaterialResource(string resourcePath)
+        {
+            var material = Resources.Load<Material>(resourcePath);
+            return material != null ? material.shader : null;
         }
     }
 }

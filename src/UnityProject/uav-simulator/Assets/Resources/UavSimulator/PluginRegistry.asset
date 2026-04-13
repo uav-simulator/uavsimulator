@@ -13,13 +13,14 @@ MonoBehaviour:
   m_Name: PluginRegistry
   m_EditorClassIdentifier: 
   vehicles:
-  - {fileID: 11400000, guid: 638787476774248bf9e0a068d054a330, type: 2}
   - {fileID: 11400000, guid: 8a481266baf004a57945a92a068b7457, type: 2}
   - {fileID: 11400000, guid: 1dc0fa8709c3345a0bdb0b92cf205de9, type: 2}
   - {fileID: 11400000, guid: 0e2600e6b3f1c401188d83113e3f270e, type: 2}
   - {fileID: 11400000, guid: 20d3724f2c92a4f81ac4bb231a37808a, type: 2}
+  - {fileID: 11400000, guid: 638787476774248bf9e0a068d054a330, type: 2}
   - {fileID: 11400000, guid: c9daa03afc4d64839b8ca205937e64bc, type: 2}
   tracks:
   - {fileID: 11400000, guid: ac3f13714d4134bbeaa7b7b8121f623a, type: 2}
+  - {fileID: 11400000, guid: 5b33e24c4fd14ab58f8a13d01d1f04d9, type: 2}
   - {fileID: 11400000, guid: baf26c358f28541598e19690b531f739, type: 2}
   - {fileID: 11400000, guid: 8b13e43b29afd4459b81cfab7b53038f, type: 2}

@@ -33,6 +33,7 @@ if str(PYTHON_ROOT) not in sys.path:
     sys.path.insert(0, str(PYTHON_ROOT))
 
 from sim_client.http_client import SimClient
+from sim_client.scenario import load_scenario_file, scenario_to_reset_config
 
 # Camera image size for observation
 IMG_SIZE = 84
@@ -56,13 +57,17 @@ class ABCorridorVisionEnv(gym.Env):
     def __init__(
         self,
         base_url: str = "http://127.0.0.1:8000",
+        scenario_path: str | Path | None = None,
         max_steps: int = 600,
-        corridor_width_m: float = 3.0,
+        corridor_width_m: float | None = None,
         oob_margin_m: float = 0.3,
-        goal_radius_m: float = 1.5,
-        time_scale: float = 2.0,
+        goal_radius_m: float | None = None,
+        time_scale: float | None = 2.0,
         grayscale: bool = False,
         img_size: int = IMG_SIZE,
+        track_id: str | None = "track.basic_arena.v1",
+        vehicle_id: str | None = "vehicle.prometeo.sport.v1",
+        waypoints: list[tuple[float, float]] | None = None,
     ):
         super().__init__()
 
@@ -70,32 +75,67 @@ class ABCorridorVisionEnv(gym.Env):
 
         self.client = SimClient(base_url, timeout_s=30.0)
         self.max_steps = max_steps
-        self.corridor_width_m = corridor_width_m
+        scenario_waypoints: list[tuple[float, float]] = []
+        scenario_corridor_width = 3.0
+        scenario_goal_radius = 1.5
+        resolved_track_id = track_id
+        resolved_vehicle_id = vehicle_id
+        resolved_time_scale = 2.0 if time_scale is None else time_scale
+
+        if scenario_path is not None:
+            scenario_payload = load_scenario_file(scenario_path)
+            scenario_reset = scenario_to_reset_config(scenario_payload)
+            route = scenario_payload.get("route") or {}
+            params = route.get("params") or {}
+            scenario_waypoints = self._parse_waypoints(route.get("waypoints"))
+            scenario_corridor_width = float(params.get("corridor.width_m", scenario_corridor_width))
+            scenario_goal_radius = float(params.get("goal.radius_m", route.get("reachDistanceM", scenario_goal_radius)))
+            resolved_track_id = scenario_reset.get("selectedTrackId") or resolved_track_id
+            resolved_vehicle_id = scenario_reset.get("selectedVehicleId") or resolved_vehicle_id
+            if time_scale is None:
+                resolved_time_scale = float(scenario_reset.get("timeScale", resolved_time_scale))
+            self._reset_config = scenario_reset
+        else:
+            self._reset_config = {
+                "seed": 0,
+                "timeScale": resolved_time_scale,
+                "selectedTrackId": resolved_track_id,
+                "selectedVehicleId": resolved_vehicle_id,
+                "trackParams": [],
+                "vehicleParams": [{"key": "camera.profile", "value": "high"}],
+                "flags": [],
+            }
+
+        self.corridor_width_m = scenario_corridor_width if corridor_width_m is None else corridor_width_m
         self.oob_margin_m = oob_margin_m
-        self.oob_threshold_m = (corridor_width_m * 0.5) + oob_margin_m
-        self.goal_radius_m = goal_radius_m
-        self.time_scale = time_scale
+        self.oob_threshold_m = (self.corridor_width_m * 0.5) + oob_margin_m
+        self.goal_radius_m = scenario_goal_radius if goal_radius_m is None else goal_radius_m
+        self.waypoint_reach_radius_m = max(
+            self.goal_radius_m,
+            min(self.corridor_width_m * 0.75, 1.5),
+        )
+        self.time_scale = resolved_time_scale
         self.grayscale = grayscale
         self.img_size = img_size
         self._channels = 1 if grayscale else 3
 
-        self._reset_config = {
-            "seed": 0,
-            "timeScale": time_scale,
-            "selectedTrackId": "track.basic_arena.v1",
-            "selectedVehicleId": "vehicle.prometeo.sport.v1",
-            "trackParams": [],
-            "vehicleParams": [{"key": "camera.profile", "value": "high"}],
-            "flags": [],
-        }
+        self._reset_config["timeScale"] = self.time_scale
+        if resolved_track_id is not None:
+            self._reset_config["selectedTrackId"] = resolved_track_id
+        if resolved_vehicle_id is not None:
+            self._reset_config["selectedVehicleId"] = resolved_vehicle_id
 
-        # S-shape route waypoints matching BasicArenaTrack geometry
-        self.waypoints: list[tuple[float, float]] = [
-            (0.0, -7.5),
-            (0.0, -1.0),
-            (6.0, -1.0),
-            (6.0, 5.0),
-        ]
+        if waypoints is not None:
+            self.waypoints: list[tuple[float, float]] = waypoints
+        elif scenario_waypoints:
+            self.waypoints = scenario_waypoints
+        else:
+            self.waypoints = [
+                (0.0, -7.5),
+                (0.0, -1.0),
+                (6.0, -1.0),
+                (6.0, 5.0),
+            ]
         self.total_route_length = self._compute_route_length()
 
         # Observation space: dict with image + ultrasonic
@@ -121,8 +161,32 @@ class ABCorridorVisionEnv(gym.Env):
         self._prev_pos = {"x": 0.0, "y": 0.0, "z": 0.0}
         self._computed_speed = 0.0
         self._reached_waypoints: set[int] = set()
+        self._stalled_steps = 0
+        self._last_termination_reason = "running"
 
     # ── route geometry ──
+
+    @staticmethod
+    def _parse_waypoints(items: Any) -> list[tuple[float, float]]:
+        waypoints: list[tuple[float, float]] = []
+        if not isinstance(items, list):
+            return waypoints
+
+        for item in items:
+            if isinstance(item, dict):
+                x = float(item.get("x", 0.0))
+                z = float(item.get("z", 0.0))
+                waypoints.append((x, z))
+                continue
+
+            if isinstance(item, (list, tuple)):
+                if len(item) == 2:
+                    waypoints.append((float(item[0]), float(item[1])))
+                    continue
+                if len(item) >= 3:
+                    waypoints.append((float(item[0]), float(item[2])))
+
+        return waypoints
 
     def _compute_route_length(self) -> float:
         total = 0.0
@@ -151,6 +215,10 @@ class ABCorridorVisionEnv(gym.Env):
         self._prev_pos = self._current_position(step)
         self._computed_speed = 0.0
         self._reached_waypoints = set()
+        self._stalled_steps = 0
+        self._last_termination_reason = "running"
+        self._prime_reached_waypoints(self._prev_pos["x"], self._prev_pos["z"])
+        self._prev_progress = self._route_progress(self._prev_pos["x"], self._prev_pos["z"])
 
         obs = self._build_observation(step)
         info = self._build_info(step)
@@ -241,13 +309,7 @@ class ABCorridorVisionEnv(gym.Env):
         progress_reward = delta_progress * 20.0
 
         # Waypoint bonuses
-        waypoint_bonus = 0.0
-        for wi in range(len(self.waypoints)):
-            if wi not in self._reached_waypoints:
-                wx, wz = self.waypoints[wi]
-                if math.hypot(px - wx, pz - wz) < 1.5:
-                    self._reached_waypoints.add(wi)
-                    waypoint_bonus += 10.0
+        waypoint_bonus = self._collect_waypoint_bonus(px, pz)
 
         # Lateral deviation penalty
         lateral_dist = self._nearest_route_distance(px, pz)
@@ -265,24 +327,44 @@ class ABCorridorVisionEnv(gym.Env):
         # Goal
         terminated = False
         goal_bonus = 0.0
+        termination_reason = "running"
         goal_x, goal_z = self.waypoints[-1]
         if math.hypot(px - goal_x, pz - goal_z) < self.goal_radius_m:
             goal_bonus = 100.0
             terminated = True
+            termination_reason = "goal_reached"
 
         # OOB
         oob_penalty = 0.0
         if lateral_dist > self.oob_threshold_m:
             oob_penalty = -30.0
             terminated = True
+            termination_reason = "out_of_bounds"
 
         if bool(step.get("done")) and not terminated:
             oob_penalty = -15.0
             terminated = True
+            termination_reason = "runtime_done"
+
+        # Stalled against wall / no useful movement
+        stall_penalty = 0.0
+        if not terminated:
+            if self._step_count > 20 and self._computed_speed < 0.0015 and abs(delta_progress) < 1e-4:
+                self._stalled_steps += 1
+            else:
+                self._stalled_steps = 0
+
+            if self._stalled_steps >= 30:
+                stall_penalty = -10.0
+                terminated = True
+                termination_reason = "stalled"
+        else:
+            self._stalled_steps = 0
 
         reward = (progress_reward + waypoint_bonus + lateral_penalty +
                   jerk_penalty + speed_reward + time_penalty +
-                  goal_bonus + oob_penalty)
+                  goal_bonus + oob_penalty + stall_penalty)
+        self._last_termination_reason = termination_reason
         return float(reward), terminated, False
 
     # ── route math ──
@@ -367,4 +449,27 @@ class ABCorridorVisionEnv(gym.Env):
             "progress": self._route_progress(pos["x"], pos["z"]),
             "lateral_distance": self._nearest_route_distance(pos["x"], pos["z"]),
             "step_count": self._step_count,
+            "termination_reason": self._last_termination_reason,
+            "reached_waypoints": len(self._reached_waypoints),
+            "waypoint_reach_radius_m": self.waypoint_reach_radius_m,
+            "stall_steps": self._stalled_steps,
         }
+
+    def _prime_reached_waypoints(self, px: float, pz: float) -> None:
+        for wi in range(len(self.waypoints)):
+            wx, wz = self.waypoints[wi]
+            if math.hypot(px - wx, pz - wz) <= self.waypoint_reach_radius_m:
+                self._reached_waypoints.add(wi)
+
+    def _collect_waypoint_bonus(self, px: float, pz: float) -> float:
+        waypoint_bonus = 0.0
+        for wi in range(len(self.waypoints)):
+            if wi in self._reached_waypoints:
+                continue
+
+            wx, wz = self.waypoints[wi]
+            if math.hypot(px - wx, pz - wz) <= self.waypoint_reach_radius_m:
+                self._reached_waypoints.add(wi)
+                waypoint_bonus += 10.0
+
+        return waypoint_bonus

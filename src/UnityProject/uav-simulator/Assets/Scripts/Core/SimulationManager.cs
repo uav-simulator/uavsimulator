@@ -33,6 +33,13 @@ namespace UavSimulator.Core
         private const string SpawnYawDegKey = "spawn.yaw_deg";
         private const string RenderQualityProfileKey = "render.quality_profile";
         private const string AllowEmptyAgentsKey = "agents.allow_empty";
+        private static readonly Vector3[] CardboardCorridorDefaultRoute =
+        {
+            new Vector3(0f, 0f, -0.55f),
+            new Vector3(0f, 0f, -0.15f),
+            new Vector3(0.18f, 0f, 0f),
+            new Vector3(0.60f, 0f, 0f),
+        };
 
         [SerializeField] private Transform trackRoot;
         [SerializeField] private Transform vehicleRoot;
@@ -66,6 +73,7 @@ namespace UavSimulator.Core
         private int activeRouteWaypointIndex;
         private float activeRouteReachDistance = 1f;
         private bool activeRouteLoop;
+        private bool activeRouteWaypointsConfigured;
         private string activeTrackId = string.Empty;
         private string activeAgentId = string.Empty;
         private string activeVehicleId = string.Empty;
@@ -394,9 +402,13 @@ namespace UavSimulator.Core
             activeRouteWaypointIndex = 0;
             activeRouteReachDistance = 1f;
             activeRouteLoop = false;
+            activeRouteWaypointsConfigured = false;
+            var hasExplicitWaypoints = false;
+            var hasExplicitReachDistance = false;
 
             if (trackParams == null || trackParams.Length == 0)
             {
+                ApplyDefaultRouteIfAvailable(ref hasExplicitWaypoints, ref hasExplicitReachDistance);
                 return;
             }
 
@@ -411,6 +423,8 @@ namespace UavSimulator.Core
                     TryParseWaypoints(item.value, out var waypoints))
                 {
                     activeRouteWaypoints = waypoints;
+                    hasExplicitWaypoints = true;
+                    activeRouteWaypointsConfigured = true;
                     continue;
                 }
 
@@ -419,6 +433,7 @@ namespace UavSimulator.Core
                     reachDistance > 0f)
                 {
                     activeRouteReachDistance = reachDistance;
+                    hasExplicitReachDistance = true;
                     continue;
                 }
 
@@ -427,6 +442,21 @@ namespace UavSimulator.Core
                 {
                     activeRouteLoop = isLooping;
                 }
+            }
+
+            ApplyDefaultRouteIfAvailable(ref hasExplicitWaypoints, ref hasExplicitReachDistance);
+        }
+
+        private void ApplyDefaultRouteIfAvailable(ref bool hasExplicitWaypoints, ref bool hasExplicitReachDistance)
+        {
+            if (!hasExplicitWaypoints)
+            {
+                activeRouteWaypoints = GetDefaultRouteWaypoints(activeTrackId);
+            }
+
+            if (!hasExplicitReachDistance && activeRouteWaypoints.Length > 0)
+            {
+                activeRouteReachDistance = GetDefaultRouteReachDistance(activeTrackId);
             }
         }
 
@@ -641,19 +671,19 @@ namespace UavSimulator.Core
                     Application.targetFrameRate = 60;
                     break;
                 case "balanced":
-                    QualitySettings.antiAliasing = 2;
+                    QualitySettings.antiAliasing = 0;
                     QualitySettings.shadowDistance = 65f;
                     QualitySettings.lodBias = 1.3f;
                     Application.targetFrameRate = 75;
                     break;
                 case "ultra":
-                    QualitySettings.antiAliasing = 8;
+                    QualitySettings.antiAliasing = 0;
                     QualitySettings.shadowDistance = 140f;
                     QualitySettings.lodBias = 2.2f;
                     Application.targetFrameRate = 120;
                     break;
                 default:
-                    QualitySettings.antiAliasing = 4;
+                    QualitySettings.antiAliasing = 0;
                     QualitySettings.shadowDistance = 100f;
                     QualitySettings.lodBias = 1.8f;
                     Application.targetFrameRate = 90;
@@ -707,7 +737,7 @@ namespace UavSimulator.Core
             var spawn = GetDefaultSpawnPose(activeTrackId);
             var hasExplicitSpawn = false;
 
-            if (activeRouteWaypoints.Length >= 2)
+            if (activeRouteWaypointsConfigured && activeRouteWaypoints.Length >= 2)
             {
                 var first = activeRouteWaypoints[0];
                 var second = activeRouteWaypoints[1];
@@ -1108,6 +1138,11 @@ namespace UavSimulator.Core
 
         private static (Vector3 position, float yawDeg) GetDefaultSpawnPose(string trackId)
         {
+            if (string.Equals(trackId, BuiltinPluginFactory.CardboardCorridorTrackId, StringComparison.Ordinal))
+            {
+                return (new Vector3(0f, 0.01f, -0.85f), 0f);
+            }
+
             if (string.Equals(trackId, BuiltinPluginFactory.RoadSystemRealisticTrackId, StringComparison.Ordinal))
             {
                 return (new Vector3(-11f, 0.2f, -11.8f), 3f);
@@ -1124,6 +1159,26 @@ namespace UavSimulator.Core
             }
 
             return (new Vector3(0f, 0.2f, -6f), 0f);
+        }
+
+        private static Vector3[] GetDefaultRouteWaypoints(string trackId)
+        {
+            if (string.Equals(trackId, BuiltinPluginFactory.CardboardCorridorTrackId, StringComparison.Ordinal))
+            {
+                return (Vector3[])CardboardCorridorDefaultRoute.Clone();
+            }
+
+            return Array.Empty<Vector3>();
+        }
+
+        private static float GetDefaultRouteReachDistance(string trackId)
+        {
+            if (string.Equals(trackId, BuiltinPluginFactory.CardboardCorridorTrackId, StringComparison.Ordinal))
+            {
+                return 0.25f;
+            }
+
+            return 1f;
         }
     }
 }

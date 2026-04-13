@@ -1,0 +1,52 @@
+scenarioId: cardboard-corridor-v1
+displayName: Cardboard Corridor (Sim-to-Real)
+description: L-shaped cardboard corridor matching real apartment test setup.
+version: 1
+
+runtime:
+  runtimeMode: unity-sim
+  headless: false
+  timeScale: 1.0
+  seed: 42
+
+world:
+  trackId: track.cardboard_corridor.v1
+
+vehicle:
+  vehicleId: vehicle.prometeo.sport.v1
+  params:
+    camera.profile: high
+
+sensors:
+  camera:
+    enabled: true
+    profile: high
+  telemetry:
+    profile: default
+  lineTracker:
+    enabled: false
+  ultrasonic:
+    enabled: true
+
+route:
+  params:
+    spawn.position: 0.000,0.010,-0.850
+    corridor.width_m: 0.40
+    goal.radius_m: 0.25
+    obstacle.count: 0
+  waypoints:
+    - [0.0, -0.55]
+    - [0.0, -0.15]
+    - [0.18, 0.0]
+    - [0.60, 0.0]
+  loop: false
+  reachDistanceM: 0.25
+
+agents:
+  count: 1
+  isolated: true
+  seeEachOther: false
+
+logging:
+  enabled: true
+  tag: cardboard-corridor-v1

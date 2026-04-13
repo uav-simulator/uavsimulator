@@ -24,23 +24,23 @@ namespace UavSimulator.Plugins
             var registryAsset = Resources.Load<PluginRegistryAsset>(RegistryAssetPath);
             var vehicles = Resources.LoadAll<VehiclePluginDescriptor>(DescriptorsFolderPath) ?? new VehiclePluginDescriptor[0];
             var tracks = Resources.LoadAll<TrackPluginDescriptor>(DescriptorsFolderPath) ?? new TrackPluginDescriptor[0];
+            var builtinSnapshot = BuiltinPluginFactory.CreateSnapshot(PluginRegistrySource.BuiltinFactory);
             var resourceSnapshot = new PluginRegistrySnapshot(
                 vehicles: vehicles.Where(v => v != null).ToArray(),
                 tracks: tracks.Where(t => t != null).ToArray(),
                 source: PluginRegistrySource.ResourcesDescriptorsFolder);
+            resourceSnapshot = PluginRegistrySnapshot.MergePreferPrimary(
+                resourceSnapshot,
+                builtinSnapshot,
+                PluginRegistrySource.ResourcesDescriptorsFolder);
 
             if (registryAsset != null)
             {
                 var registrySnapshot = PluginRegistrySnapshot.FromAsset(registryAsset, PluginRegistrySource.RegistryAsset);
-                var mergedSnapshot = PluginRegistrySnapshot.MergePreferPrimary(registrySnapshot, resourceSnapshot, PluginRegistrySource.RegistryAsset);
-                return mergedSnapshot.IsEmpty
-                    ? BuiltinPluginFactory.CreateSnapshot(PluginRegistrySource.BuiltinFallbackFromEmptyRegistryAsset)
-                    : mergedSnapshot;
+                return PluginRegistrySnapshot.MergePreferPrimary(registrySnapshot, resourceSnapshot, PluginRegistrySource.RegistryAsset);
             }
 
-            return resourceSnapshot.IsEmpty
-                ? BuiltinPluginFactory.CreateSnapshot(PluginRegistrySource.BuiltinFallbackFromEmptyResources)
-                : resourceSnapshot;
+            return resourceSnapshot;
         }
     }
 

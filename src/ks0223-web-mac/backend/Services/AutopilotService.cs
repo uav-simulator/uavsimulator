@@ -60,9 +60,7 @@ public sealed class AutopilotService
         var agentId = string.IsNullOrWhiteSpace(request.AgentId) ? null : request.AgentId.Trim();
         var loopIntervalMs = Math.Clamp(request.LoopIntervalMs ?? 140, MinLoopIntervalMs, MaxLoopIntervalMs);
 
-        var model = string.IsNullOrWhiteSpace(request.ModelId)
-            ? modelRegistry.GetActiveRuntimeSpec()
-            : modelRegistry.GetRuntimeSpec(request.ModelId);
+        var model = modelRegistry.ResolveRuntimeSpec(request.ModelId, clientId, runtimeMode, agentId);
 
         var predictor = new PolicyPredictor(model, logger);
         await StopIfRunningAsync("restart", cancellationToken);

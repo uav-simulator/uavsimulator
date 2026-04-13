@@ -56,6 +56,7 @@ def export_onnx():
         str(ONNX_PATH),
         input_names=["obs"],
         output_names=["action"],
+        external_data=False,
         dynamic_axes={"obs": {0: "batch"}, "action": {0: "batch"}},
         opset_version=11,
     )

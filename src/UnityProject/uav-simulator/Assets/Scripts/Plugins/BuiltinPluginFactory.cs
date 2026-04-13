@@ -22,6 +22,7 @@ namespace UavSimulator.Plugins
         public const string BasicArenaTrackId = "track.basic_arena.v1";
         public const string RoadSystemArenaTrackId = "track.roadsystem_arena.v1";
         public const string RoadSystemRealisticTrackId = "track.roadsystem_realistic.v2";
+        public const string CardboardCorridorTrackId = "track.cardboard_corridor.v1";
 
         private const string PrometeoPrefabPath = "Assets/PROMETEO - Car Controller/Prefabs/Prometheus.prefab";
         private const string ArcadeBluePrefabPath = "Assets/ARCADE - FREE Racing Car/Prefabs (Meshes Only)/Free Racing Car Blue Variant.prefab";
@@ -84,9 +85,15 @@ namespace UavSimulator.Plugins
             roadSystemRealisticTrack.description = "RoadSystem-based realistic track with curbs, start/finish markers and richer environment.";
             roadSystemRealisticTrack.parametersSchemaJson = "{\"type\":\"object\",\"properties\":{}}";
 
+            var cardboardCorridorTrack = ScriptableObject.CreateInstance<TrackPluginDescriptor>();
+            cardboardCorridorTrack.id = CardboardCorridorTrackId;
+            cardboardCorridorTrack.displayName = "Cardboard Corridor (Sim-to-Real)";
+            cardboardCorridorTrack.description = "L-shaped cardboard corridor matching real-world apartment test setup. Narrow walls, wood floor, ArUco finish marker.";
+            cardboardCorridorTrack.parametersSchemaJson = "{\"type\":\"object\",\"properties\":{}}";
+
             return new PluginRegistrySnapshot(
                 vehicles: new[] { vehicle, arcadeBlueVehicle, arcadeRedVehicle, arcadeGrayVehicle, arcadePurpleVehicle, simpleDrone },
-                tracks: new[] { roadSystemTrack, roadSystemRealisticTrack, track },
+                tracks: new[] { roadSystemTrack, roadSystemRealisticTrack, track, cardboardCorridorTrack },
                 source: source);
         }
 
@@ -170,6 +177,16 @@ namespace UavSimulator.Plugins
                 root.transform.position = Vector3.zero;
                 root.transform.rotation = Quaternion.identity;
                 track = root.AddComponent<RoadSystemRealisticTrack>();
+                return true;
+            }
+
+            if (string.Equals(descriptorId, CardboardCorridorTrackId, StringComparison.Ordinal))
+            {
+                var root = new GameObject("CardboardCorridorTrack");
+                root.transform.SetParent(parent, false);
+                root.transform.position = Vector3.zero;
+                root.transform.rotation = Quaternion.identity;
+                track = root.AddComponent<CardboardCorridorTrack>();
                 return true;
             }
 

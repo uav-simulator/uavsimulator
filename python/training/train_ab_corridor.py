@@ -112,6 +112,7 @@ def export_to_onnx(model: PPO, output_path: Path, obs_size: int = 8) -> None:
         str(output_path),
         input_names=["obs"],
         output_names=["action"],
+        external_data=False,
         dynamic_axes={"obs": {0: "batch"}, "action": {0: "batch"}},
         opset_version=11,
     )

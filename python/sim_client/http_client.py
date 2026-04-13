@@ -35,8 +35,47 @@ class SimClient:
         self._raise_for_status(r)
         return r.json()
 
+    def get_model_catalog(self) -> list[Dict[str, Any]]:
+        return self._get_any("/api/model-catalog")  # type: ignore[return-value]
+
     def activate_model(self, model_id: str) -> Dict[str, Any]:
         return self._post("/api/models/activate", {"modelId": model_id})
+
+    def get_model_binding(
+        self,
+        client_id: str,
+        runtime_mode: str,
+        agent_id: str = "",
+    ) -> Optional[Dict[str, Any]]:
+        params = {
+            "clientId": client_id,
+            "runtimeMode": runtime_mode,
+        }
+        if agent_id.strip():
+            params["agentId"] = agent_id.strip()
+
+        url = f"{self.base_url}/api/model-bindings/current"
+        r = requests.get(url, params=params, timeout=self.timeout_s)
+        if r.status_code == 404:
+            return None
+        self._raise_for_status(r)
+        return r.json()
+
+    def set_model_binding(
+        self,
+        client_id: str,
+        runtime_mode: str,
+        model_id: str,
+        agent_id: str = "",
+    ) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {
+            "clientId": client_id,
+            "runtimeMode": runtime_mode,
+            "modelId": model_id,
+        }
+        if agent_id.strip():
+            payload["agentId"] = agent_id.strip()
+        return self._post("/api/model-bindings", payload)
 
     def upload_model(
         self,

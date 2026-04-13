@@ -50,11 +50,11 @@ namespace UavSimulator.Vehicles
         [SerializeField] private int cameraImageWidth = 1280;
         [SerializeField] private int cameraImageHeight = 720;
         [SerializeField] [Range(20, 100)] private int cameraJpegQuality = 95;
-        [SerializeField] [Range(1, 8)] private int cameraMsaaSamples = 4;
+        [SerializeField] [Range(1, 8)] private int cameraMsaaSamples = 1;
         [SerializeField] [Range(0, 16)] private int cameraAnisoLevel = 8;
         [SerializeField] private bool cameraAllowHdr = true;
-        [SerializeField] private Vector3 cameraLocalPosition = new Vector3(0f, 0.13f, 0.18f);
-        [SerializeField] private Vector3 cameraLocalEuler = new Vector3(9f, 0f, 0f);
+        [SerializeField] private Vector3 cameraLocalPosition = new Vector3(0f, 0.11f, 0.20f);
+        [SerializeField] private Vector3 cameraLocalEuler = new Vector3(6f, 0f, 0f);
         [SerializeField] private Color presentationAccentColor = new Color(0.77f, 0.11f, 0.10f);
 
         private Rigidbody body;
@@ -69,7 +69,6 @@ namespace UavSimulator.Vehicles
         private float leftPwmCmd;
         private float rightPwmCmd;
         private float currentSpeed;
-
         private void Awake()
         {
             body = GetComponent<Rigidbody>();
@@ -178,7 +177,7 @@ namespace UavSimulator.Vehicles
 
             try
             {
-                var hideSelfGeometry = cameraMode is "driver" or "bumper" or "chase" or "spectator";
+                var hideSelfGeometry = cameraMode is "bumper" or "chase" or "spectator";
                 for (var i = 0; i < renderers.Length; i++)
                 {
                     var renderer = renderers[i];
@@ -417,6 +416,7 @@ namespace UavSimulator.Vehicles
             frontCamera.fieldOfView = 68f;
             frontCamera.allowHDR = cameraAllowHdr;
             frontCamera.allowMSAA = cameraMsaaSamples > 1;
+            frontCamera.useOcclusionCulling = false;
             defaultCameraCullingMask = frontCamera.cullingMask;
             ApplyCameraMode();
             RecreateCameraTargets();
@@ -436,7 +436,7 @@ namespace UavSimulator.Vehicles
             switch (cameraMode)
             {
                 case "bumper":
-                    localPosition = new Vector3(0f, 0.08f, 0.26f);
+                    localPosition = new Vector3(0f, 0.05f, 0.24f);
                     localEuler = new Vector3(6f, 0f, 0f);
                     fieldOfView = 76f;
                     break;
@@ -479,7 +479,7 @@ namespace UavSimulator.Vehicles
                     cameraImageWidth = 960;
                     cameraImageHeight = 540;
                     cameraJpegQuality = 84;
-                    cameraMsaaSamples = 2;
+                    cameraMsaaSamples = 1;
                     cameraAnisoLevel = 4;
                     cameraAllowHdr = false;
                     break;
@@ -487,7 +487,7 @@ namespace UavSimulator.Vehicles
                     cameraImageWidth = 1600;
                     cameraImageHeight = 900;
                     cameraJpegQuality = 96;
-                    cameraMsaaSamples = 8;
+                    cameraMsaaSamples = 1;
                     cameraAnisoLevel = 12;
                     cameraAllowHdr = true;
                     break;
@@ -495,7 +495,7 @@ namespace UavSimulator.Vehicles
                     cameraImageWidth = 1280;
                     cameraImageHeight = 720;
                     cameraJpegQuality = 92;
-                    cameraMsaaSamples = 4;
+                    cameraMsaaSamples = 1;
                     cameraAnisoLevel = 8;
                     cameraAllowHdr = true;
                     break;
@@ -538,6 +538,7 @@ namespace UavSimulator.Vehicles
                 anisoLevel = cameraAnisoLevel,
             };
             frontCameraRt.Create();
+            frontCamera.targetTexture = frontCameraRt;
 
             frontCameraTexture = new Texture2D(cameraImageWidth, cameraImageHeight, TextureFormat.RGB24, false, false)
             {
@@ -549,21 +550,8 @@ namespace UavSimulator.Vehicles
 
         private static int NormalizeMsaaSamples(int requested)
         {
-            if (requested >= 8)
-            {
-                return 8;
-            }
-
-            if (requested >= 4)
-            {
-                return 4;
-            }
-
-            if (requested >= 2)
-            {
-                return 2;
-            }
-
+            _ = requested;
+            // Unity 6 + URP standalone offscreen capture is stable only with single-sample RTs here.
             return 1;
         }
 

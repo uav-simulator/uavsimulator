@@ -148,12 +148,21 @@ namespace UavSimulator.Core
             for (var i = 0; i < roots.Length; i++)
             {
                 var root = roots[i];
-                if (root == null || !string.Equals(root.name, "TrackScence", System.StringComparison.Ordinal))
+                if (root == null)
                 {
                     continue;
                 }
 
-                var ground = root.transform.Find("Ground");
+                Transform ground = null;
+                if (string.Equals(root.name, "Ground", System.StringComparison.Ordinal))
+                {
+                    ground = root.transform;
+                }
+                else if (string.Equals(root.name, "TrackScence", System.StringComparison.Ordinal))
+                {
+                    ground = root.transform.Find("Ground");
+                }
+
                 if (ground == null)
                 {
                     continue;
