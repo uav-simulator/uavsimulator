@@ -5,6 +5,8 @@ import type {
   HealthDto,
   LogFileInfo,
   LogState,
+  ModelBindingDto,
+  ModelCatalogEntryDto,
   ModelInfoDto,
   SensorBridgeResponse,
   SensorBridgeStatusDto,
@@ -222,6 +224,11 @@ export async function fetchModels(): Promise<ModelInfoDto[]> {
   return handleJson<ModelInfoDto[]>(response)
 }
 
+export async function fetchModelCatalog(): Promise<ModelCatalogEntryDto[]> {
+  const response = await fetch(withBase('/api/model-catalog'))
+  return handleJson<ModelCatalogEntryDto[]>(response)
+}
+
 export async function activateModel(modelId: string): Promise<ModelInfoDto> {
   const response = await fetch(withBase('/api/models/activate'), {
     method: 'POST',
@@ -238,6 +245,38 @@ export async function fetchActiveModel(): Promise<ModelInfoDto | null> {
   }
 
   return handleJson<ModelInfoDto>(response)
+}
+
+export async function fetchModelBinding(
+  clientId: string,
+  runtimeMode: string,
+  agentId?: string,
+): Promise<ModelBindingDto | null> {
+  const params = new URLSearchParams({ clientId, runtimeMode })
+  if (agentId?.trim()) {
+    params.set('agentId', agentId.trim())
+  }
+
+  const response = await fetch(withBase(`/api/model-bindings/current?${params.toString()}`))
+  if (response.status === 404) {
+    return null
+  }
+
+  return handleJson<ModelBindingDto>(response)
+}
+
+export async function setModelBinding(payload: {
+  clientId: string
+  runtimeMode: string
+  modelId: string
+  agentId?: string
+}): Promise<ModelBindingDto> {
+  const response = await fetch(withBase('/api/model-bindings'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  return handleJson<ModelBindingDto>(response)
 }
 
 export async function startAutopilot(payload: {

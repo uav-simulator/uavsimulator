@@ -34,12 +34,12 @@ namespace UavSimulator.EditorTools
             foreach (var vehicle in snapshot.Vehicles.Where(item => item != null))
             {
                 var contractPath = $"{ContractsRoot}/{ToAssetFileName(vehicle.id)}_contract.asset";
-                var contractAsset = LoadOrCreateAsset<DeviceContractDescriptorAsset>(contractPath);
+                var contractAsset = FindContractAsset(vehicle.id) ?? LoadOrCreateAsset<DeviceContractDescriptorAsset>(contractPath);
                 CopyDeviceContract(vehicle.deviceContract, contractAsset);
                 EditorUtility.SetDirty(contractAsset);
 
                 var vehiclePath = $"{VehiclesRoot}/{ToAssetFileName(vehicle.id)}.asset";
-                var vehicleAsset = LoadOrCreateAsset<VehiclePluginDescriptor>(vehiclePath);
+                var vehicleAsset = FindPluginAsset<VehiclePluginDescriptor>(VehiclesRoot, vehicle.id) ?? LoadOrCreateAsset<VehiclePluginDescriptor>(vehiclePath);
                 CopyPluginDescriptor(vehicle, vehicleAsset);
                 vehicleAsset.prefab = vehicle.prefab;
                 vehicleAsset.deviceContract = contractAsset;
@@ -50,7 +50,7 @@ namespace UavSimulator.EditorTools
             foreach (var track in snapshot.Tracks.Where(item => item != null))
             {
                 var trackPath = $"{TracksRoot}/{ToAssetFileName(track.id)}.asset";
-                var trackAsset = LoadOrCreateAsset<TrackPluginDescriptor>(trackPath);
+                var trackAsset = FindPluginAsset<TrackPluginDescriptor>(TracksRoot, track.id) ?? LoadOrCreateAsset<TrackPluginDescriptor>(trackPath);
                 CopyPluginDescriptor(track, trackAsset);
                 trackAsset.prefab = track.prefab;
                 trackAsset.parametersSchemaJson = track.parametersSchemaJson;
@@ -112,6 +112,46 @@ namespace UavSimulator.EditorTools
             asset = ScriptableObject.CreateInstance<T>();
             AssetDatabase.CreateAsset(asset, assetPath);
             return asset;
+        }
+
+        private static T FindPluginAsset<T>(string searchRoot, string descriptorId) where T : PluginDescriptorBase
+        {
+            if (string.IsNullOrWhiteSpace(descriptorId))
+            {
+                return null;
+            }
+
+            foreach (var guid in AssetDatabase.FindAssets($"t:{typeof(T).Name}", new[] { searchRoot }))
+            {
+                var assetPath = AssetDatabase.GUIDToAssetPath(guid);
+                var asset = AssetDatabase.LoadAssetAtPath<T>(assetPath);
+                if (asset != null && string.Equals(asset.id, descriptorId, StringComparison.Ordinal))
+                {
+                    return asset;
+                }
+            }
+
+            return null;
+        }
+
+        private static DeviceContractDescriptorAsset FindContractAsset(string deviceId)
+        {
+            if (string.IsNullOrWhiteSpace(deviceId))
+            {
+                return null;
+            }
+
+            foreach (var guid in AssetDatabase.FindAssets($"t:{nameof(DeviceContractDescriptorAsset)}", new[] { ContractsRoot }))
+            {
+                var assetPath = AssetDatabase.GUIDToAssetPath(guid);
+                var asset = AssetDatabase.LoadAssetAtPath<DeviceContractDescriptorAsset>(assetPath);
+                if (asset?.descriptor != null && string.Equals(asset.descriptor.deviceId, deviceId, StringComparison.Ordinal))
+                {
+                    return asset;
+                }
+            }
+
+            return null;
         }
 
         private static void EnsureFolder(string parentFolder, string childFolderName)

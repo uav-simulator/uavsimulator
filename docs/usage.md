@@ -49,6 +49,17 @@ rusim scenario reset configs/scenarios/demo.yaml --base-url http://127.0.0.1:800
 rusim reset --base-url http://127.0.0.1:8000 --track-id track.roadsystem_realistic.v2 --vehicle-id vehicle.arcade.blue.v1
 ```
 
+### Cardboard Corridor для `sim-to-real`
+Основной Sprint 2 сценарий теперь живёт отдельно от `basic_arena`:
+
+```bash
+rusim scenario validate configs/scenarios/cardboard-corridor-v1.yaml
+rusim scenario reset configs/scenarios/cardboard-corridor-v1.yaml --base-url http://127.0.0.1:8000
+rusim reset --base-url http://127.0.0.1:8000 --track-id track.cardboard_corridor.v1 --vehicle-id vehicle.prometeo.sport.v1
+```
+
+`track.basic_arena.v1` остаётся demo/research трассой для общего PPO baseline, а `track.cardboard_corridor.v1` используется как узкий L-коридор с ArUco-маркером для `sim-to-real`.
+
 ### Отправить шаг управления
 ```bash
 rusim step --base-url http://127.0.0.1:8000 --throttle 0.2 --steer 0.1 --brake 0.0
@@ -101,6 +112,8 @@ rusim server down
 ```
 
 `background` остаётся практическим режимом по умолчанию, если нужна камера и рендер.
+
+На 2026-04-11 latest build уже корректно публикует `track.cardboard_corridor.v1`, но camera stream ground vehicle в standalone всё ещё требует отдельного фикса. Для самого факта наличия трека и корректного `reset` достаточно `background`; для проверки изображения нужен дополнительный smoke после починки capture path.
 
 ## Реальный стенд
 Физический runtime подключается через тот же backend и тот же Web UI.

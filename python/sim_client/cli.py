@@ -105,20 +105,24 @@ def build_parser() -> argparse.ArgumentParser:
     model.set_defaults(_parser=model)
     model_sub = model.add_subparsers(dest="model_command")
 
-    model_install = model_sub.add_parser("install", help="Upload ONNX model artifact into backend model registry.")
+    model_install = model_sub.add_parser("install", help="Upload versioned ONNX artifact into backend model registry.")
     model_install.set_defaults(_parser=model_install)
     model_install.add_argument("artifact")
     model_install.add_argument("--backend-url", default="http://127.0.0.1:5058")
-    model_install.add_argument("--name", default="")
-    model_install.add_argument("--version", default="")
-    model_install.add_argument("--source", default="rusim-cli")
-    model_install.add_argument("--metadata", default="")
+    model_install.add_argument("--name", default="", help="Product model name. If omitted, backend reads it from metadata.json.")
+    model_install.add_argument("--version", default="", help="Product model version. If omitted, backend reads it from metadata.json.")
+    model_install.add_argument("--source", default="", help="Optional source override. If omitted, backend reads it from metadata.json.")
+    model_install.add_argument("--metadata", default="", help="Optional metadata.json sidecar. Auto-discovered next to the artifact.")
     model_install.add_argument("--metrics", default="")
     model_install.add_argument("--activate", action="store_true", help="Kept for explicit product flow; uploaded model becomes active.")
 
     model_list = model_sub.add_parser("list", help="List models from backend registry.")
     model_list.set_defaults(_parser=model_list)
     model_list.add_argument("--backend-url", default="http://127.0.0.1:5058")
+
+    model_catalog = model_sub.add_parser("catalog", help="List grouped model catalog from backend registry.")
+    model_catalog.set_defaults(_parser=model_catalog)
+    model_catalog.add_argument("--backend-url", default="http://127.0.0.1:5058")
 
     model_activate = model_sub.add_parser("activate", help="Activate model in backend registry.")
     model_activate.set_defaults(_parser=model_activate)
@@ -128,6 +132,21 @@ def build_parser() -> argparse.ArgumentParser:
     model_active = model_sub.add_parser("active", help="Show active model from backend registry.")
     model_active.set_defaults(_parser=model_active)
     model_active.add_argument("--backend-url", default="http://127.0.0.1:5058")
+
+    model_binding = model_sub.add_parser("binding", help="Show target model binding from backend registry.")
+    model_binding.set_defaults(_parser=model_binding)
+    model_binding.add_argument("--backend-url", default="http://127.0.0.1:5058")
+    model_binding.add_argument("--client-id", required=True)
+    model_binding.add_argument("--runtime-mode", required=True)
+    model_binding.add_argument("--agent-id", default="")
+
+    model_bind = model_sub.add_parser("bind", help="Bind a model version to a target.")
+    model_bind.set_defaults(_parser=model_bind)
+    model_bind.add_argument("model_id")
+    model_bind.add_argument("--backend-url", default="http://127.0.0.1:5058")
+    model_bind.add_argument("--client-id", required=True)
+    model_bind.add_argument("--runtime-mode", required=True)
+    model_bind.add_argument("--agent-id", default="")
 
     runtime = subparsers.add_parser("runtime", help="Build and inspect standalone runtime.")
     runtime.set_defaults(_parser=runtime)
@@ -658,10 +677,16 @@ def _model(args: argparse.Namespace) -> int:
         return _model_install(args)
     if args.model_command == "list":
         return _model_list(args)
+    if args.model_command == "catalog":
+        return _model_catalog(args)
     if args.model_command == "activate":
         return _model_activate(args)
     if args.model_command == "active":
         return _model_active(args)
+    if args.model_command == "binding":
+        return _model_binding(args)
+    if args.model_command == "bind":
+        return _model_bind(args)
     raise ValueError(f"Unknown model command: {args.model_command}")
 
 
@@ -1025,6 +1050,23 @@ def _model_list(args: argparse.Namespace) -> int:
     return 0
 
 
+def _model_catalog(args: argparse.Namespace) -> int:
+    client = SimClient(base_url=args.backend_url)
+    catalog = client.get_model_catalog()
+    print(
+        json.dumps(
+            {
+                "backendUrl": args.backend_url,
+                "count": len(catalog),
+                "items": catalog,
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
+    return 0
+
+
 def _model_activate(args: argparse.Namespace) -> int:
     client = SimClient(base_url=args.backend_url)
     active = client.activate_model(args.model_id)
@@ -1036,6 +1078,41 @@ def _model_active(args: argparse.Namespace) -> int:
     client = SimClient(base_url=args.backend_url)
     active = client.get_active_model()
     print(json.dumps({"backendUrl": args.backend_url, "active": active}, ensure_ascii=False, indent=2))
+    return 0
+
+
+def _model_binding(args: argparse.Namespace) -> int:
+    client = SimClient(base_url=args.backend_url)
+    binding = client.get_model_binding(args.client_id, args.runtime_mode, args.agent_id)
+    print(
+        json.dumps(
+            {
+                "backendUrl": args.backend_url,
+                "clientId": args.client_id,
+                "runtimeMode": args.runtime_mode,
+                "agentId": args.agent_id or None,
+                "binding": binding,
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
+    return 0
+
+
+def _model_bind(args: argparse.Namespace) -> int:
+    client = SimClient(base_url=args.backend_url)
+    binding = client.set_model_binding(args.client_id, args.runtime_mode, args.model_id, args.agent_id)
+    print(
+        json.dumps(
+            {
+                "backendUrl": args.backend_url,
+                "binding": binding,
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
     return 0
 
 

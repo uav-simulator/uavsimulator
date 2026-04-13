@@ -121,6 +121,7 @@ def export_to_onnx(model: PPO, output_path: Path, env: ABCorridorVisionEnv) -> N
         str(output_path),
         input_names=["image", "ultrasonic"],
         output_names=["action"],
+        external_data=False,
         dynamic_axes={
             "image": {0: "batch"},
             "ultrasonic": {0: "batch"},

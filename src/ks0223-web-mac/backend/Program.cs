@@ -19,7 +19,21 @@ builder.Services.AddHttpClient();
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("frontend", cors =>
-        cors.WithOrigins("http://localhost:5173")
+        cors.SetIsOriginAllowed(origin =>
+            {
+                if (!Uri.TryCreate(origin, UriKind.Absolute, out var uri))
+                {
+                    return false;
+                }
+
+                if (!string.Equals(uri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase))
+                {
+                    return false;
+                }
+
+                return string.Equals(uri.Host, "localhost", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(uri.Host, "127.0.0.1", StringComparison.OrdinalIgnoreCase);
+            })
             .AllowAnyHeader()
             .AllowAnyMethod()
             .AllowCredentials());
@@ -122,6 +136,12 @@ app.MapGet("/api/models", (ModelRegistryService modelRegistry) =>
     return Results.Ok(models);
 });
 
+app.MapGet("/api/model-catalog", (ModelRegistryService modelRegistry) =>
+{
+    var catalog = modelRegistry.ListCatalog();
+    return Results.Ok(catalog);
+});
+
 app.MapGet("/api/models/active", (ModelRegistryService modelRegistry) =>
 {
     var model = modelRegistry.GetActiveModel();
@@ -136,6 +156,37 @@ app.MapPost("/api/models/activate", (ActivateModelRequest request, ModelRegistry
     {
         var active = modelRegistry.Activate(request.ModelId);
         return Results.Ok(active);
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+});
+
+app.MapGet("/api/model-bindings/current", (HttpRequest http, ModelRegistryService modelRegistry) =>
+{
+    try
+    {
+        var clientId = ReadClientIdQuery(http);
+        var runtimeMode = ReadRuntimeModeQuery(http);
+        var agentId = ReadStringQuery(http, "agentId", "agent_id");
+        var binding = modelRegistry.GetBinding(clientId, runtimeMode, agentId);
+        return binding is null
+            ? Results.NotFound(new { error = "Model binding is not configured for this target" })
+            : Results.Ok(binding);
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+});
+
+app.MapPost("/api/model-bindings", (SetModelBindingRequest request, ModelRegistryService modelRegistry) =>
+{
+    try
+    {
+        var binding = modelRegistry.SetBinding(request);
+        return Results.Ok(binding);
     }
     catch (Exception ex)
     {

@@ -121,6 +121,30 @@ export type ModelInfoDto = {
   artifactPath: string
   metadataPath: string
   metricsPath: string
+  compatibility: CompatibilityHintsDto
+}
+
+export type CompatibilityHintsDto = {
+  runtimeModes: string[]
+  vehicleIds: string[]
+  robotKinds: string[]
+}
+
+export type ModelCatalogEntryDto = {
+  name: string
+  versions: ModelInfoDto[]
+}
+
+export type ModelBindingDto = {
+  clientId: string
+  runtimeMode: string
+  agentId: string | null
+  modelId: string
+  name: string
+  version: string
+  source: string
+  boundAtUtc: string
+  compatibility: CompatibilityHintsDto
 }
 
 export type AutopilotStatusDto = {
