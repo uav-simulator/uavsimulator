@@ -228,10 +228,10 @@ def main() -> int:
         img_size=args.img_size,
     )
     print(f"  track:           {probe_env._reset_config['selectedTrackId']}")
-    print(f"  corridor_width:  {probe_probe_env.corridor_width_m:.2f}m")
-    print(f"  goal_radius:     {probe_probe_env.goal_radius_m:.2f}m")
+    print(f"  corridor_width:  {probe_env.corridor_width_m:.2f}m")
+    print(f"  goal_radius:     {probe_env.goal_radius_m:.2f}m")
     print(f"  waypoint_radius: {probe_env.waypoint_reach_radius_m:.2f}m")
-    print(f"  waypoints:       {probe_probe_env.waypoints}")
+    print(f"  waypoints:       {probe_env.waypoints}")
     print()
 
     # Build training env: single or vectorized
