@@ -10,15 +10,15 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: b7166dcab92fb4f0fa25d7c155340a81, type: 3}
-  m_Name: vehicle_ks0223_v1
+  m_Name: vehicle_prometeo_sport_v1
   m_EditorClassIdentifier: 
-  id: vehicle.ks0223.v1
-  displayName: KS0223 Robot
+  id: vehicle.prometeo.sport.v1
+  displayName: PROMETEO Sport Car
   version:
     major: 0
     minor: 0
     patch: 0
-  description: Ground robot profile for KS0223 differential-drive robot with line
-    tracker, ultrasonic and camera sensors.
+  description: Ground robot profile with PROMETEO sport car body (fallback visuals
+    if asset is unavailable).
   prefab: {fileID: 0}
-  deviceContract: {fileID: 11400000, guid: 961f7d844668c4ce0ae5afaef9435bf4, type: 2}
+  deviceContract: {fileID: 11400000, guid: 707f129494e00468094c19e667ead39f, type: 2}

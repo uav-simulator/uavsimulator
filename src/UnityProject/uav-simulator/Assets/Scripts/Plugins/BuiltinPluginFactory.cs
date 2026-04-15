@@ -13,6 +13,7 @@ namespace UavSimulator.Plugins
 {
     public static class BuiltinPluginFactory
     {
+        public const string Ks0223VehicleId = "vehicle.ks0223.v1";
         public const string PrometeoSportVehicleId = "vehicle.prometeo.sport.v1";
         public const string ArcadeBlueVehicleId = "vehicle.arcade.blue.v1";
         public const string ArcadeRedVehicleId = "vehicle.arcade.red.v1";
@@ -42,6 +43,10 @@ namespace UavSimulator.Plugins
 
         public static PluginRegistrySnapshot CreateSnapshot(PluginRegistrySource source = PluginRegistrySource.BuiltinFactory)
         {
+            var ks0223Vehicle = CreateVehicleDescriptor(
+                Ks0223VehicleId,
+                "KS0223 Robot",
+                "Ground robot profile for KS0223 differential-drive robot with line tracker, ultrasonic and camera sensors.");
             var vehicle = CreateVehicleDescriptor(
                 PrometeoSportVehicleId,
                 "PROMETEO Sport Car",
@@ -92,7 +97,7 @@ namespace UavSimulator.Plugins
             cardboardCorridorTrack.parametersSchemaJson = "{\"type\":\"object\",\"properties\":{}}";
 
             return new PluginRegistrySnapshot(
-                vehicles: new[] { vehicle, arcadeBlueVehicle, arcadeRedVehicle, arcadeGrayVehicle, arcadePurpleVehicle, simpleDrone },
+                vehicles: new[] { ks0223Vehicle, vehicle, arcadeBlueVehicle, arcadeRedVehicle, arcadeGrayVehicle, arcadePurpleVehicle, simpleDrone },
                 tracks: new[] { roadSystemTrack, roadSystemRealisticTrack, track, cardboardCorridorTrack },
                 source: source);
         }
@@ -421,6 +426,12 @@ namespace UavSimulator.Plugins
         private static bool TryGetVehicleVisualProfile(string descriptorId, out VehicleVisualProfile profile)
         {
             profile = default;
+            if (string.Equals(descriptorId, Ks0223VehicleId, StringComparison.Ordinal))
+            {
+                profile = new VehicleVisualProfile(PrometeoPrefabPath, 0f);
+                return true;
+            }
+
             if (string.Equals(descriptorId, PrometeoSportVehicleId, StringComparison.Ordinal))
             {
                 profile = new VehicleVisualProfile(PrometeoPrefabPath, 0f);
