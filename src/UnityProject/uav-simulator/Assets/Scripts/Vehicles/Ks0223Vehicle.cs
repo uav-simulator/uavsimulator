@@ -450,6 +450,11 @@ namespace UavSimulator.Vehicles
                     localEuler = new Vector3(20f, -20f, 0f);
                     fieldOfView = 68f;
                     break;
+                case "top_down":
+                    localPosition = new Vector3(0f, 9f, 0f);
+                    localEuler = new Vector3(90f, 0f, 0f);
+                    fieldOfView = 90f;
+                    break;
                 default:
                     localPosition = cameraLocalPosition;
                     localEuler = cameraLocalEuler;
@@ -902,6 +907,7 @@ namespace UavSimulator.Vehicles
                 "bumper" => "bumper",
                 "chase" => "chase",
                 "spectator" => "spectator",
+                "top_down" or "top" or "bird" or "bird_eye" => "top_down",
                 _ => "driver",
             };
         }
