@@ -27,6 +27,16 @@ namespace UavSimulator.Core
         private float pitch;
         private float currentFlySpeed;
 
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
+        private static void AutoAttach()
+        {
+            var mainCam = Camera.main;
+            if (mainCam != null && mainCam.GetComponent<PresentationFollowCamera>() == null)
+            {
+                mainCam.gameObject.AddComponent<PresentationFollowCamera>();
+            }
+        }
+
         private void Start()
         {
             var vehicle = FindFirstObjectByType<Ks0223Vehicle>();
