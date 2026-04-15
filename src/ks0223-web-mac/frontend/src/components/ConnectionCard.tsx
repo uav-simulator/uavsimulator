@@ -14,12 +14,15 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  FormControlLabel,
   MenuItem,
   Stack,
+  Switch,
   TextField,
   Typography,
 } from '@mui/material'
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { discoverUnityRuntimes } from '../api'
 import type { StatusDto, UnityRuntimeCatalogDto } from '../types'
 
 type Props = {
@@ -48,7 +51,11 @@ type Props = {
     vehicleId: string,
     agents: Array<{ agentId?: string; vehicleId?: string; isPrimary?: boolean }>,
     applyImmediately: boolean,
+    collisionsEnabled?: boolean,
+    seeEachOther?: boolean,
   ) => Promise<void>
+  unityCollisionsEnabled: boolean
+  unitySeeEachOther: boolean
 }
 
 function formatLatency(value: number | null): string {
@@ -81,12 +88,32 @@ export function ConnectionCard({
   onUnityCameraAgentIdChange,
   onUnityCatalogRefresh,
   onUnitySelectionSave,
+  unityCollisionsEnabled,
+  unitySeeEachOther,
 }: Props) {
   const [unityDialogOpen, setUnityDialogOpen] = useState(false)
   const [unityDialogBusy, setUnityDialogBusy] = useState(false)
   const [unityDialogError, setUnityDialogError] = useState<string | null>(null)
   const [trackDraft, setTrackDraft] = useState('')
   const [agentDrafts, setAgentDrafts] = useState<Array<{ agentId: string; vehicleId: string; isPrimary: boolean }>>([])
+  const [collisionsDraft, setCollisionsDraft] = useState(unityCollisionsEnabled)
+  const [seeEachOtherDraft, setSeeEachOtherDraft] = useState(unitySeeEachOther)
+  const [discoveredPorts, setDiscoveredPorts] = useState<Array<{ port: number; baseUrl: string }>>([])
+  const [discovering, setDiscovering] = useState(false)
+
+  const handleDiscover = useCallback(async () => {
+    setDiscovering(true)
+    try {
+      const host = targetHost.trim() || (runtimeMode === 'unity-sim' ? '127.0.0.1' : '192.168.1.121')
+      const basePort = Number(targetPort) || (runtimeMode === 'unity-sim' ? 8000 : 5051)
+      const result = await discoverUnityRuntimes(host, basePort, basePort + 7)
+      setDiscoveredPorts(result.instances.map((i) => ({ port: i.port, baseUrl: i.baseUrl })))
+    } catch {
+      setDiscoveredPorts([])
+    } finally {
+      setDiscovering(false)
+    }
+  }, [targetHost, targetPort, runtimeMode])
 
   const tcpConnected = status?.tcpConnected ?? false
   const isUnityMode = runtimeMode === 'unity-sim'
@@ -133,6 +160,8 @@ export function ConnectionCard({
         return 'Chase'
       case 'spectator':
         return 'Spectator'
+      case 'top_down':
+        return 'Top Down'
       default:
         return 'Driver'
     }
@@ -164,6 +193,9 @@ export function ConnectionCard({
     if (unityCatalog?.selectedTrackId) {
       setTrackDraft(unityCatalog.selectedTrackId)
     }
+
+    setCollisionsDraft(unityCollisionsEnabled)
+    setSeeEachOtherDraft(unitySeeEachOther)
 
     setAgentDrafts(
       (unityCatalog?.agents ?? []).map((agent) => ({
@@ -218,6 +250,8 @@ export function ConnectionCard({
           isPrimary: false,
         })),
         connectApplyImmediately,
+        collisionsDraft,
+        seeEachOtherDraft,
       )
       setUnityDialogOpen(false)
     } catch (error) {
@@ -292,9 +326,41 @@ export function ConnectionCard({
             helperText={`Порт по умолчанию: ${defaultPort}`}
           />
 
-          <Button variant="text" color="secondary" onClick={onResetEndpoint} disabled={busy}>
-            Сбросить endpoint к значениям по умолчанию
-          </Button>
+          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+            <Button variant="text" color="secondary" onClick={onResetEndpoint} disabled={busy}>
+              Сбросить
+            </Button>
+            {isUnityMode ? (
+              <Button
+                variant="outlined"
+                size="small"
+                onClick={() => void handleDiscover()}
+                disabled={discovering}
+                startIcon={discovering ? <CircularProgress size={14} /> : <SensorsIcon />}
+              >
+                {discovering ? 'Сканирую...' : 'Найти рантаймы'}
+              </Button>
+            ) : null}
+          </Stack>
+
+          {discoveredPorts.length > 0 ? (
+            <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
+              <Typography variant="caption" color="text.secondary" sx={{ mr: 0.5, alignSelf: 'center' }}>
+                Найдено:
+              </Typography>
+              {discoveredPorts.map((inst) => (
+                <Chip
+                  key={inst.port}
+                  label={`:${inst.port}`}
+                  size="small"
+                  color={String(inst.port) === targetPort ? 'primary' : 'default'}
+                  variant={String(inst.port) === targetPort ? 'filled' : 'outlined'}
+                  clickable
+                  onClick={() => onTargetPortChange(String(inst.port))}
+                />
+              ))}
+            </Stack>
+          ) : null}
 
           {isUnityMode ? (
             <Stack spacing={1}>
@@ -380,7 +446,33 @@ export function ConnectionCard({
               <MenuItem value="bumper">Bumper</MenuItem>
               <MenuItem value="chase">Chase</MenuItem>
               <MenuItem value="spectator">Spectator</MenuItem>
+              <MenuItem value="top_down">Top Down 🔭</MenuItem>
             </TextField>
+
+            <Stack direction="row" spacing={2} flexWrap="wrap">
+              <FormControlLabel
+                control={
+                  <Switch
+                    size="small"
+                    checked={collisionsDraft}
+                    onChange={(e) => setCollisionsDraft(e.target.checked)}
+                    disabled={dialogBusy}
+                  />
+                }
+                label="Коллизии между машинками"
+              />
+              <FormControlLabel
+                control={
+                  <Switch
+                    size="small"
+                    checked={seeEachOtherDraft}
+                    onChange={(e) => setSeeEachOtherDraft(e.target.checked)}
+                    disabled={dialogBusy}
+                  />
+                }
+                label="Видят друг друга"
+              />
+            </Stack>
 
             <Stack spacing={1}>
               <Typography variant="subtitle2">Машинки на трассе</Typography>

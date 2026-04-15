@@ -60,7 +60,7 @@ import type {
 type TabKey = 'dashboard' | 'sensors' | 'led' | 'logs' | 'models'
 type RuntimeMode = 'real-robot' | 'unity-sim'
 type UnityAgentDraft = { agentId?: string; vehicleId?: string; isPrimary?: boolean }
-type UnityPendingSelection = { trackId: string; vehicleId: string; cameraMode: string; agents: UnityAgentDraft[] }
+type UnityPendingSelection = { trackId: string; vehicleId: string; cameraMode: string; agents: UnityAgentDraft[]; collisionsEnabled: boolean; seeEachOther: boolean }
 
 const RUNTIME_MODE_STORAGE_KEY = 'ks0223_runtime_mode'
 const TARGET_HOST_STORAGE_KEY_PREFIX = 'ks0223_target_host_'
@@ -70,6 +70,8 @@ const UNITY_VEHICLE_STORAGE_KEY = 'ks0223_unity_vehicle_id'
 const UNITY_CAMERA_MODE_STORAGE_KEY = 'ks0223_unity_camera_mode'
 const UNITY_CONTROL_AGENT_STORAGE_KEY = 'ks0223_unity_control_agent'
 const UNITY_CAMERA_AGENT_STORAGE_KEY = 'ks0223_unity_camera_agent'
+const UNITY_COLLISIONS_ENABLED_STORAGE_KEY = 'ks0223_unity_collisions_enabled'
+const UNITY_SEE_EACH_OTHER_STORAGE_KEY = 'ks0223_unity_see_each_other'
 const CLIENT_INSTANCE_ID_STORAGE_KEY = 'ks0223_client_instance_id'
 const LEGACY_UNITY_SECONDARY_VEHICLE_STORAGE_KEY = 'ks0223_unity_secondary_vehicle_id'
 const DEFAULT_TARGET_HOST = '192.168.1.121'
@@ -292,6 +294,8 @@ function App() {
   const [unityCameraMode, setUnityCameraMode] = useState(() => readStoredString(UNITY_CAMERA_MODE_STORAGE_KEY) || 'spectator')
   const [unityControlAgentId, setUnityControlAgentId] = useState(() => readStoredString(UNITY_CONTROL_AGENT_STORAGE_KEY))
   const [unityCameraAgentId, setUnityCameraAgentId] = useState(() => readStoredString(UNITY_CAMERA_AGENT_STORAGE_KEY))
+  const [unityCollisionsEnabled, setUnityCollisionsEnabled] = useState(() => readStoredBool(UNITY_COLLISIONS_ENABLED_STORAGE_KEY, false))
+  const [unitySeeEachOther, setUnitySeeEachOther] = useState(() => readStoredBool(UNITY_SEE_EACH_OTHER_STORAGE_KEY, true))
   const [unityPendingSelection, setUnityPendingSelection] = useState<UnityPendingSelection | null>(null)
 
   const [driveSpeedPercent, setDriveSpeedPercent] = useState(() => readStoredNumber(DRIVE_SPEED_STORAGE_KEY, 80, 0, 100))
@@ -391,11 +395,19 @@ function App() {
       vehicleId: string,
       agents: UnityAgentDraft[],
       applyImmediately: boolean,
+      collisionsEnabled?: boolean,
+      seeEachOther?: boolean,
     ) => {
+      const effectiveCollisions = collisionsEnabled ?? unityCollisionsEnabled
+      const effectiveSeeEachOther = seeEachOther ?? unitySeeEachOther
+
+      if (collisionsEnabled !== undefined) setUnityCollisionsEnabled(collisionsEnabled)
+      if (seeEachOther !== undefined) setUnitySeeEachOther(seeEachOther)
+
       if (!applyImmediately || !(status?.desiredConnection ?? false)) {
         setUnityTrackId(trackId)
         setUnityVehicleId(vehicleId)
-        setUnityPendingSelection({ trackId, vehicleId, cameraMode: unityCameraMode, agents })
+        setUnityPendingSelection({ trackId, vehicleId, cameraMode: unityCameraMode, agents, collisionsEnabled: effectiveCollisions, seeEachOther: effectiveSeeEachOther })
         setUnityCatalog((prev) => {
           if (!prev) {
             return prev
@@ -425,10 +437,12 @@ function App() {
         runtimeMode: 'unity-sim',
         trackId,
         vehicleId,
-          cameraMode: unityCameraMode,
-          agents,
-          applyImmediately,
-        })
+        cameraMode: unityCameraMode,
+        agents,
+        applyImmediately,
+        collisionsEnabled: effectiveCollisions,
+        seeEachOther: effectiveSeeEachOther,
+      })
 
       setUnityCatalog(catalog)
       setUnityTrackId(catalog.selectedTrackId)
@@ -442,7 +456,7 @@ function App() {
         await Promise.all([syncStatus(), syncDiagnostics()])
       }
     },
-    [clientInstanceId, status?.desiredConnection, syncDiagnostics, syncStatus, unityCameraMode],
+    [clientInstanceId, status?.desiredConnection, syncDiagnostics, syncStatus, unityCameraMode, unityCollisionsEnabled, unitySeeEachOther],
   )
 
   useEffect(() => {
@@ -577,6 +591,14 @@ function App() {
   }, [unityCameraAgentId])
 
   useEffect(() => {
+    window.localStorage.setItem(UNITY_COLLISIONS_ENABLED_STORAGE_KEY, String(unityCollisionsEnabled))
+  }, [unityCollisionsEnabled])
+
+  useEffect(() => {
+    window.localStorage.setItem(UNITY_SEE_EACH_OTHER_STORAGE_KEY, String(unitySeeEachOther))
+  }, [unitySeeEachOther])
+
+  useEffect(() => {
     window.localStorage.setItem(DRIVE_SPEED_STORAGE_KEY, String(driveSpeedPercent))
   }, [driveSpeedPercent])
 
@@ -705,6 +727,8 @@ function App() {
             unityPendingSelection.vehicleId || catalog.selectedVehicleId,
             unityPendingSelection.agents,
             true,
+            unityPendingSelection.collisionsEnabled,
+            unityPendingSelection.seeEachOther,
           )
         }
       }
@@ -1059,6 +1083,8 @@ function App() {
           await syncUnityCatalog()
         }}
         onUnitySelectionSave={applyUnitySelection}
+        unityCollisionsEnabled={unityCollisionsEnabled}
+        unitySeeEachOther={unitySeeEachOther}
         onCommand={handleActiveCommand}
         controlsEnabled={activeRuntimeMode !== 'unity-sim' || Boolean(unityControlAgentId)}
         cameraStreamUrl={cameraMjpegUrl(
@@ -1083,6 +1109,12 @@ function App() {
         onUltrasonicAutoScanChange={handleUltrasonicAutoScanChange}
         estimatedCameraPanDeg={estimatedCameraPanDeg}
         estimatedCameraTiltDeg={estimatedCameraTiltDeg}
+        modelCatalog={modelCatalog}
+        modelBinding={modelBinding}
+        autopilot={autopilotStatus}
+        onModelBind={handleModelBind}
+        onAutopilotStart={handleAutopilotStart}
+        onAutopilotStop={handleAutopilotStop}
       />
     )
   }, [
@@ -1117,6 +1149,8 @@ function App() {
     unityCameraMode,
     unityControlAgentId,
     unityCameraAgentId,
+    unityCollisionsEnabled,
+    unitySeeEachOther,
     handleUnityControlAgentChange,
     handleUnityCameraAgentChange,
     syncUnityCatalog,

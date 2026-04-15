@@ -13,7 +13,7 @@ COPY backend/backend.csproj backend/
 RUN dotnet restore backend/backend.csproj
 COPY backend/ backend/
 COPY --from=frontend-build /src/frontend/dist/ backend/wwwroot/
-RUN dotnet publish backend/backend.csproj -c Release -o /app/publish --no-restore
+RUN dotnet restore backend/backend.csproj && dotnet publish backend/backend.csproj -c Release -o /app/publish --no-restore
 
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
 WORKDIR /app

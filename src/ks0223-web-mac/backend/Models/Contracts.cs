@@ -48,7 +48,9 @@ public sealed record UnityRuntimeSelectionRequest(
     string? VehicleId,
     string? CameraMode,
     IReadOnlyList<UnityRuntimeAgentSelectionRequest>? Agents,
-    bool ApplyImmediately = true);
+    bool ApplyImmediately = true,
+    bool? CollisionsEnabled = null,
+    bool? SeeEachOther = null);
 
 public sealed record UnityClientSelectionRequest(
     string ClientId,
