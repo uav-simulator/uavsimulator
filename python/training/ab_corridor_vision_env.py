@@ -68,6 +68,8 @@ class ABCorridorVisionEnv(gym.Env):
         track_id: str | None = "track.basic_arena.v1",
         vehicle_id: str | None = "vehicle.prometeo.sport.v1",
         waypoints: list[tuple[float, float]] | None = None,
+        aruco_goal: bool = False,
+        aruco_goal_distance_m: float = 0.40,
     ):
         super().__init__()
 
@@ -137,6 +139,19 @@ class ABCorridorVisionEnv(gym.Env):
                 (6.0, 5.0),
             ]
         self.total_route_length = self._compute_route_length()
+
+        # ArUco goal detection (optional — runs alongside policy)
+        self._aruco_detector = None
+        self._aruco_goal = aruco_goal
+        if aruco_goal:
+            try:
+                from sim_client.aruco_detector import ArucoGoalDetector
+                self._aruco_detector = ArucoGoalDetector(
+                    marker_size_m=0.12,
+                    goal_distance_m=aruco_goal_distance_m,
+                )
+            except ImportError:
+                pass  # OpenCV not installed — ArUco disabled
 
         # Observation space: dict with image + ultrasonic
         self.observation_space = spaces.Dict({
@@ -444,7 +459,7 @@ class ABCorridorVisionEnv(gym.Env):
 
     def _build_info(self, step: dict[str, Any]) -> dict[str, Any]:
         pos = self._current_position(step)
-        return {
+        info = {
             "position": pos,
             "progress": self._route_progress(pos["x"], pos["z"]),
             "lateral_distance": self._nearest_route_distance(pos["x"], pos["z"]),
@@ -454,6 +469,21 @@ class ABCorridorVisionEnv(gym.Env):
             "waypoint_reach_radius_m": self.waypoint_reach_radius_m,
             "stall_steps": self._stalled_steps,
         }
+
+        # ArUco detection from camera frame (if enabled)
+        if self._aruco_detector is not None:
+            frame_b64 = (step.get("frame") or {}).get("dataBase64", "")
+            if frame_b64:
+                aruco = self._aruco_detector.detect_from_base64(frame_b64)
+                info["aruco_detected"] = aruco.detected
+                info["aruco_marker_id"] = aruco.marker_id
+                info["aruco_distance_m"] = aruco.distance_m
+                info["aruco_goal_reached"] = aruco.goal_reached
+            else:
+                info["aruco_detected"] = False
+                info["aruco_goal_reached"] = False
+
+        return info
 
     def _prime_reached_waypoints(self, px: float, pz: float) -> None:
         for wi in range(len(self.waypoints)):
