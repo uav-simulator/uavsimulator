@@ -130,11 +130,13 @@ namespace UavSimulator.Plugins
                 ? new Vector3(0.15f, 0.12f, 0.25f)
                 : new Vector3(0.34f, 0.16f, 0.52f);
 
-            var hasCustomVisual = TryAttachVisual(root.transform, visualProfile);
+            // KS0223 uses its own small-scale presentation visuals (Ks0223Vehicle.EnsurePresentationVisuals),
+            // not the full-size Prometeo prefab. Skip prefab loading for it.
+            var hasCustomVisual = !isKs0223 && TryAttachVisual(root.transform, visualProfile);
             if (!hasCustomVisual)
             {
                 var accentColor = GetFallbackAccentColor(descriptorId);
-                CreateFallbackVisualShell(root.transform, accentColor);
+                if (!isKs0223) CreateFallbackVisualShell(root.transform, accentColor);
                 SanitizeRendererMaterials(root);
                 Debug.LogWarning(
                     $"[BuiltinPluginFactory] Imported vehicle visual is unavailable for '{descriptorId}'. " +
