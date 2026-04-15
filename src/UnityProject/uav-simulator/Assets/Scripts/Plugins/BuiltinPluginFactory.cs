@@ -122,8 +122,13 @@ namespace UavSimulator.Plugins
             root.transform.rotation = Quaternion.identity;
 
             var chassisCollider = root.AddComponent<BoxCollider>();
-            chassisCollider.center = new Vector3(0f, 0.08f, 0f);
-            chassisCollider.size = new Vector3(0.34f, 0.16f, 0.52f);
+            var isKs0223 = string.Equals(descriptorId, Ks0223VehicleId, StringComparison.Ordinal);
+            // KS0223 real dimensions: 15cm wide, 25cm long, 20cm tall
+            // Other vehicles: use larger collider matching the Prometeo visual shell
+            chassisCollider.center = isKs0223 ? new Vector3(0f, 0.05f, 0f) : new Vector3(0f, 0.08f, 0f);
+            chassisCollider.size = isKs0223
+                ? new Vector3(0.15f, 0.12f, 0.25f)
+                : new Vector3(0.34f, 0.16f, 0.52f);
 
             var hasCustomVisual = TryAttachVisual(root.transform, visualProfile);
             if (!hasCustomVisual)
