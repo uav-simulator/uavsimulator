@@ -26,6 +26,7 @@ if str(PYTHON_ROOT) not in sys.path:
 from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import BaseCallback, CheckpointCallback
 from stable_baselines3.common.monitor import Monitor
+from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecMonitor
 
 from training.ab_corridor_vision_env import ABCorridorVisionEnv
 from training.model_artifacts import (
@@ -75,6 +76,18 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--img-size", type=int, default=84)
     p.add_argument("--resume", default="", help="Path to SB3 checkpoint .zip to resume from")
     p.add_argument("--no-export-onnx", action="store_true")
+    p.add_argument(
+        "--device",
+        default="auto",
+        help="PyTorch device: 'auto' (default), 'cpu', 'cuda', 'cuda:0', 'mps'",
+    )
+    p.add_argument(
+        "--num-envs",
+        type=int,
+        default=1,
+        help="Number of parallel envs (vectorized training). Each env needs its own "
+             "Unity runtime on consecutive ports starting from --base-url port.",
+    )
     return p.parse_args()
 
 
@@ -142,12 +155,48 @@ def export_to_onnx(model: PPO, output_path: Path, env: ABCorridorVisionEnv) -> N
     print(f"Exported ONNX model: {output_path}")
 
 
+def _parse_base_port(base_url: str) -> tuple[str, int]:
+    """Extract (scheme+host, port) from base_url like 'http://127.0.0.1:8000'."""
+    from urllib.parse import urlparse
+    parsed = urlparse(base_url)
+    port = parsed.port or 8000
+    scheme_host = f"{parsed.scheme}://{parsed.hostname}"
+    return scheme_host, port
+
+
+def _make_env(
+    base_url: str,
+    scenario_path: str,
+    max_ep_steps: int,
+    time_scale: float,
+    img_size: int,
+    rank: int,
+    seed: int,
+):
+    """Factory for creating a single env (used by SubprocVecEnv)."""
+    def _init():
+        env = ABCorridorVisionEnv(
+            base_url=base_url,
+            scenario_path=scenario_path,
+            max_steps=max_ep_steps,
+            oob_margin_m=0.10,
+            time_scale=time_scale,
+            img_size=img_size,
+        )
+        env.reset(seed=seed + rank)
+        return env
+    return _init
+
+
 def main() -> int:
     args = parse_args()
     output_dir = resolve_artifact_dir(ROOT, args.output_dir, args.model_name, args.model_version)
     log_dir = Path(args.log_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     log_dir.mkdir(parents=True, exist_ok=True)
+
+    num_envs = max(1, args.num_envs)
+    device_str = args.device
 
     tensorboard_log = None
     if importlib.util.find_spec("tensorboard") is not None:
@@ -165,9 +214,12 @@ def main() -> int:
     print(f"  model_name:      {args.model_name}")
     print(f"  model_version:   {args.model_version}")
     print(f"  output_dir:      {output_dir}")
+    print(f"  device:          {device_str}")
+    print(f"  num_envs:        {num_envs}")
     print()
 
-    env = ABCorridorVisionEnv(
+    # Probe env (always single, for printing info and ONNX export)
+    probe_env = ABCorridorVisionEnv(
         base_url=args.base_url,
         scenario_path=args.scenario,
         max_steps=args.max_ep_steps,
@@ -175,20 +227,43 @@ def main() -> int:
         time_scale=args.time_scale,
         img_size=args.img_size,
     )
-    print(f"  track:           {env._reset_config['selectedTrackId']}")
-    print(f"  corridor_width:  {env.corridor_width_m:.2f}m")
-    print(f"  goal_radius:     {env.goal_radius_m:.2f}m")
-    print(f"  waypoint_radius: {env.waypoint_reach_radius_m:.2f}m")
-    print(f"  waypoints:       {env.waypoints}")
+    print(f"  track:           {probe_env._reset_config['selectedTrackId']}")
+    print(f"  corridor_width:  {probe_probe_env.corridor_width_m:.2f}m")
+    print(f"  goal_radius:     {probe_probe_env.goal_radius_m:.2f}m")
+    print(f"  waypoint_radius: {probe_env.waypoint_reach_radius_m:.2f}m")
+    print(f"  waypoints:       {probe_probe_env.waypoints}")
     print()
-    train_env = Monitor(env, filename=str(log_dir / "train_cardboard_monitor"))
+
+    # Build training env: single or vectorized
+    if num_envs == 1:
+        train_env = Monitor(probe_env, filename=str(log_dir / "train_cardboard_monitor"))
+    else:
+        scheme_host, base_port = _parse_base_port(args.base_url)
+        env_urls = [f"{scheme_host}:{base_port + i}" for i in range(num_envs)]
+        print(f"  Vectorized envs ({num_envs}):")
+        for i, url in enumerate(env_urls):
+            print(f"    env[{i}]: {url}")
+        print()
+        vec_env = SubprocVecEnv([
+            _make_env(
+                base_url=env_urls[i],
+                scenario_path=args.scenario,
+                max_ep_steps=args.max_ep_steps,
+                time_scale=args.time_scale,
+                img_size=args.img_size,
+                rank=i,
+                seed=args.seed,
+            )
+            for i in range(num_envs)
+        ])
+        train_env = VecMonitor(vec_env, filename=str(log_dir / "train_cardboard_monitor"))
 
     # PPO model
     if args.resume:
         print(f"Resuming from checkpoint: {args.resume}")
-        model = PPO.load(args.resume, env=train_env)
+        model = PPO.load(args.resume, env=train_env, device=device_str)
     else:
-        print("Creating new PPO model with MultiInputPolicy...")
+        print(f"Creating new PPO model with MultiInputPolicy (device={device_str})...")
         model = PPO(
             "MultiInputPolicy",
             train_env,
@@ -202,6 +277,7 @@ def main() -> int:
             ent_coef=args.ent_coef,
             verbose=1,
             seed=args.seed,
+            device=device_str,
             tensorboard_log=tensorboard_log,
             policy_kwargs=dict(
                 net_arch=dict(pi=[128, 64], vf=[128, 64]),
@@ -234,7 +310,7 @@ def main() -> int:
     exported_onnx = False
     if not args.no_export_onnx:
         try:
-            export_to_onnx(model, onnx_path, env)
+            export_to_onnx(model, onnx_path, probe_env)
             exported_onnx = True
         except Exception as e:
             print(f"ONNX export failed (non-fatal): {e}")
@@ -263,14 +339,14 @@ def main() -> int:
         },
         extra={
             "scenario": str(Path(args.scenario).resolve()),
-            "track": env._reset_config["selectedTrackId"],
+            "track": probe_env._reset_config["selectedTrackId"],
             "algorithm": "PPO",
             "framework": "stable-baselines3",
             "totalTimesteps": args.total_timesteps,
             "trainTimeSeconds": round(train_time, 1),
-            "corridorWidthM": env.corridor_width_m,
-            "goalRadiusM": env.goal_radius_m,
-            "waypoints": env.waypoints,
+            "corridorWidthM": probe_env.corridor_width_m,
+            "goalRadiusM": probe_env.goal_radius_m,
+            "waypoints": probe_env.waypoints,
             "hyperparameters": {
                 "learningRate": args.learning_rate,
                 "nSteps": args.n_steps,

@@ -216,6 +216,12 @@ def build_parser() -> argparse.ArgumentParser:
     up.add_argument("--wait-seconds", type=float, default=45.0)
     up.add_argument("--runtime-app", default="")
     up.add_argument("--build", default="", help="Standalone build selector: latest, favorite, or build id.")
+    up.add_argument(
+        "--count",
+        type=int,
+        default=1,
+        help="Number of runtime instances to launch on consecutive ports (for vectorized training).",
+    )
 
     start = server_sub.add_parser("start", help="Deprecated alias for 'rusim server up'.")
     start.set_defaults(_parser=start)
@@ -1117,6 +1123,13 @@ def _model_bind(args: argparse.Namespace) -> int:
 
 
 def _server_start(args: argparse.Namespace) -> int:
+    count = max(1, getattr(args, "count", 1))
+    if count > 1:
+        return _server_start_multi(args, count)
+    return _server_start_single(args)
+
+
+def _server_start_single(args: argparse.Namespace) -> int:
     state_path = _state_file()
 
     existing = _load_state()
@@ -1217,6 +1230,91 @@ def _server_start(args: argparse.Namespace) -> int:
     return 0
 
 
+def _server_start_multi(args: argparse.Namespace, count: int) -> int:
+    """Launch multiple standalone runtimes on consecutive ports for vectorized training."""
+    build_selector = getattr(args, "build", "") or ""
+    if not build_selector:
+        raise RuntimeError("--build is required for multi-instance mode (--count > 1)")
+
+    entry = _resolve_build_selector(build_selector)
+    runtime_app = Path(str(entry["appPath"])).expanduser().resolve()
+    if not runtime_app.exists():
+        raise FileNotFoundError(f"Runtime app not found: {runtime_app}")
+    executable = _resolve_runtime_executable(runtime_app)
+
+    runtime_dir = _runtime_dir()
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+
+    processes = []
+    for i in range(count):
+        port = args.port + i
+        log_file = runtime_dir / f"unity-{args.mode}-{port}.log"
+        env = os.environ.copy()
+        env["UAVSIM_API_HOST"] = args.host
+        env["UAVSIM_API_PORT"] = str(port)
+        env["RUSIM_START_SCENE"] = args.scene
+        process = _spawn_process(
+            cmd=_runtime_launch_command(executable, mode=args.mode, log_file=log_file),
+            cwd=runtime_app.parent,
+            env=env,
+            log_file=log_file,
+        )
+        processes.append({"pid": process.pid, "port": port, "logFile": str(log_file), "process": process})
+        print(f"  Launched runtime #{i} on port {port} (pid={process.pid})")
+
+    # Wait for all to become healthy
+    healthy = []
+    for info in processes:
+        base_url = f"http://{args.host}:{info['port']}"
+        ok = _wait_for_health_or_exit(info["process"], base_url=base_url, timeout_s=args.wait_seconds)
+        if ok:
+            healthy.append(info)
+            print(f"  ✓ Runtime on port {info['port']} healthy")
+        else:
+            print(f"  ✗ Runtime on port {info['port']} failed to start")
+            _terminate_pid(info["pid"], grace_seconds=3.0)
+
+    if not healthy:
+        raise RuntimeError("No runtime instances started successfully.")
+
+    # Apply scenario to all healthy instances
+    scenario_id = None
+    if args.scenario:
+        payload = load_scenario_file(args.scenario)
+        ok, errors = validate_scenario(payload)
+        if not ok:
+            for info in healthy:
+                _terminate_pid(info["pid"], grace_seconds=3.0)
+            raise RuntimeError(f"Scenario validation failed: {errors}")
+        for info in healthy:
+            base_url = f"http://{args.host}:{info['port']}"
+            SimClient(base_url=base_url).reset(scenario_to_reset_config(payload))
+        scenario_id = payload.get("scenarioId")
+
+    state = {
+        "mode": args.mode,
+        "launchKind": "standalone-runtime-multi",
+        "host": args.host,
+        "port": args.port,
+        "count": len(healthy),
+        "instances": [
+            {"pid": info["pid"], "port": info["port"], "baseUrl": f"http://{args.host}:{info['port']}", "logFile": info["logFile"]}
+            for info in healthy
+        ],
+        "pid": healthy[0]["pid"],
+        "baseUrl": f"http://{args.host}:{args.port}",
+        "scene": args.scene,
+        "logFile": healthy[0]["logFile"],
+        "scenarioId": scenario_id,
+        "runtimeApp": str(runtime_app),
+        "startedAt": int(time.time()),
+    }
+    state_path = _state_file()
+    state_path.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(json.dumps(state, ensure_ascii=False, indent=2))
+    return 0
+
+
 def _server_status(host: str, port: int) -> int:
     state = _load_state() or {}
     pid = int(state.get("pid", 0) or 0)
@@ -1250,6 +1348,19 @@ def _server_stop(grace_seconds: float) -> int:
     if not state:
         print(json.dumps({"stopped": False, "reason": "state file not found"}, ensure_ascii=False, indent=2))
         return 1
+
+    # Handle multi-instance state
+    instances = state.get("instances")
+    if instances and isinstance(instances, list):
+        results = []
+        for inst in instances:
+            pid = int(inst.get("pid", 0) or 0)
+            if pid > 0:
+                stopped = _terminate_pid(pid, grace_seconds=grace_seconds)
+                results.append({"pid": pid, "port": inst.get("port"), "stopped": stopped})
+        _state_file().unlink(missing_ok=True)
+        print(json.dumps({"stopped": all(r["stopped"] for r in results), "instances": results}, ensure_ascii=False, indent=2))
+        return 0
 
     pid = int(state.get("pid", 0) or 0)
     if pid <= 0:
@@ -1357,6 +1468,7 @@ def _runtime_build(args: argparse.Namespace) -> int:
             str(project_path),
             "-batchmode",
             "-nographics",
+            "--burst-disable-compilation",
             "-executeMethod",
             "UavSimulator.EditorTools.RuntimeBuildPipeline.BuildMacOsRuntime",
             "-quit",
