@@ -27,15 +27,8 @@ namespace UavSimulator.Core
         private float pitch;
         private float currentFlySpeed;
 
-        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
-        private static void AutoAttach()
-        {
-            var mainCam = Camera.main;
-            if (mainCam != null && mainCam.GetComponent<PresentationFollowCamera>() == null)
-            {
-                mainCam.gameObject.AddComponent<PresentationFollowCamera>();
-            }
-        }
+        // Auto-attach disabled — TrackOverviewCamera is now the default camera.
+        // This class is kept for backward compatibility but no longer auto-attaches.
 
         private void Start()
         {
