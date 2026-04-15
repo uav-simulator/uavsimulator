@@ -99,22 +99,27 @@ def parse_geometry(payload: dict[str, Any], oob_margin_m: float) -> ScenarioGeom
 
 def build_observation(step: dict[str, Any]) -> np.ndarray:
     flat = telemetry_map(step)
-    left = parse_float(flat, "sensor.line_tracker.s1_norm", "tracking.left")
-    center = parse_float(flat, "sensor.line_tracker.s3_norm", "tracking.center")
-    right = parse_float(flat, "sensor.line_tracker.s5_norm", "tracking.right")
+    s1 = parse_float(flat, "sensor.line_tracker.s1_norm", "tracking.left")
+    s2 = parse_float(flat, "sensor.line_tracker.s2_norm")
+    s3 = parse_float(flat, "sensor.line_tracker.s3_norm", "tracking.center")
+    s4 = parse_float(flat, "sensor.line_tracker.s4_norm")
+    s5 = parse_float(flat, "sensor.line_tracker.s5_norm", "tracking.right")
     distance_m = parse_float(flat, "sensor.ultrasonic.front.m")
     speed_mps = parse_float(flat, "sensor.speedometer.mps")
     if speed_mps == 0.0:
         speed_mps = float((step.get("state") or {}).get("speed") or 0.0)
+    heading_error = parse_float(flat, "nav.heading_error_rad")
 
     obs = np.array(
         [[
-            clamp01(left),
-            clamp01(center),
-            clamp01(right),
-            clamp01(distance_m),
-            clamp01(speed_mps / 2.0),
-            1.0,
+            clamp01(s1),
+            clamp01(s2),
+            clamp01(s3),
+            clamp01(s4),
+            clamp01(s5),
+            clamp01(distance_m / 5.0),
+            clamp01(speed_mps / 3.0),
+            np.clip(heading_error / np.pi, -1.0, 1.0),
         ]],
         dtype=np.float32,
     )

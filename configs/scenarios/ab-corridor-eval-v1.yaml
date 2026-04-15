@@ -1,0 +1,52 @@
+scenarioId: ab-corridor-eval-v1
+displayName: A to B Corridor Evaluation
+description: Evaluation scenario matching ABCorridorEnv training spawn and route.
+version: 1
+
+runtime:
+  runtimeMode: unity-sim
+  headless: false
+  timeScale: 1.0
+  seed: 42
+
+world:
+  trackId: track.basic_arena.v1
+
+vehicle:
+  vehicleId: vehicle.prometeo.sport.v1
+  params:
+    camera.profile: high
+
+sensors:
+  camera:
+    enabled: true
+    profile: high
+  telemetry:
+    profile: default
+  lineTracker:
+    enabled: true
+  ultrasonic:
+    enabled: true
+
+route:
+  params:
+    spawn.position: 0.000,0.200,-7.500
+    corridor.width_m: 3.00
+    goal.radius_m: 1.50
+    obstacle.count: 0
+  waypoints:
+    - [0.0, -7.5]
+    - [0.0, -1.0]
+    - [6.0, -1.0]
+    - [6.0, 5.0]
+  loop: false
+  reachDistanceM: 1.5
+
+agents:
+  count: 1
+  isolated: true
+  seeEachOther: false
+
+logging:
+  enabled: true
+  tag: ab-corridor-eval-v1

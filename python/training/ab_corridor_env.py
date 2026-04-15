@@ -66,7 +66,7 @@ class ABCorridorEnv(gym.Env):
             "seed": 0,
             "timeScale": time_scale,
             "selectedTrackId": "track.basic_arena.v1",
-            "selectedVehicleId": "vehicle.prometeo.sport.v1",
+            "selectedVehicleId": "vehicle.ks0223.v1",
             "trackParams": [],
             "vehicleParams": [{"key": "camera.profile", "value": "high"}],
             "flags": [],
@@ -101,6 +101,7 @@ class ABCorridorEnv(gym.Env):
         self._computed_speed = 0.0
         self._computed_heading = 0.0  # radians, 0 = +z direction
         self._reached_waypoints: set[int] = set()  # track which waypoints reached
+        self._stall_steps = 0  # consecutive steps without progress
 
     def _compute_route_length(self) -> float:
         total = 0.0
@@ -129,6 +130,7 @@ class ABCorridorEnv(gym.Env):
         self._computed_speed = 0.0
         self._computed_heading = 0.0
         self._reached_waypoints = set()
+        self._stall_steps = 0
 
         obs = self._build_observation(step)
         info = self._build_info(step)
@@ -226,46 +228,52 @@ class ABCorridorEnv(gym.Env):
         pos = self._current_position(step)
         px, pz = pos["x"], pos["z"]
 
-        # 1. Progress reward: scaled by route length
+        # 1. Progress reward (primary signal) — only forward progress counts
         progress = self._route_progress(px, pz)
-        delta_progress = progress - self._prev_progress
+        delta_progress = max(0.0, progress - self._prev_progress)
         self._prev_progress = progress
-        progress_reward = delta_progress * 20.0
+        progress_reward = delta_progress * 100.0
 
-        # 2. Waypoint bonuses: reward for reaching intermediate waypoints
+        # 2. Waypoint bonuses (progressive: start/turn/turn/goal separate)
         waypoint_bonus = 0.0
+        bonus_table = [5.0, 15.0, 25.0, 0.0]  # goal bonus handled below
         for wi in range(len(self.waypoints)):
             if wi not in self._reached_waypoints:
                 wx, wz = self.waypoints[wi]
                 if math.hypot(px - wx, pz - wz) < 1.5:
                     self._reached_waypoints.add(wi)
-                    waypoint_bonus += 10.0
+                    waypoint_bonus += bonus_table[wi]
 
-        # 3. Heading alignment reward: bonus for facing the right direction
+        # 3. Heading alignment reward (strong — don't penalize turning)
         heading_error = self._compute_heading_error(pos)
-        heading_reward = 0.05 * (1.0 - abs(heading_error) / math.pi)
+        heading_reward = 0.3 * (1.0 - abs(heading_error) / math.pi)
 
-        # 4. Lateral deviation penalty
+        # 4. Velocity reward: reward speed in direction of next waypoint
+        #    cos(heading_error) > 0 means moving toward target
+        aligned_speed = self._computed_speed * max(0.0, math.cos(heading_error))
+        velocity_reward = 0.5 * min(aligned_speed / 0.05, 1.0)
+
+        # 5. Lateral deviation penalty
         lateral_dist = self._nearest_route_distance(px, pz)
-        lateral_penalty = -0.3 * (lateral_dist / self.oob_threshold_m) ** 2
+        lateral_penalty = -0.5 * (lateral_dist / self.oob_threshold_m) ** 2
 
-        # 5. Steer jerk penalty (gentler)
+        # 6. Minimal steer jerk penalty
         steer_jerk = abs(steer - self._prev_steer)
-        jerk_penalty = -0.05 * steer_jerk
+        jerk_penalty = -0.01 * steer_jerk
 
-        # 6. Speed reward (from position delta)
-        speed_reward = 0.1 * min(self._computed_speed / 0.05, 1.0)
-
-        # 7. Time penalty (encourage finishing faster)
-        time_penalty = -0.02
+        # 7. Stuck penalty: grows if no progress for many steps
+        if delta_progress < 0.001:
+            self._stall_steps += 1
+        else:
+            self._stall_steps = 0
+        stall_penalty = -0.05 * min(self._stall_steps / 20.0, 1.0)
 
         # 8. Goal reached bonus
         goal_bonus = 0.0
         terminated = False
         goal_x, goal_z = self.waypoints[-1]
-        dist_to_goal = math.hypot(px - goal_x, pz - goal_z)
-        if dist_to_goal < self.goal_radius_m:
-            goal_bonus = 100.0
+        if math.hypot(px - goal_x, pz - goal_z) < self.goal_radius_m:
+            goal_bonus = 200.0
             terminated = True
 
         # 9. Out of bounds penalty
@@ -280,11 +288,10 @@ class ABCorridorEnv(gym.Env):
             terminated = True
 
         reward = (progress_reward + waypoint_bonus + heading_reward +
-                  lateral_penalty + jerk_penalty + speed_reward +
-                  time_penalty + goal_bonus + oob_penalty)
-        truncated = False
+                  velocity_reward + lateral_penalty + jerk_penalty +
+                  stall_penalty + goal_bonus + oob_penalty)
 
-        return float(reward), terminated, truncated
+        return float(reward), terminated, False
 
     def _route_progress(self, px: float, pz: float) -> float:
         """Fraction of route completed (0..1) based on projection onto polyline."""
