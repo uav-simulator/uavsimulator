@@ -97,6 +97,30 @@ def parse_geometry(payload: dict[str, Any], oob_margin_m: float) -> ScenarioGeom
     )
 
 
+def build_vision_observation(step: dict[str, Any], img_size: int = 84) -> dict[str, np.ndarray]:
+    """Build multi-input observation for vision CNN-PPO model (image + ultrasonic)."""
+    flat = telemetry_map(step)
+    distance_m = parse_float(flat, "sensor.ultrasonic.front.m")
+    ultrasonic = np.array([[clamp01(distance_m / 5.0)]], dtype=np.float32)
+
+    frame = step.get("frame") or {}
+    data_b64 = frame.get("dataBase64") or ""
+    if data_b64:
+        import base64
+        import io
+        try:
+            from PIL import Image
+        except ImportError:
+            raise RuntimeError("Pillow is required for vision eval: pip install Pillow")
+        raw = base64.b64decode(data_b64)
+        img = Image.open(io.BytesIO(raw)).convert("RGB").resize((img_size, img_size), Image.BILINEAR)
+        image = np.array(img, dtype=np.float32)[np.newaxis]  # (1, H, W, 3)
+    else:
+        image = np.zeros((1, img_size, img_size, 3), dtype=np.float32)
+
+    return {"image": image, "ultrasonic": ultrasonic}
+
+
 def build_observation(step: dict[str, Any]) -> np.ndarray:
     flat = telemetry_map(step)
     s1 = parse_float(flat, "sensor.line_tracker.s1_norm", "tracking.left")
@@ -213,6 +237,8 @@ def evaluate_episode(
     seed: int,
     max_steps: int,
     target_agent_id: str,
+    vision_mode: bool = False,
+    img_size: int = 84,
 ) -> EpisodeResult:
     payload = dict(reset_payload)
     payload["seed"] = seed
@@ -229,8 +255,12 @@ def evaluate_episode(
     final_position = current_position(step)
 
     for step_index in range(1, max_steps + 1):
-        observation = build_observation(step)
-        action = session.run(None, {input_name: observation})[0][0]
+        if vision_mode:
+            feed = build_vision_observation(step, img_size)
+            action = session.run(None, feed)[0][0]
+        else:
+            observation = build_observation(step)
+            action = session.run(None, {input_name: observation})[0][0]
 
         step = client.step(
             {
@@ -444,7 +474,11 @@ def main() -> int:
     _ = client.health()
 
     session = ort.InferenceSession(model_path.as_posix())
-    input_name = session.get_inputs()[0].name
+    input_names = [inp.name for inp in session.get_inputs()]
+    input_name = input_names[0]
+    vision_mode = "image" in input_names and "ultrasonic" in input_names
+    if vision_mode:
+        print(f"  Vision model detected (inputs: {input_names})")
 
     base_seed = int(reset_payload.get("seed", 0) or 0) + int(args.seed_offset)
     results: list[EpisodeResult] = []
@@ -460,6 +494,7 @@ def main() -> int:
                 seed=base_seed + index,
                 max_steps=args.max_steps,
                 target_agent_id=args.target_agent_id,
+                vision_mode=vision_mode,
             )
         )
 
