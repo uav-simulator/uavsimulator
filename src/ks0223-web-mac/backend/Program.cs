@@ -270,6 +270,46 @@ app.MapPost("/api/unity/client-selection", async (UnityClientSelectionRequest re
     }
 });
 
+app.MapGet("/api/unity/discover", async (HttpRequest http, CancellationToken cancellationToken) =>
+{
+    var host = http.Query["host"].FirstOrDefault()?.Trim() ?? "127.0.0.1";
+    var portFrom = int.TryParse(http.Query["portFrom"].FirstOrDefault(), out var pf) ? pf : 8000;
+    var portTo = int.TryParse(http.Query["portTo"].FirstOrDefault(), out var pt) ? pt : portFrom + 7;
+    portTo = Math.Min(portTo, portFrom + 15); // cap scan range
+
+    using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(1.5) };
+    var results = new List<object>();
+    var tasks = new List<Task>();
+
+    for (var port = portFrom; port <= portTo; port++)
+    {
+        var capturedPort = port;
+        tasks.Add(Task.Run(async () =>
+        {
+            try
+            {
+                var response = await httpClient.GetAsync($"http://{host}:{capturedPort}/health", cancellationToken);
+                if (response.IsSuccessStatusCode)
+                {
+                    var body = await response.Content.ReadAsStringAsync(cancellationToken);
+                    lock (results)
+                    {
+                        results.Add(new { port = capturedPort, host, baseUrl = $"http://{host}:{capturedPort}", healthy = true, health = System.Text.Json.JsonSerializer.Deserialize<object>(body) });
+                    }
+                }
+            }
+            catch
+            {
+                // port not responding — skip
+            }
+        }, cancellationToken));
+    }
+
+    await Task.WhenAll(tasks);
+    var sorted = results.OrderBy(r => ((dynamic)r).port).ToList();
+    return Results.Ok(new { host, portFrom, portTo, instances = sorted, count = sorted.Count });
+});
+
 app.MapGet("/api/camera/status", (HttpRequest http, RuntimeSessionManager runtimeSessionManager) =>
 {
     var clientId = ReadClientIdQuery(http);

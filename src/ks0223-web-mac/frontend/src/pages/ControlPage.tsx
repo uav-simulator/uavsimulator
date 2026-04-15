@@ -1,12 +1,16 @@
 import { Grid, Stack } from '@mui/material'
+import { AutopilotPanel } from '../components/AutopilotPanel'
 import { CameraPanel } from '../components/CameraPanel'
 import { ConnectionCard } from '../components/ConnectionCard'
 import { ControlPad } from '../components/ControlPad'
 import { TelemetryPanel } from '../components/TelemetryPanel'
 import type {
+  AutopilotStatusDto,
   CameraStatusDto,
   HealthDto,
   IncomingMessageDto,
+  ModelBindingDto,
+  ModelCatalogEntryDto,
   SensorBridgeStatusDto,
   SensorTelemetryDto,
   StatusDto,
@@ -44,7 +48,11 @@ type Props = {
     vehicleId: string,
     agents: Array<{ agentId?: string; vehicleId?: string; isPrimary?: boolean }>,
     applyImmediately: boolean,
+    collisionsEnabled?: boolean,
+    seeEachOther?: boolean,
   ) => Promise<void>
+  unityCollisionsEnabled: boolean
+  unitySeeEachOther: boolean
   onCommand: (command: string) => Promise<void>
   controlsEnabled: boolean
   cameraStreamUrl: string
@@ -62,6 +70,12 @@ type Props = {
   onUltrasonicAutoScanChange: (enabled: boolean) => Promise<void>
   estimatedCameraPanDeg: number
   estimatedCameraTiltDeg: number
+  modelCatalog: ModelCatalogEntryDto[]
+  modelBinding: ModelBindingDto | null
+  autopilot: AutopilotStatusDto | null
+  onModelBind: (modelId: string) => Promise<void>
+  onAutopilotStart: (payload: { agentId?: string; loopIntervalMs?: number }) => Promise<void>
+  onAutopilotStop: () => Promise<void>
 }
 
 export function ControlPage({
@@ -91,6 +105,8 @@ export function ControlPage({
   onUnityCameraAgentIdChange,
   onUnityCatalogRefresh,
   onUnitySelectionSave,
+  unityCollisionsEnabled,
+  unitySeeEachOther,
   onCommand,
   controlsEnabled,
   cameraStreamUrl,
@@ -108,6 +124,12 @@ export function ControlPage({
   onUltrasonicAutoScanChange,
   estimatedCameraPanDeg,
   estimatedCameraTiltDeg,
+  modelCatalog,
+  modelBinding,
+  autopilot,
+  onModelBind,
+  onAutopilotStart,
+  onAutopilotStop,
 }: Props) {
   return (
     <Grid container spacing={2.5}>
@@ -134,6 +156,8 @@ export function ControlPage({
           onUnityCameraAgentIdChange={onUnityCameraAgentIdChange}
           onUnityCatalogRefresh={onUnityCatalogRefresh}
           onUnitySelectionSave={onUnitySelectionSave}
+          unityCollisionsEnabled={unityCollisionsEnabled}
+          unitySeeEachOther={unitySeeEachOther}
         />
       </Grid>
       <Grid size={{ xs: 12, md: 8 }}>
@@ -154,6 +178,17 @@ export function ControlPage({
             onUltrasonicManualStart={onUltrasonicManualStart}
             onUltrasonicApply={onUltrasonicApply}
             onUltrasonicAutoScanChange={onUltrasonicAutoScanChange}
+          />
+          <AutopilotPanel
+            catalog={modelCatalog}
+            binding={modelBinding}
+            autopilot={autopilot}
+            runtimeMode={runtimeMode}
+            unityControlAgentId={unityControlAgentId}
+            busy={busy}
+            onBind={onModelBind}
+            onStartAutopilot={onAutopilotStart}
+            onStopAutopilot={onAutopilotStop}
           />
         </Stack>
       </Grid>

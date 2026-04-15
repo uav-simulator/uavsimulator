@@ -148,6 +148,13 @@ public sealed class AutopilotService
                 var (throttle, steer) = running.Predictor!.Predict(telemetry.Flat, frameBytes);
                 var command = ResolveCommand(throttle, steer);
 
+                runtimeSessionManager.SetDirectDrive(
+                    running.ClientId!,
+                    running.RuntimeMode!,
+                    running.AgentId,
+                    throttle,
+                    steer);
+
                 var response = await runtimeSessionManager.SendCommandAsync(
                     running.ClientId!,
                     running.RuntimeMode!,

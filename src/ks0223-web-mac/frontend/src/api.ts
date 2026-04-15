@@ -82,6 +82,8 @@ export async function setUnityRuntimeSelection(payload: {
     isPrimary?: boolean
   }>
   applyImmediately?: boolean
+  collisionsEnabled?: boolean
+  seeEachOther?: boolean
 }): Promise<UnityRuntimeCatalogDto> {
   const response = await fetch(withBase('/api/unity/runtime-selection'), {
     method: 'POST',
@@ -372,6 +374,21 @@ export function cameraMjpegUrl(clientId: string, runtimeMode: string, agentId?: 
   }
 
   return withBase(`/api/camera/mjpeg?${params.toString()}`)
+}
+
+export async function discoverUnityRuntimes(host?: string, portFrom?: number, portTo?: number): Promise<{
+  host: string
+  portFrom: number
+  portTo: number
+  count: number
+  instances: Array<{ port: number; host: string; baseUrl: string; healthy: boolean }>
+}> {
+  const params = new URLSearchParams()
+  if (host?.trim()) params.set('host', host.trim())
+  if (portFrom !== undefined) params.set('portFrom', String(portFrom))
+  if (portTo !== undefined) params.set('portTo', String(portTo))
+  const response = await fetch(withBase(`/api/unity/discover?${params.toString()}`))
+  return handleJson(response)
 }
 
 export function resolveHubUrl(): string {

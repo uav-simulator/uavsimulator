@@ -21,6 +21,9 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
         public int CameraPanDeg { get; set; } = 90;
         public int CameraTiltDeg { get; set; } = 90;
         public DateTimeOffset LastDriveInputAt { get; set; } = DateTimeOffset.UtcNow;
+        // Continuous throttle/steer set directly by autopilot (bypasses PWM discretization)
+        public float? DirectThrottle { get; set; }
+        public float? DirectSteer { get; set; }
     }
 
     private sealed class AgentFrameState
@@ -38,6 +41,7 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
 
     private static readonly string[] PreferredVehicleIds =
     {
+        "vehicle.ks0223.v1",
         "vehicle.arcade.blue.v1",
         "vehicle.prometeo.sport.v1",
     };
@@ -76,6 +80,8 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
     private string selectedTrackId = PreferredTrackIds[0];
     private string selectedCameraMode = "spectator";
     private string selectedControlAgentId = string.Empty;
+    private bool? simCollisionsEnabled;
+    private bool? simSeeEachOther;
     private List<UnityRuntimeAgentSelectionRequest> configuredAgents = new();
     private IReadOnlyList<UnityRuntimeOptionDto> availableTracks = Array.Empty<UnityRuntimeOptionDto>();
     private IReadOnlyList<UnityRuntimeOptionDto> availableVehicles = Array.Empty<UnityRuntimeOptionDto>();
@@ -181,7 +187,9 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
         string? controlAgentId,
         IReadOnlyList<UnityRuntimeAgentSelectionRequest>? agents,
         bool applyImmediately,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool? collisionsEnabled = null,
+        bool? seeEachOther = null)
     {
         lock (stateLock)
         {
@@ -200,6 +208,16 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
                 selectedCameraMode = NormalizeCameraMode(cameraMode);
             }
             _ = controlAgentId;
+
+            if (collisionsEnabled.HasValue)
+            {
+                simCollisionsEnabled = collisionsEnabled.Value;
+            }
+
+            if (seeEachOther.HasValue)
+            {
+                simSeeEachOther = seeEachOther.Value;
+            }
 
             if (agents is not null)
             {
@@ -511,11 +529,11 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
             }
 
             await ProbeHealthAsync(cancellationToken);
-            await ProbeContractAsync(cancellationToken);
             lock (stateLock)
             {
                 ResetInteractiveDefaultsLocked();
             }
+            await ProbeContractAsync(cancellationToken);
             var initial = await ResetSimulationAsync(cancellationToken);
             UpdateFromStepResult(initial, selectedControlAgentId, updateSharedState: true);
 
@@ -758,10 +776,14 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
     {
         List<UnityRuntimeAgentSelectionRequest> agentsSnapshot;
         string cameraMode;
+        bool? collisionsEnabledSnapshot;
+        bool? seeEachOtherSnapshot;
         lock (stateLock)
         {
             agentsSnapshot = NormalizeConfiguredAgents(configuredAgents);
             cameraMode = selectedCameraMode;
+            collisionsEnabledSnapshot = simCollisionsEnabled;
+            seeEachOtherSnapshot = simSeeEachOther;
         }
 
         var payload = new
@@ -776,19 +798,7 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
                 new { key = "camera.mode", value = cameraMode },
                 new { key = "camera.profile", value = CameraProfile },
             },
-            flags = agentsSnapshot.Count > 1
-                ? new object[]
-                {
-                    new { key = "render.quality_profile", value = RenderQualityProfile },
-                    new { key = "agents.see_each_other", value = "true" },
-                    new { key = "agents.collisions_enabled", value = "false" },
-                    new { key = "agents.allow_empty", value = "false" },
-                }
-                : new object[]
-                {
-                    new { key = "render.quality_profile", value = RenderQualityProfile },
-                    new { key = "agents.allow_empty", value = agentsSnapshot.Count == 0 ? "true" : "false" },
-                },
+            flags = BuildSimFlags(agentsSnapshot.Count, collisionsEnabledSnapshot, seeEachOtherSnapshot),
             agents = agentsSnapshot.Select((agent, index) => new
             {
                 agentId = string.IsNullOrWhiteSpace(agent.AgentId) ? $"agent-{index + 1}" : agent.AgentId,
@@ -815,18 +825,33 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
         AgentControlState commandState,
         CancellationToken cancellationToken)
     {
+        // When autopilot sets DirectThrottle/DirectSteer, derive the PWM extensions from them so
+        // Unity's ApplyControl (which prioritises extensions over top-level throttle/steer) sees
+        // the continuous model output rather than the coarse discrete command.
+        // Differential-drive mapping: leftPwm = throttle - steer, rightPwm = throttle + steer.
+        var leftPwm = commandState.DirectThrottle.HasValue
+            ? Math.Clamp((double)commandState.DirectThrottle.Value - (double)commandState.DirectSteer.GetValueOrDefault(), -1.0, 1.0)
+            : (double)commandState.LeftPwmNorm;
+        var rightPwm = commandState.DirectThrottle.HasValue
+            ? Math.Clamp((double)commandState.DirectThrottle.Value + (double)commandState.DirectSteer.GetValueOrDefault(), -1.0, 1.0)
+            : (double)commandState.RightPwmNorm;
+
         var payload = new
         {
-            throttle = 0.0,
-            steer = 0.0,
+            throttle = commandState.DirectThrottle.HasValue
+                ? (double)commandState.DirectThrottle.Value
+                : (double)((commandState.LeftPwmNorm + commandState.RightPwmNorm) / 2f),
+            steer = commandState.DirectSteer.HasValue
+                ? (double)commandState.DirectSteer.Value
+                : (double)((commandState.RightPwmNorm - commandState.LeftPwmNorm) / 2f),
             brake = commandState.BrakeNorm,
             targetAgentId = agentId,
             timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
             timeBase = "unix_ms",
             extensions = new object[]
             {
-                new { key = "drive.left_pwm_norm", value = commandState.LeftPwmNorm.ToString("0.000000", CultureInfo.InvariantCulture) },
-                new { key = "drive.right_pwm_norm", value = commandState.RightPwmNorm.ToString("0.000000", CultureInfo.InvariantCulture) },
+                new { key = "drive.left_pwm_norm", value = leftPwm.ToString("0.000000", CultureInfo.InvariantCulture) },
+                new { key = "drive.right_pwm_norm", value = rightPwm.ToString("0.000000", CultureInfo.InvariantCulture) },
                 new { key = "camera.pan_norm", value = NormalizeServo(commandState.CameraPanDeg).ToString("0.000000", CultureInfo.InvariantCulture) },
                 new { key = "camera.tilt_norm", value = NormalizeServo(commandState.CameraTiltDeg).ToString("0.000000", CultureInfo.InvariantCulture) },
             },
@@ -1103,12 +1128,14 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
         {
             var state = GetOrCreateAgentControlStateLocked(agentId);
             var now = DateTimeOffset.UtcNow;
-            if ((state.LeftPwmNorm != 0f || state.RightPwmNorm != 0f) &&
+            if ((state.LeftPwmNorm != 0f || state.RightPwmNorm != 0f || state.DirectThrottle.HasValue || state.DirectSteer.HasValue) &&
                 now - state.LastDriveInputAt > DriveInputWatchdog)
             {
                 state.LeftPwmNorm = 0f;
                 state.RightPwmNorm = 0f;
                 state.BrakeNorm = 0f;
+                state.DirectThrottle = null;
+                state.DirectSteer = null;
             }
 
             return new AgentControlState
@@ -1119,6 +1146,8 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
                 CameraPanDeg = state.CameraPanDeg,
                 CameraTiltDeg = state.CameraTiltDeg,
                 LastDriveInputAt = state.LastDriveInputAt,
+                DirectThrottle = state.DirectThrottle,
+                DirectSteer = state.DirectSteer,
             };
         }
     }
@@ -1167,7 +1196,21 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
         state.LeftPwmNorm = 0f;
         state.RightPwmNorm = 0f;
         state.BrakeNorm = 0f;
+        state.DirectThrottle = null;
+        state.DirectSteer = null;
         state.LastDriveInputAt = DateTimeOffset.UtcNow;
+    }
+
+    public void SetDirectDrive(string? agentId, float throttle, float steer)
+    {
+        var resolvedAgentId = ResolveCommandTargetAgentId(agentId) ?? "agent-1";
+        lock (stateLock)
+        {
+            var state = GetOrCreateAgentControlStateLocked(resolvedAgentId);
+            state.DirectThrottle = throttle;
+            state.DirectSteer = steer;
+            state.LastDriveInputAt = DateTimeOffset.UtcNow;
+        }
     }
 
     private void SyncAgentStateDictionariesLocked(IReadOnlyList<UnityRuntimeAgentSelectionRequest> agents)
@@ -1261,8 +1304,34 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
             "bumper" => "bumper",
             "chase" => "chase",
             "spectator" => "spectator",
+            "top_down" or "top" or "bird" or "bird_eye" => "top_down",
             _ => "driver",
         };
+    }
+
+    private static object[] BuildSimFlags(int agentCount, bool? collisionsEnabled, bool? seeEachOther)
+    {
+        // Defaults: multi-agent → collisions off, see each other on; single → no opinion
+        var effectiveCollisions = collisionsEnabled ?? (agentCount > 1 ? false : (bool?)null);
+        var effectiveSeeEachOther = seeEachOther ?? (agentCount > 1 ? true : (bool?)null);
+
+        var flags = new List<object>
+        {
+            new { key = "render.quality_profile", value = RenderQualityProfile },
+            new { key = "agents.allow_empty", value = agentCount == 0 ? "true" : "false" },
+        };
+
+        if (effectiveCollisions.HasValue)
+        {
+            flags.Add(new { key = "agents.collisions_enabled", value = effectiveCollisions.Value ? "true" : "false" });
+        }
+
+        if (effectiveSeeEachOther.HasValue)
+        {
+            flags.Add(new { key = "agents.see_each_other", value = effectiveSeeEachOther.Value ? "true" : "false" });
+        }
+
+        return flags.ToArray();
     }
 
     private static List<UnityRuntimeAgentSelectionRequest> NormalizeConfiguredAgents(

@@ -282,6 +282,23 @@ public sealed class RuntimeSessionManager : IHostedService
         return await session.SendCommandAsync(command, "ui", agentId, key.ClientId, cancellationToken);
     }
 
+    public void SetDirectDrive(string clientId, string runtimeMode, string? agentId, float throttle, float steer)
+    {
+        var key = CreateKey(clientId, runtimeMode);
+        if (!string.Equals(key.Mode, RuntimeModes.UnitySim, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        if (!TryGetUnityWorldForClient(key.ClientId, out var world, out var binding))
+        {
+            return;
+        }
+
+        var resolvedAgentId = string.IsNullOrWhiteSpace(agentId) ? binding.SelectedControlAgentId : agentId.Trim();
+        world.SetDirectDrive(resolvedAgentId, throttle, steer);
+    }
+
     public async Task<UnityRuntimeCatalogDto> GetUnityRuntimeCatalogAsync(
         string clientId,
         string runtimeMode,
@@ -333,7 +350,9 @@ public sealed class RuntimeSessionManager : IHostedService
             controlAgentId: null,
             request.Agents,
             request.ApplyImmediately,
-            cancellationToken);
+            cancellationToken,
+            collisionsEnabled: request.CollisionsEnabled,
+            seeEachOther: request.SeeEachOther);
 
         var normalizedBinding = NormalizeUnityClientBinding(binding, worldCatalog);
         unityClientBindings[clientId] = normalizedBinding;
@@ -1177,6 +1196,9 @@ public sealed class RuntimeSessionManager : IHostedService
             CancellationToken cancellationToken) =>
             provider.SendCommandAsync(command, source, agentId, clientId, cancellationToken);
 
+        public void SetDirectDrive(string? agentId, float throttle, float steer) =>
+            provider.SetDirectDrive(agentId, throttle, steer);
+
         public Task<SensorBridgeResponse> UpdateConfigAsync(
             bool? autoScanEnabled,
             int? sampleIntervalMs,
@@ -1212,8 +1234,10 @@ public sealed class RuntimeSessionManager : IHostedService
             string? controlAgentId,
             IReadOnlyList<UnityRuntimeAgentSelectionRequest>? agents,
             bool applyImmediately,
-            CancellationToken cancellationToken) =>
-            provider.SetRuntimeSelectionAsync(trackId, vehicleId, cameraMode, controlAgentId, agents, applyImmediately, cancellationToken);
+            CancellationToken cancellationToken,
+            bool? collisionsEnabled = null,
+            bool? seeEachOther = null) =>
+            provider.SetRuntimeSelectionAsync(trackId, vehicleId, cameraMode, controlAgentId, agents, applyImmediately, cancellationToken, collisionsEnabled, seeEachOther);
 
         public ValueTask DisposeAsync() => new(provider.DisconnectAsync(CancellationToken.None));
     }
