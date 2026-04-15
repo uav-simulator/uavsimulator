@@ -623,29 +623,55 @@ namespace UavSimulator.Vehicles
 
         private void EnsurePresentationVisuals()
         {
-            // KS0223 real robot: ~15cm wide, ~25cm long, ~20cm tall (including camera mast)
-            // Chassis body
-            EnsureVisualPart("Chassis", PrimitiveType.Cube, new Vector3(0.14f, 0.05f, 0.22f), new Vector3(0f, 0.035f, 0f));
-            // Top platform (circuit board area)
-            EnsureVisualPart("TopPlatform", PrimitiveType.Cube, new Vector3(0.12f, 0.015f, 0.18f), new Vector3(0f, 0.065f, 0f));
-            // Front bumper (ultrasonic sensor area)
-            EnsureVisualPart("FrontBumper", PrimitiveType.Cube, new Vector3(0.10f, 0.03f, 0.02f), new Vector3(0f, 0.05f, 0.12f));
-            // Wheel blocks (visual only, 4 corners)
-            EnsureVisualPart("WheelFL", PrimitiveType.Cube, new Vector3(0.025f, 0.03f, 0.04f), new Vector3(-0.07f, 0.015f, 0.07f));
-            EnsureVisualPart("WheelFR", PrimitiveType.Cube, new Vector3(0.025f, 0.03f, 0.04f), new Vector3(0.07f, 0.015f, 0.07f));
-            EnsureVisualPart("WheelRL", PrimitiveType.Cube, new Vector3(0.025f, 0.03f, 0.04f), new Vector3(-0.07f, 0.015f, -0.07f));
-            EnsureVisualPart("WheelRR", PrimitiveType.Cube, new Vector3(0.025f, 0.03f, 0.04f), new Vector3(0.07f, 0.015f, -0.07f));
+            // KS0223 real robot: 15cm wide, 25cm long, 20cm tall (with camera mast)
+            // All values in meters
+
+            // Chassis body (dark blue)
+            EnsureVisualPart("Chassis", PrimitiveType.Cube,
+                new Vector3(0.14f, 0.05f, 0.22f), new Vector3(0f, 0.035f, 0f));
+
+            // PCB top platform (green)
+            EnsureVisualPart("TopPlatform", PrimitiveType.Cube,
+                new Vector3(0.12f, 0.015f, 0.18f), new Vector3(0f, 0.065f, 0f));
+
+            // Battery underneath (dark gray)
+            EnsureVisualPart("Battery", PrimitiveType.Cube,
+                new Vector3(0.08f, 0.02f, 0.05f), new Vector3(0f, 0.015f, -0.03f));
+
+            // Front bumper / ultrasonic mount
+            EnsureVisualPart("FrontBumper", PrimitiveType.Cube,
+                new Vector3(0.10f, 0.03f, 0.02f), new Vector3(0f, 0.04f, 0.12f));
+
+            // Ultrasonic sensors (two small cylinders at front)
+            EnsureVisualPart("UltrasonicL", PrimitiveType.Cylinder,
+                new Vector3(0.02f, 0.0075f, 0.02f), new Vector3(-0.02f, 0.05f, 0.125f));
+            EnsureVisualPart("UltrasonicR", PrimitiveType.Cylinder,
+                new Vector3(0.02f, 0.0075f, 0.02f), new Vector3(0.02f, 0.05f, 0.125f));
+
+            // Wheels (rotated 90° Z so cylinder axis is horizontal)
+            EnsureVisualPart("WheelFL", PrimitiveType.Cylinder,
+                new Vector3(0.025f, 0.0175f, 0.025f), new Vector3(-0.07f, 0.018f, 0.07f), new Vector3(0f, 0f, 90f));
+            EnsureVisualPart("WheelFR", PrimitiveType.Cylinder,
+                new Vector3(0.025f, 0.0175f, 0.025f), new Vector3(0.07f, 0.018f, 0.07f), new Vector3(0f, 0f, 90f));
+            EnsureVisualPart("WheelRL", PrimitiveType.Cylinder,
+                new Vector3(0.025f, 0.0175f, 0.025f), new Vector3(-0.07f, 0.018f, -0.07f), new Vector3(0f, 0f, 90f));
+            EnsureVisualPart("WheelRR", PrimitiveType.Cylinder,
+                new Vector3(0.025f, 0.0175f, 0.025f), new Vector3(0.07f, 0.018f, -0.07f), new Vector3(0f, 0f, 90f));
 
             // Camera mast
-            if (transform.Find("CameraPod") == null)
+            if (transform.Find("CameraMast") == null)
             {
-                var cameraPod = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-                cameraPod.name = "CameraPod";
-                cameraPod.transform.SetParent(transform, false);
-                cameraPod.transform.localScale = new Vector3(0.015f, 0.06f, 0.015f);
-                cameraPod.transform.localPosition = new Vector3(0f, 0.10f, 0.06f);
-                DisableCollider(cameraPod);
+                var mast = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+                mast.name = "CameraMast";
+                mast.transform.SetParent(transform, false);
+                mast.transform.localScale = new Vector3(0.015f, 0.03f, 0.015f);
+                mast.transform.localPosition = new Vector3(0f, 0.10f, 0.06f);
+                DisableCollider(mast);
             }
+
+            // Camera head (black box on top of mast)
+            EnsureVisualPart("CameraHead", PrimitiveType.Cube,
+                new Vector3(0.03f, 0.02f, 0.02f), new Vector3(0f, 0.14f, 0.06f));
         }
 
         private void EnsureVisualPart(
@@ -683,16 +709,26 @@ namespace UavSimulator.Vehicles
 
         private void RemovePresentationVisuals()
         {
+            // Current parts
+            RemoveIfExists("Chassis");
+            RemoveIfExists("TopPlatform");
+            RemoveIfExists("Battery");
+            RemoveIfExists("FrontBumper");
+            RemoveIfExists("UltrasonicL");
+            RemoveIfExists("UltrasonicR");
+            RemoveIfExists("WheelFL");
+            RemoveIfExists("WheelFR");
+            RemoveIfExists("WheelRL");
+            RemoveIfExists("WheelRR");
+            RemoveIfExists("CameraMast");
+            RemoveIfExists("CameraHead");
+            // Legacy part names
             RemoveIfExists("Hood");
             RemoveIfExists("Cabin");
             RemoveIfExists("RearDeck");
             RemoveIfExists("Windshield");
             RemoveIfExists("RearWindow");
             RemoveIfExists("CameraPod");
-            RemoveIfExists("WheelFL");
-            RemoveIfExists("WheelFR");
-            RemoveIfExists("WheelRL");
-            RemoveIfExists("WheelRR");
             RemoveIfExists("Body");
         }
 
@@ -716,17 +752,26 @@ namespace UavSimulator.Vehicles
 
         private void ApplyVisualPalette()
         {
-            ApplyColor("Body", presentationAccentColor, 0.34f);
-            ApplyColor("Hood", presentationAccentColor, 0.34f);
-            ApplyColor("Cabin", new Color(0.10f, 0.10f, 0.11f), 0.28f);
-            ApplyColor("RearDeck", presentationAccentColor, 0.33f);
-            ApplyColor("Windshield", new Color(0.23f, 0.32f, 0.38f), 0.7f);
-            ApplyColor("RearWindow", new Color(0.21f, 0.29f, 0.35f), 0.68f);
-            ApplyColor("CameraPod", new Color(0.82f, 0.82f, 0.85f), 0.2f);
-            ApplyColor("WheelFL", new Color(0.08f, 0.08f, 0.08f), 0.52f);
-            ApplyColor("WheelFR", new Color(0.08f, 0.08f, 0.08f), 0.52f);
-            ApplyColor("WheelRL", new Color(0.08f, 0.08f, 0.08f), 0.52f);
-            ApplyColor("WheelRR", new Color(0.08f, 0.08f, 0.08f), 0.52f);
+            var chassisBlue = new Color(0.15f, 0.20f, 0.35f);
+            var pcbGreen = new Color(0.10f, 0.45f, 0.15f);
+            var batteryGray = new Color(0.20f, 0.20f, 0.20f);
+            var wheelBlack = new Color(0.10f, 0.10f, 0.10f);
+            var sensorSilver = new Color(0.70f, 0.70f, 0.70f);
+            var mastGray = new Color(0.40f, 0.40f, 0.40f);
+            var cameraBlack = new Color(0.05f, 0.05f, 0.05f);
+
+            ApplyColor("Chassis", chassisBlue, 0.2f);
+            ApplyColor("TopPlatform", pcbGreen, 0.15f);
+            ApplyColor("Battery", batteryGray, 0.1f);
+            ApplyColor("FrontBumper", chassisBlue, 0.2f);
+            ApplyColor("UltrasonicL", sensorSilver, 0.4f);
+            ApplyColor("UltrasonicR", sensorSilver, 0.4f);
+            ApplyColor("WheelFL", wheelBlack, 0.3f);
+            ApplyColor("WheelFR", wheelBlack, 0.3f);
+            ApplyColor("WheelRL", wheelBlack, 0.3f);
+            ApplyColor("WheelRR", wheelBlack, 0.3f);
+            ApplyColor("CameraMast", mastGray, 0.2f);
+            ApplyColor("CameraHead", cameraBlack, 0.1f);
         }
 
         private void ApplyColor(string objectName, Color color, float smoothness)
