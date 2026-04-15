@@ -53,7 +53,7 @@ namespace UavSimulator.Vehicles
         [SerializeField] [Range(1, 8)] private int cameraMsaaSamples = 1;
         [SerializeField] [Range(0, 16)] private int cameraAnisoLevel = 8;
         [SerializeField] private bool cameraAllowHdr = true;
-        [SerializeField] private Vector3 cameraLocalPosition = new Vector3(0f, 0.11f, 0.20f);
+        [SerializeField] private Vector3 cameraLocalPosition = new Vector3(0f, 0.09f, 0.12f);
         [SerializeField] private Vector3 cameraLocalEuler = new Vector3(6f, 0f, 0f);
         [SerializeField] private Color presentationAccentColor = new Color(0.77f, 0.11f, 0.10f);
 
@@ -369,10 +369,12 @@ namespace UavSimulator.Vehicles
             var yawRateDeg = yawCmd * maxYawRateDegPerSec;
             var yawDelta = yawRateDeg * dt;
             var nextRotation = body.rotation * Quaternion.Euler(0f, yawDelta, 0f);
-            var nextPosition = body.position + (nextRotation * Vector3.forward) * (currentSpeed * dt);
 
+            // Use velocity-based movement so Unity physics detects wall collisions.
+            // MovePosition() is kinematic and passes through colliders.
+            var forward = nextRotation * Vector3.forward;
+            body.linearVelocity = forward * currentSpeed + new Vector3(0f, body.linearVelocity.y, 0f);
             body.MoveRotation(nextRotation);
-            body.MovePosition(nextPosition);
         }
 
         private bool IsCameraSensorReady()
@@ -621,19 +623,27 @@ namespace UavSimulator.Vehicles
 
         private void EnsurePresentationVisuals()
         {
-            EnsureVisualPart("Hood", PrimitiveType.Cube, new Vector3(0.30f, 0.06f, 0.18f), new Vector3(0f, 0.09f, 0.15f));
-            EnsureVisualPart("Cabin", PrimitiveType.Cube, new Vector3(0.22f, 0.08f, 0.19f), new Vector3(0f, 0.13f, -0.03f));
-            EnsureVisualPart("RearDeck", PrimitiveType.Cube, new Vector3(0.30f, 0.05f, 0.12f), new Vector3(0f, 0.09f, -0.19f));
-            EnsureVisualPart("Windshield", PrimitiveType.Cube, new Vector3(0.20f, 0.05f, 0.03f), new Vector3(0f, 0.14f, 0.07f), new Vector3(-22f, 0f, 0f));
-            EnsureVisualPart("RearWindow", PrimitiveType.Cube, new Vector3(0.20f, 0.05f, 0.03f), new Vector3(0f, 0.14f, -0.11f), new Vector3(22f, 0f, 0f));
+            // KS0223 real robot: ~15cm wide, ~25cm long, ~20cm tall (including camera mast)
+            // Chassis body
+            EnsureVisualPart("Chassis", PrimitiveType.Cube, new Vector3(0.14f, 0.05f, 0.22f), new Vector3(0f, 0.035f, 0f));
+            // Top platform (circuit board area)
+            EnsureVisualPart("TopPlatform", PrimitiveType.Cube, new Vector3(0.12f, 0.015f, 0.18f), new Vector3(0f, 0.065f, 0f));
+            // Front bumper (ultrasonic sensor area)
+            EnsureVisualPart("FrontBumper", PrimitiveType.Cube, new Vector3(0.10f, 0.03f, 0.02f), new Vector3(0f, 0.05f, 0.12f));
+            // Wheel blocks (visual only, 4 corners)
+            EnsureVisualPart("WheelFL", PrimitiveType.Cube, new Vector3(0.025f, 0.03f, 0.04f), new Vector3(-0.07f, 0.015f, 0.07f));
+            EnsureVisualPart("WheelFR", PrimitiveType.Cube, new Vector3(0.025f, 0.03f, 0.04f), new Vector3(0.07f, 0.015f, 0.07f));
+            EnsureVisualPart("WheelRL", PrimitiveType.Cube, new Vector3(0.025f, 0.03f, 0.04f), new Vector3(-0.07f, 0.015f, -0.07f));
+            EnsureVisualPart("WheelRR", PrimitiveType.Cube, new Vector3(0.025f, 0.03f, 0.04f), new Vector3(0.07f, 0.015f, -0.07f));
 
+            // Camera mast
             if (transform.Find("CameraPod") == null)
             {
                 var cameraPod = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
                 cameraPod.name = "CameraPod";
                 cameraPod.transform.SetParent(transform, false);
-                cameraPod.transform.localScale = new Vector3(0.02f, 0.03f, 0.02f);
-                cameraPod.transform.localPosition = new Vector3(0f, 0.20f, 0.20f);
+                cameraPod.transform.localScale = new Vector3(0.015f, 0.06f, 0.015f);
+                cameraPod.transform.localPosition = new Vector3(0f, 0.10f, 0.06f);
                 DisableCollider(cameraPod);
             }
         }
