@@ -40,12 +40,14 @@ namespace UavSimulator.Core
             var cam = GetComponent<Camera>();
             if (cam == null) return;
 
-            cam.orthographic = true;
-            float maxExtent = Mathf.Max(TrackExtents.x, TrackExtents.y);
-            cam.orthographicSize = maxExtent * 0.5f * 1.2f;
+            cam.orthographic = false;
+            cam.fieldOfView = 45f;
 
-            transform.position = new Vector3(TrackCenter.x, 2.0f, TrackCenter.z);
-            transform.rotation = Quaternion.Euler(90f, 0f, 0f);
+            // Isometric-ish angle: 65° down, slightly rotated
+            float height = 2.2f;
+            float pullBack = 0.6f;
+            transform.position = new Vector3(TrackCenter.x - pullBack * 0.3f, height, TrackCenter.z - pullBack);
+            transform.rotation = Quaternion.Euler(60f, 15f, 0f);
 
             cam.nearClipPlane = 0.1f;
             cam.farClipPlane = 10f;
