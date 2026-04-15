@@ -1,0 +1,23 @@
+scenarioId: ab-corridor-multi-v1
+world:
+  trackId: track.basic_arena.v1
+vehicle:
+  vehicleId: vehicle.ks0223.v1
+route:
+  params:
+    spawn.position: "0.000,0.200,-7.500"
+    corridor.width_m: "3.00"
+    goal.radius_m: "1.50"
+  waypoints:
+    - [0.0, -7.5]
+    - [0.0, -1.0]
+    - [6.0, -1.0]
+    - [6.0,  5.0]
+  reachDistanceM: 1.5
+agents:
+  count: 4
+  isolated: true
+  seeEachOther: false
+  collisionsEnabled: false
+runtime:
+  timeScale: 2.0

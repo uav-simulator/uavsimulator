@@ -1,0 +1,150 @@
+{
+  "kind": "ppo-v2-ckpt65k-eval",
+  "checkpoint": "ppo_ab_65000_steps",
+  "evalEpisodes": [
+    {
+      "episode": 0,
+      "steps": 359,
+      "reward": 498.82,
+      "progress": 0.9865,
+      "terminated": true
+    },
+    {
+      "episode": 1,
+      "steps": 371,
+      "reward": 496.22,
+      "progress": 0.9865,
+      "terminated": true
+    },
+    {
+      "episode": 2,
+      "steps": 366,
+      "reward": 498.85,
+      "progress": 0.9862,
+      "terminated": true
+    },
+    {
+      "episode": 3,
+      "steps": 375,
+      "reward": 500.3,
+      "progress": 0.9865,
+      "terminated": true
+    },
+    {
+      "episode": 4,
+      "steps": 396,
+      "reward": 501.16,
+      "progress": 0.9862,
+      "terminated": true
+    },
+    {
+      "episode": 5,
+      "steps": 385,
+      "reward": 502.16,
+      "progress": 0.9858,
+      "terminated": true
+    },
+    {
+      "episode": 6,
+      "steps": 426,
+      "reward": 503.19,
+      "progress": 0.9864,
+      "terminated": true
+    },
+    {
+      "episode": 7,
+      "steps": 317,
+      "reward": 482.21,
+      "progress": 0.9863,
+      "terminated": true
+    },
+    {
+      "episode": 8,
+      "steps": 378,
+      "reward": 496.33,
+      "progress": 0.9859,
+      "terminated": true
+    },
+    {
+      "episode": 9,
+      "steps": 420,
+      "reward": 483.6,
+      "progress": 0.9864,
+      "terminated": true
+    },
+    {
+      "episode": 10,
+      "steps": 364,
+      "reward": 488.5,
+      "progress": 0.9863,
+      "terminated": true
+    },
+    {
+      "episode": 11,
+      "steps": 359,
+      "reward": 493.02,
+      "progress": 0.9865,
+      "terminated": true
+    },
+    {
+      "episode": 12,
+      "steps": 352,
+      "reward": 491.09,
+      "progress": 0.9864,
+      "terminated": true
+    },
+    {
+      "episode": 13,
+      "steps": 442,
+      "reward": 499.88,
+      "progress": 0.9865,
+      "terminated": true
+    },
+    {
+      "episode": 14,
+      "steps": 376,
+      "reward": 496.32,
+      "progress": 0.9864,
+      "terminated": true
+    },
+    {
+      "episode": 15,
+      "steps": 364,
+      "reward": 493.53,
+      "progress": 0.9865,
+      "terminated": true
+    },
+    {
+      "episode": 16,
+      "steps": 359,
+      "reward": 494.7,
+      "progress": 0.9861,
+      "terminated": true
+    },
+    {
+      "episode": 17,
+      "steps": 421,
+      "reward": 503.33,
+      "progress": 0.9864,
+      "terminated": true
+    },
+    {
+      "episode": 18,
+      "steps": 363,
+      "reward": 492.87,
+      "progress": 0.9864,
+      "terminated": true
+    },
+    {
+      "episode": 19,
+      "steps": 358,
+      "reward": 488.79,
+      "progress": 0.9865,
+      "terminated": true
+    }
+  ],
+  "successCount": 20,
+  "successRate": 1.0,
+  "avgReward": 495.24,
+  "avgProgress": 0.9863
+}

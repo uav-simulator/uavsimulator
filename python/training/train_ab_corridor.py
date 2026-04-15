@@ -25,11 +25,13 @@ from stable_baselines3.common.callbacks import (
     EvalCallback,
 )
 from stable_baselines3.common.monitor import Monitor
+from stable_baselines3.common.vec_env import VecMonitor
 
 from training.ab_corridor_env import ABCorridorEnv
+from training.multi_agent_ab_corridor_env import ABCorridorMultiAgentVecEnv
 
 
-DEFAULT_ARTIFACT_DIR = ROOT / "python/training/artifacts/ab_corridor_ppo_v1"
+DEFAULT_ARTIFACT_DIR = ROOT / "python/training/artifacts/ab_corridor_ppo_v2"
 DEFAULT_LOG_DIR = ROOT / "python/training/logs"
 DEFAULT_SCENARIO = str(ROOT / "configs/scenarios/ab-corridor-v1.yaml")
 
@@ -38,22 +40,24 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train PPO on A->B corridor")
     parser.add_argument("--base-url", default="http://127.0.0.1:8000")
     parser.add_argument("--scenario", default=DEFAULT_SCENARIO)
-    parser.add_argument("--total-timesteps", type=int, default=50_000)
-    parser.add_argument("--max-ep-steps", type=int, default=300)
-    parser.add_argument("--time-scale", type=float, default=3.0)
+    parser.add_argument("--n-agents", type=int, default=4,
+                        help="Number of parallel agents (1=single, >1=multi-agent VecEnv)")
+    parser.add_argument("--total-timesteps", type=int, default=200_000)
+    parser.add_argument("--max-ep-steps", type=int, default=400)
+    parser.add_argument("--time-scale", type=float, default=2.0)
     parser.add_argument("--output-dir", default=str(DEFAULT_ARTIFACT_DIR))
     parser.add_argument("--log-dir", default=str(DEFAULT_LOG_DIR))
     parser.add_argument("--checkpoint-freq", type=int, default=5000)
     parser.add_argument("--eval-freq", type=int, default=5000)
     parser.add_argument("--eval-episodes", type=int, default=5)
     parser.add_argument("--learning-rate", type=float, default=3e-4)
-    parser.add_argument("--n-steps", type=int, default=512)
-    parser.add_argument("--batch-size", type=int, default=64)
+    parser.add_argument("--n-steps", type=int, default=1024)
+    parser.add_argument("--batch-size", type=int, default=256)
     parser.add_argument("--n-epochs", type=int, default=10)
     parser.add_argument("--gamma", type=float, default=0.99)
     parser.add_argument("--gae-lambda", type=float, default=0.95)
     parser.add_argument("--clip-range", type=float, default=0.2)
-    parser.add_argument("--ent-coef", type=float, default=0.01)
+    parser.add_argument("--ent-coef", type=float, default=0.02)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--no-export-onnx", action="store_true")
     return parser.parse_args()
@@ -128,7 +132,7 @@ def main() -> int:
 
     print("=== A->B Corridor PPO Training ===")
     print(f"  base_url:        {args.base_url}")
-    print(f"  scenario:        {args.scenario}")
+    print(f"  n_agents:        {args.n_agents}")
     print(f"  total_timesteps: {args.total_timesteps}")
     print(f"  time_scale:      {args.time_scale}")
     print(f"  output_dir:      {output_dir}")
@@ -136,15 +140,25 @@ def main() -> int:
 
     # Create training environment
     print("Creating training environment...")
-    train_env = Monitor(
-        ABCorridorEnv(
+    if args.n_agents > 1:
+        raw_env = ABCorridorMultiAgentVecEnv(
+            n_agents=args.n_agents,
             base_url=args.base_url,
-            scenario_path=args.scenario,
             max_steps=args.max_ep_steps,
             time_scale=args.time_scale,
-        ),
-        filename=str(log_dir / "train_monitor"),
-    )
+        )
+        train_env = VecMonitor(raw_env, str(log_dir / "train_monitor"))
+        print(f"  Multi-agent VecEnv: {args.n_agents} agents")
+    else:
+        train_env = Monitor(
+            ABCorridorEnv(
+                base_url=args.base_url,
+                scenario_path=args.scenario,
+                max_steps=args.max_ep_steps,
+                time_scale=args.time_scale,
+            ),
+            filename=str(log_dir / "train_monitor"),
+        )
 
     # Create PPO model
     print("Creating PPO model...")
@@ -194,15 +208,15 @@ def main() -> int:
     print(f"Saved SB3 model: {model_save_path}")
 
     # Export to ONNX
-    onnx_path = output_dir / "ab_corridor_ppo_v1.onnx"
+    onnx_path = output_dir / "ab_corridor_ppo_v2.onnx"
     if not args.no_export_onnx:
         export_to_onnx(model, onnx_path)
 
     # Save training metadata
     metadata = {
-        "policyId": "ab_corridor_ppo_v1",
+        "policyId": "ab_corridor_ppo_v2",
         "format": "onnx",
-        "version": "1.0.0",
+        "version": "2.0.0",
         "scenario": "A->B corridor",
         "runtime": "backend-pc",
         "algorithm": "PPO",
@@ -210,6 +224,7 @@ def main() -> int:
         "totalTimesteps": args.total_timesteps,
         "trainTimeSeconds": round(train_time, 1),
         "hyperparameters": {
+            "nAgents": args.n_agents,
             "learningRate": args.learning_rate,
             "nSteps": args.n_steps,
             "batchSize": args.batch_size,
