@@ -178,6 +178,8 @@ class ABCorridorVisionEnv(gym.Env):
         self._reached_waypoints: set[int] = set()
         self._stalled_steps = 0
         self._last_termination_reason = "running"
+        self._center_quality_sum = 0.0
+        self._center_quality_count = 0
 
     # ── route geometry ──
 
@@ -232,6 +234,8 @@ class ABCorridorVisionEnv(gym.Env):
         self._reached_waypoints = set()
         self._stalled_steps = 0
         self._last_termination_reason = "running"
+        self._center_quality_sum = 0.0
+        self._center_quality_count = 0
         self._prime_reached_waypoints(self._prev_pos["x"], self._prev_pos["z"])
         self._prev_progress = self._route_progress(self._prev_pos["x"], self._prev_pos["z"])
 
@@ -330,10 +334,11 @@ class ABCorridorVisionEnv(gym.Env):
         lateral_dist = self._nearest_route_distance(px, pz)
         half_corridor = self.corridor_width_m * 0.5
         wall_proximity = lateral_dist / half_corridor if half_corridor > 0 else 0.0
-        # Quadratic base + sharp exponential penalty near walls (>70% to edge)
-        lateral_penalty = -0.5 * wall_proximity ** 2
-        if wall_proximity > 0.7:
-            lateral_penalty -= 2.0 * (wall_proximity - 0.7) ** 2
+        # Track center quality for goal bonus scaling
+        self._center_quality_sum += max(0.0, 1.0 - wall_proximity)
+        self._center_quality_count += 1
+        # Per-step wall penalty: -3.0 when touching wall, scales quadratically
+        lateral_penalty = -3.0 * wall_proximity ** 2
 
         # Steer jerk penalty
         jerk_penalty = -0.05 * abs(steer - self._prev_steer)
@@ -345,13 +350,16 @@ class ABCorridorVisionEnv(gym.Env):
         # Time penalty
         time_penalty = -0.02
 
-        # Goal
+        # Goal — bonus scaled by how centered the driving was
         terminated = False
         goal_bonus = 0.0
         termination_reason = "running"
         goal_x, goal_z = self.waypoints[-1]
         if math.hypot(px - goal_x, pz - goal_z) < self.goal_radius_m:
-            goal_bonus = 100.0
+            # center_quality: 1.0 = perfect center, 0.0 = always at wall
+            center_quality = self._center_quality_sum / max(self._center_quality_count, 1)
+            # Goal bonus: 30 (wall-rider) to 150 (centered driver)
+            goal_bonus = 30.0 + 120.0 * center_quality
             terminated = True
             termination_reason = "goal_reached"
 
