@@ -141,13 +141,13 @@ namespace UavSimulator.Tracks
             var collider = wall.GetComponent<Collider>();
             if (collider != null)
             {
-                var wallPhysMat = new PhysicMaterial("CardboardWall")
+                var wallPhysMat = new PhysicsMaterial("CardboardWall")
                 {
                     dynamicFriction = 0.9f,
                     staticFriction = 0.95f,
                     bounciness = 0.05f,
-                    frictionCombine = PhysicMaterialCombine.Maximum,
-                    bounceCombine = PhysicMaterialCombine.Minimum,
+                    frictionCombine = PhysicsMaterialCombine.Maximum,
+                    bounceCombine = PhysicsMaterialCombine.Minimum,
                 };
                 collider.material = wallPhysMat;
             }
