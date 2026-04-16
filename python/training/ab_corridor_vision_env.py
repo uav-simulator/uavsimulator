@@ -326,15 +326,21 @@ class ABCorridorVisionEnv(gym.Env):
         # Waypoint bonuses
         waypoint_bonus = self._collect_waypoint_bonus(px, pz)
 
-        # Lateral deviation penalty
+        # Lateral deviation penalty — harsh near walls to prevent wall-riding
         lateral_dist = self._nearest_route_distance(px, pz)
-        lateral_penalty = -0.3 * (lateral_dist / self.oob_threshold_m) ** 2
+        half_corridor = self.corridor_width_m * 0.5
+        wall_proximity = lateral_dist / half_corridor if half_corridor > 0 else 0.0
+        # Quadratic base + sharp exponential penalty near walls (>70% to edge)
+        lateral_penalty = -0.5 * wall_proximity ** 2
+        if wall_proximity > 0.7:
+            lateral_penalty -= 2.0 * (wall_proximity - 0.7) ** 2
 
         # Steer jerk penalty
         jerk_penalty = -0.05 * abs(steer - self._prev_steer)
 
-        # Speed reward
-        speed_reward = 0.1 * min(self._computed_speed / 0.05, 1.0)
+        # Speed reward — only when moving away from walls (centered driving)
+        center_bonus = max(0.0, 1.0 - wall_proximity * 2.0)  # 1.0 at center, 0 at halfway
+        speed_reward = 0.1 * min(self._computed_speed / 0.05, 1.0) * (0.3 + 0.7 * center_bonus)
 
         # Time penalty
         time_penalty = -0.02
