@@ -136,7 +136,21 @@ namespace UavSimulator.Tracks
         {
             var wall = CreateBox(name, scale, position);
             SetMaterial(wall, CardboardBase, 0.05f);
-            // Collider stays — walls are physical barriers
+
+            // High-friction physics material — prevents wall-sliding
+            var collider = wall.GetComponent<Collider>();
+            if (collider != null)
+            {
+                var wallPhysMat = new PhysicMaterial("CardboardWall")
+                {
+                    dynamicFriction = 0.9f,
+                    staticFriction = 0.95f,
+                    bounciness = 0.05f,
+                    frictionCombine = PhysicMaterialCombine.Maximum,
+                    bounceCombine = PhysicMaterialCombine.Minimum,
+                };
+                collider.material = wallPhysMat;
+            }
 
             // Corrugation stripes (darker vertical bands)
             bool isZWall = scale.x < scale.z;
