@@ -24,6 +24,7 @@ namespace UavSimulator.Plugins
         public const string RoadSystemArenaTrackId = "track.roadsystem_arena.v1";
         public const string RoadSystemRealisticTrackId = "track.roadsystem_realistic.v2";
         public const string CardboardCorridorTrackId = "track.cardboard_corridor.v1";
+        public const string CardboardMazeTrackId = "track.cardboard_maze.v1";
 
         private const string PrometeoPrefabPath = "Assets/PROMETEO - Car Controller/Prefabs/Prometheus.prefab";
         private const string ArcadeBluePrefabPath = "Assets/ARCADE - FREE Racing Car/Prefabs (Meshes Only)/Free Racing Car Blue Variant.prefab";
@@ -96,9 +97,23 @@ namespace UavSimulator.Plugins
             cardboardCorridorTrack.description = "L-shaped cardboard corridor matching real-world apartment test setup. Narrow walls, wood floor, ArUco finish marker.";
             cardboardCorridorTrack.parametersSchemaJson = "{\"type\":\"object\",\"properties\":{}}";
 
+            var cardboardMazeTrack = ScriptableObject.CreateInstance<TrackPluginDescriptor>();
+            cardboardMazeTrack.id = CardboardMazeTrackId;
+            cardboardMazeTrack.displayName = "Cardboard Maze (Procedural)";
+            cardboardMazeTrack.description = "Procedurally generated cardboard corridor with configurable turns, length, and width. Grid-based drunk-walk layout with 90° turns.";
+            cardboardMazeTrack.parametersSchemaJson =
+                "{\"type\":\"object\",\"properties\":{" +
+                "\"maze.seed\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":999999,\"default\":42,\"description\":\"Random seed — same seed always produces the same maze\"}," +
+                "\"maze.length_cells\":{\"type\":\"integer\",\"minimum\":3,\"maximum\":20,\"default\":8,\"description\":\"Number of grid cells in the path\"}," +
+                "\"maze.corridor_width_m\":{\"type\":\"number\",\"minimum\":0.4,\"maximum\":1.0,\"default\":0.6,\"description\":\"Corridor width in meters\"}," +
+                "\"maze.left_turns\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":10,\"default\":2,\"description\":\"Number of left turns allowed\"}," +
+                "\"maze.right_turns\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":10,\"default\":2,\"description\":\"Number of right turns allowed\"}," +
+                "\"maze.wall_height_m\":{\"type\":\"number\",\"minimum\":0.15,\"maximum\":0.4,\"default\":0.25,\"description\":\"Wall height in meters\"}" +
+                "}}";
+
             return new PluginRegistrySnapshot(
                 vehicles: new[] { ks0223Vehicle, vehicle, arcadeBlueVehicle, arcadeRedVehicle, arcadeGrayVehicle, arcadePurpleVehicle, simpleDrone },
-                tracks: new[] { roadSystemTrack, roadSystemRealisticTrack, track, cardboardCorridorTrack },
+                tracks: new[] { roadSystemTrack, roadSystemRealisticTrack, track, cardboardCorridorTrack, cardboardMazeTrack },
                 source: source);
         }
 
@@ -199,6 +214,16 @@ namespace UavSimulator.Plugins
                 root.transform.position = Vector3.zero;
                 root.transform.rotation = Quaternion.identity;
                 track = root.AddComponent<CardboardCorridorTrack>();
+                return true;
+            }
+
+            if (string.Equals(descriptorId, CardboardMazeTrackId, StringComparison.Ordinal))
+            {
+                var root = new GameObject("CardboardMazeTrack");
+                root.transform.SetParent(parent, false);
+                root.transform.position = Vector3.zero;
+                root.transform.rotation = Quaternion.identity;
+                track = root.AddComponent<CardboardMazeTrack>();
                 return true;
             }
 

@@ -118,6 +118,8 @@ def scenario_to_reset_config(payload: Mapping[str, Any]) -> Dict[str, Any]:
 
     for item in _mapping_items(route, "params"):
         track_params.append(_kv(item[0], item[1]))
+    for item in _mapping_items(world, "params"):
+        track_params.append(_kv(item[0], item[1]))
     for item in _mapping_items(vehicle, "params"):
         vehicle_params.append(_kv(item[0], item[1]))
 
