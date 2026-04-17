@@ -430,14 +430,29 @@ class ABCorridorVisionEnv(gym.Env):
         terminated = False
         goal_bonus = 0.0
         termination_reason = "running"
+        aruco_goal_reached = False
+
+        # ArUco parallel signal: if detector sees marker close, count as goal too
+        if self._aruco_detector is not None:
+            frame_b64 = (step.get("frame") or {}).get("dataBase64", "")
+            if frame_b64:
+                aruco = self._aruco_detector.detect_from_base64(frame_b64)
+                if aruco.goal_reached:
+                    aruco_goal_reached = True
+
         goal_x, goal_z = self.waypoints[-1]
-        if math.hypot(px - goal_x, pz - goal_z) < self.goal_radius_m:
+        geometric_goal = math.hypot(px - goal_x, pz - goal_z) < self.goal_radius_m
+
+        if geometric_goal or aruco_goal_reached:
             # center_quality: 1.0 = perfect center, 0.0 = always at wall
             center_quality = self._center_quality_sum / max(self._center_quality_count, 1)
             # Goal bonus: 30 (wall-rider) to 150 (centered driver)
             goal_bonus = 30.0 + 120.0 * center_quality
+            # Extra +20 bonus if ArUco detected (encourages marker awareness)
+            if aruco_goal_reached:
+                goal_bonus += 20.0
             terminated = True
-            termination_reason = "goal_reached"
+            termination_reason = "goal_reached_aruco" if (aruco_goal_reached and not geometric_goal) else "goal_reached"
 
         # OOB
         oob_penalty = 0.0
