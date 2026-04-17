@@ -134,6 +134,9 @@ class ABCorridorVisionEnv(gym.Env):
             self.waypoints: list[tuple[float, float]] = waypoints
         elif scenario_waypoints:
             self.waypoints = scenario_waypoints
+        elif resolved_track_id == "track.cardboard_maze.v1":
+            # Generate maze waypoints from trackParams in scenario (no randomization yet)
+            self.waypoints = self._generate_maze_waypoints_from_config()
         else:
             self.waypoints = [
                 (0.0, -7.5),
@@ -228,6 +231,42 @@ class ABCorridorVisionEnv(gym.Env):
             bx, bz = self.waypoints[i + 1]
             total += math.hypot(bx - ax, bz - az)
         return max(total, 1.0)
+
+    def _generate_maze_waypoints_from_config(self) -> list[tuple[float, float]]:
+        """Generate waypoints from trackParams if track is cardboard_maze.
+
+        Reads maze.* params from self._reset_config['trackParams'] and runs
+        the Python port of MazeGenerator to get waypoints matching Unity.
+        """
+        from training.maze_generator import MazeParams, generate as generate_maze
+
+        params = MazeParams()
+        for item in self._reset_config.get("trackParams", []):
+            key = item.get("key", "")
+            value = item.get("value", "")
+            try:
+                if key == "maze.seed":
+                    params.seed = int(value)
+                elif key == "maze.length_cells":
+                    params.length_cells = int(value)
+                elif key == "maze.corridor_width_m":
+                    params.corridor_width_m = float(value)
+                elif key == "maze.left_turns":
+                    params.left_turns = int(value)
+                elif key == "maze.right_turns":
+                    params.right_turns = int(value)
+                elif key == "maze.wall_height_m":
+                    params.wall_height_m = float(value)
+            except (ValueError, TypeError):
+                pass
+        try:
+            geom = generate_maze(params)
+            # Also update corridor_width and goal_radius from geometry
+            self.corridor_width_m = geom.corridor_width_m
+            self.goal_radius_m = geom.goal_radius_m
+            return list(geom.waypoints)
+        except Exception:
+            return [(0.0, 0.0), (0.0, 0.60)]  # fallback minimal route
 
     def _apply_maze_randomization(self, config: dict) -> None:
         """Sample random maze params, inject into trackParams, regenerate waypoints locally.
