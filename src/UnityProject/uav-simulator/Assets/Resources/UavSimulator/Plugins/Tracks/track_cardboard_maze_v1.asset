@@ -1,0 +1,30 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8d14ebb06ca0546dbbaefa48fb7c1c2f, type: 3}
+  m_Name: track_cardboard_maze_v1
+  m_EditorClassIdentifier: 
+  id: track.cardboard_maze.v1
+  displayName: Cardboard Maze (Procedural)
+  version:
+    major: 0
+    minor: 0
+    patch: 0
+  description: "Procedurally generated cardboard corridor with configurable turns,
+    length, and width. Grid-based drunk-walk layout with 90\xB0 turns."
+  prefab: {fileID: 0}
+  parametersSchemaJson: "{\"type\":\"object\",\"properties\":{\"maze.seed\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":999999,\"default\":42,\"description\":\"Random
+    seed \u2014 same seed always produces the same maze\"},\"maze.length_cells\":{\"type\":\"integer\",\"minimum\":3,\"maximum\":20,\"default\":8,\"description\":\"Number
+    of grid cells in the path\"},\"maze.corridor_width_m\":{\"type\":\"number\",\"minimum\":0.4,\"maximum\":1.0,\"default\":0.6,\"description\":\"Corridor
+    width in meters\"},\"maze.left_turns\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":10,\"default\":2,\"description\":\"Number
+    of left turns allowed\"},\"maze.right_turns\":{\"type\":\"integer\",\"minimum\":0,\"maximum\":10,\"default\":2,\"description\":\"Number
+    of right turns allowed\"},\"maze.wall_height_m\":{\"type\":\"number\",\"minimum\":0.15,\"maximum\":0.4,\"default\":0.25,\"description\":\"Wall
+    height in meters\"}}}"
