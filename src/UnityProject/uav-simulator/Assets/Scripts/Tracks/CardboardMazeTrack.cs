@@ -18,6 +18,8 @@ namespace UavSimulator.Tracks
         [SerializeField] private int rightTurns = 2;
         [SerializeField] private float wallHeight = 0.25f;
         [SerializeField] private float wallThickness = 0.02f;
+        // When set via trackParams "maze.path_encoded", overrides seed/turns with explicit path
+        private string pathEncoded = "";
 
         private static readonly Color CardboardBase = new Color(0.76f, 0.60f, 0.42f);
         private static readonly Color CardboardStripe = new Color(0.68f, 0.52f, 0.36f);
@@ -42,6 +44,7 @@ namespace UavSimulator.Tracks
                     case "maze.left_turns": if (int.TryParse(p.value, out var lt)) leftTurns = lt; break;
                     case "maze.right_turns": if (int.TryParse(p.value, out var rt)) rightTurns = rt; break;
                     case "maze.wall_height_m": if (float.TryParse(p.value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var wh)) wallHeight = wh; break;
+                    case "maze.path_encoded": pathEncoded = p.value ?? ""; break;
                 }
             }
         }
@@ -66,15 +69,32 @@ namespace UavSimulator.Tracks
             };
 
             MazeGeometry g;
-            try
+            // If path_encoded is provided (from Python Truth), build from it directly.
+            // This avoids C#/Python PRNG mismatch when generating from seed.
+            if (!string.IsNullOrWhiteSpace(pathEncoded))
             {
-                g = MazeGenerator.Generate(parameters);
+                try
+                {
+                    g = MazeGenerator.BuildFromEncodedPath(pathEncoded, parameters);
+                }
+                catch (System.Exception ex)
+                {
+                    Debug.LogWarning($"[CardboardMazeTrack] path_encoded parse failed: {ex.Message}. Falling back to seed.");
+                    g = MazeGenerator.Generate(parameters);
+                }
             }
-            catch (System.Exception ex)
+            else
             {
-                Debug.LogWarning($"[CardboardMazeTrack] Generation failed: {ex.Message}. Falling back to defaults.");
-                parameters = MazeParams.Defaults();
-                g = MazeGenerator.Generate(parameters);
+                try
+                {
+                    g = MazeGenerator.Generate(parameters);
+                }
+                catch (System.Exception ex)
+                {
+                    Debug.LogWarning($"[CardboardMazeTrack] Generation failed: {ex.Message}. Falling back to defaults.");
+                    parameters = MazeParams.Defaults();
+                    g = MazeGenerator.Generate(parameters);
+                }
             }
             geometry = g;
 
