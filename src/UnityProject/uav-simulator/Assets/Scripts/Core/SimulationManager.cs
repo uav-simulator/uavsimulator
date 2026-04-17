@@ -174,6 +174,7 @@ namespace UavSimulator.Core
 
             activeTrack = InstantiateTrack(validation.Track);
             activeTrackId = validation.Track != null ? validation.Track.id ?? string.Empty : string.Empty;
+            activeTrack.ApplyTrackParams(config.trackParams ?? Array.Empty<ConfigKeyValue>());
             activeTrack.ResetTrack(config.seed);
             Time.timeScale = validation.TimeScale;
             ConfigureRoute(config.trackParams);
@@ -451,7 +452,21 @@ namespace UavSimulator.Core
         {
             if (!hasExplicitWaypoints)
             {
-                activeRouteWaypoints = GetDefaultRouteWaypoints(activeTrackId);
+                // Prefer track-provided waypoints (e.g. from procedural maze)
+                var trackWaypoints = activeTrack != null ? activeTrack.GetDefaultWaypoints() : null;
+                if (trackWaypoints != null && trackWaypoints.Length > 0)
+                {
+                    activeRouteWaypoints = new Vector3[trackWaypoints.Length];
+                    for (int i = 0; i < trackWaypoints.Length; i++)
+                    {
+                        activeRouteWaypoints[i] = new Vector3(trackWaypoints[i].x, 0f, trackWaypoints[i].y);
+                    }
+                    activeRouteWaypointsConfigured = true;
+                }
+                else
+                {
+                    activeRouteWaypoints = GetDefaultRouteWaypoints(activeTrackId);
+                }
             }
 
             if (!hasExplicitReachDistance && activeRouteWaypoints.Length > 0)
@@ -736,6 +751,12 @@ namespace UavSimulator.Core
         {
             var spawn = GetDefaultSpawnPose(activeTrackId);
             var hasExplicitSpawn = false;
+
+            // If the track provides its own spawn (e.g. procedural maze), use it
+            var trackSpawnPos = activeTrack != null ? activeTrack.GetDefaultSpawnPosition() : null;
+            var trackSpawnYaw = activeTrack != null ? activeTrack.GetDefaultSpawnYawDeg() : null;
+            if (trackSpawnPos.HasValue) spawn.position = trackSpawnPos.Value;
+            if (trackSpawnYaw.HasValue) spawn.yawDeg = trackSpawnYaw.Value;
 
             if (activeRouteWaypointsConfigured && activeRouteWaypoints.Length >= 2)
             {
