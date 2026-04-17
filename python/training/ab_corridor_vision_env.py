@@ -70,6 +70,8 @@ class ABCorridorVisionEnv(gym.Env):
         waypoints: list[tuple[float, float]] | None = None,
         aruco_goal: bool = False,
         aruco_goal_distance_m: float = 0.40,
+        maze_randomize: bool = False,
+        maze_param_ranges: dict | None = None,
     ):
         super().__init__()
 
@@ -139,6 +141,16 @@ class ABCorridorVisionEnv(gym.Env):
                 (6.0, 5.0),
             ]
         self.total_route_length = self._compute_route_length()
+
+        # Maze randomization (only used if track is track.cardboard_maze.v1)
+        self._maze_randomize = maze_randomize
+        self._maze_param_ranges = maze_param_ranges or {
+            "length_cells": (5, 12),
+            "left_turns": (1, 4),
+            "right_turns": (1, 4),
+            "corridor_width_m": (0.50, 0.80),
+            "wall_height_m": (0.20, 0.30),
+        }
 
         # ArUco goal detection (optional — runs alongside policy)
         self._aruco_detector = None
@@ -213,6 +225,66 @@ class ABCorridorVisionEnv(gym.Env):
             total += math.hypot(bx - ax, bz - az)
         return max(total, 1.0)
 
+    def _apply_maze_randomization(self, config: dict) -> None:
+        """Sample random maze params, inject into trackParams, regenerate waypoints locally.
+
+        Uses the Python port of MazeGenerator so we get the SAME geometry as Unity
+        (given same seed + params). This lets us compute progress/goal correctly.
+        """
+        import random as _random
+        from training.maze_generator import MazeParams, generate as generate_maze
+
+        ranges = self._maze_param_ranges
+        rng = _random.Random(self._episode_seed)
+
+        # Sample params. Try up to 10 times to get a valid maze.
+        sampled_params = None
+        geometry = None
+        for attempt in range(10):
+            try_seed = rng.randint(0, 999999)
+            params = MazeParams(
+                seed=try_seed,
+                length_cells=rng.randint(*ranges["length_cells"]),
+                corridor_width_m=round(rng.uniform(*ranges["corridor_width_m"]), 3),
+                left_turns=rng.randint(*ranges["left_turns"]),
+                right_turns=rng.randint(*ranges["right_turns"]),
+                wall_height_m=round(rng.uniform(*ranges["wall_height_m"]), 3),
+            )
+            try:
+                geometry = generate_maze(params)
+                sampled_params = params
+                break
+            except RuntimeError:
+                continue
+
+        if sampled_params is None or geometry is None:
+            return  # fall back to scenario default params
+
+        # Inject into trackParams (replace existing maze.* keys)
+        track_params = [kv for kv in config.get("trackParams", []) if not kv.get("key", "").startswith("maze.")]
+        track_params.extend([
+            {"key": "maze.seed", "value": str(sampled_params.seed)},
+            {"key": "maze.length_cells", "value": str(sampled_params.length_cells)},
+            {"key": "maze.corridor_width_m", "value": str(sampled_params.corridor_width_m)},
+            {"key": "maze.left_turns", "value": str(sampled_params.left_turns)},
+            {"key": "maze.right_turns", "value": str(sampled_params.right_turns)},
+            {"key": "maze.wall_height_m", "value": str(sampled_params.wall_height_m)},
+        ])
+        config["trackParams"] = track_params
+
+        # Update env's waypoints + derived quantities from generated geometry
+        self.waypoints = list(geometry.waypoints)
+        self.corridor_width_m = geometry.corridor_width_m
+        self.goal_radius_m = geometry.goal_radius_m
+        self.waypoint_reach_radius_m = max(
+            self.goal_radius_m,
+            self.corridor_width_m * 0.5 * 0.9,
+        )
+        self.oob_threshold_m = self.corridor_width_m * 0.5 - self.oob_margin_m
+        if self.oob_threshold_m <= 0.05:
+            self.oob_threshold_m = 0.05
+        self.total_route_length = self._compute_route_length()
+
     # ── gym interface ──
 
     def reset(self, *, seed: int | None = None, options: dict | None = None):
@@ -224,6 +296,10 @@ class ABCorridorVisionEnv(gym.Env):
 
         config = dict(self._reset_config)
         config["seed"] = self._episode_seed
+
+        # Maze randomization — sample params, update trackParams, recompute waypoints
+        if self._maze_randomize and config.get("selectedTrackId") == "track.cardboard_maze.v1":
+            self._apply_maze_randomization(config)
 
         step = self.client.reset(config)
         self._step_count = 0
