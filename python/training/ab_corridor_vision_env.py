@@ -235,8 +235,9 @@ class ABCorridorVisionEnv(gym.Env):
     def _generate_maze_waypoints_from_config(self) -> list[tuple[float, float]]:
         """Generate waypoints from trackParams if track is cardboard_maze.
 
-        Reads maze.* params from self._reset_config['trackParams'] and runs
-        the Python port of MazeGenerator to get waypoints matching Unity.
+        Reads maze.* params, runs the Python MazeGenerator, and INJECTS the
+        resulting path_cells back into trackParams as "maze.path_encoded" so
+        Unity builds geometry from the exact same path (avoids PRNG mismatch).
         """
         from training.maze_generator import MazeParams, generate as generate_maze
 
@@ -261,12 +262,19 @@ class ABCorridorVisionEnv(gym.Env):
                 pass
         try:
             geom = generate_maze(params)
-            # Also update corridor_width and goal_radius from geometry
             self.corridor_width_m = geom.corridor_width_m
             self.goal_radius_m = geom.goal_radius_m
+            # Inject encoded path so Unity uses the same geometry
+            path_encoded = ";".join(f"{x},{z}" for (x, z) in geom.path_cells)
+            track_params = [
+                kv for kv in self._reset_config.get("trackParams", [])
+                if kv.get("key") != "maze.path_encoded"
+            ]
+            track_params.append({"key": "maze.path_encoded", "value": path_encoded})
+            self._reset_config["trackParams"] = track_params
             return list(geom.waypoints)
         except Exception:
-            return [(0.0, 0.0), (0.0, 0.60)]  # fallback minimal route
+            return [(0.0, 0.0), (0.0, 0.60)]
 
     def _apply_maze_randomization(self, config: dict) -> None:
         """Sample random maze params, inject into trackParams, regenerate waypoints locally.
@@ -319,6 +327,7 @@ class ABCorridorVisionEnv(gym.Env):
             self._maze_cached_params = (sampled_params, geometry)
 
         # Inject into trackParams (replace existing maze.* keys)
+        path_encoded = ";".join(f"{x},{z}" for (x, z) in geometry.path_cells)
         track_params = [kv for kv in config.get("trackParams", []) if not kv.get("key", "").startswith("maze.")]
         track_params.extend([
             {"key": "maze.seed", "value": str(sampled_params.seed)},
@@ -327,6 +336,7 @@ class ABCorridorVisionEnv(gym.Env):
             {"key": "maze.left_turns", "value": str(sampled_params.left_turns)},
             {"key": "maze.right_turns", "value": str(sampled_params.right_turns)},
             {"key": "maze.wall_height_m", "value": str(sampled_params.wall_height_m)},
+            {"key": "maze.path_encoded", "value": path_encoded},
         ])
         config["trackParams"] = track_params
 

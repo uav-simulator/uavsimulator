@@ -25,6 +25,31 @@ namespace UavSimulator.Tracks
 
         private struct Cell { public int X; public int Z; }
 
+        /// <summary>
+        /// Build geometry from an encoded path string "x0,z0;x1,z1;x2,z2;...".
+        /// Bypasses the PRNG — path comes from an external source (e.g. Python).
+        /// </summary>
+        public static MazeGeometry BuildFromEncodedPath(string encoded, MazeParams parameters)
+        {
+            var path = new List<Cell>();
+            var parts = encoded.Split(';');
+            foreach (var part in parts)
+            {
+                if (string.IsNullOrWhiteSpace(part)) continue;
+                var coords = part.Split(',');
+                if (coords.Length != 2) continue;
+                if (int.TryParse(coords[0].Trim(), out var x) && int.TryParse(coords[1].Trim(), out var z))
+                {
+                    path.Add(new Cell { X = x, Z = z });
+                }
+            }
+            if (path.Count < 2)
+            {
+                throw new ArgumentException($"path_encoded has too few cells: '{encoded}'");
+            }
+            return BuildGeometry(path, parameters);
+        }
+
         public static MazeGeometry Generate(MazeParams parameters)
         {
             var rng = new System.Random(parameters.Seed);
