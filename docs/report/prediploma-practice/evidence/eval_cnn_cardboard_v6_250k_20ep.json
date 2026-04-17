@@ -1,0 +1,215 @@
+{
+  "kind": "cardboard-cnn-ppo-centered",
+  "modelName": "cardboard-corridor-ppo-v6",
+  "modelVersion": "250k-checkpoint",
+  "episodes": 20,
+  "successCount": 20,
+  "successRate": 1.0,
+  "avgReward": 128.45,
+  "avgProgress": 0.8316,
+  "avgLateralMean": 0.1365,
+  "avgLateralMax": 0.3,
+  "corridorHalfWidthM": 0.3,
+  "episodesData": [
+    {
+      "episode": 0,
+      "seed": 2000,
+      "steps": 14,
+      "reward": 127.54,
+      "progress": 0.8206,
+      "termination": "goal_reached",
+      "avg_lateral_m": 0.1377,
+      "max_lateral_m": 0.3
+    },
+    {
+      "episode": 1,
+      "seed": 2001,
+      "steps": 14,
+      "reward": 130.62,
+      "progress": 0.857,
+      "termination": "goal_reached",
+      "avg_lateral_m": 0.1335,
+      "max_lateral_m": 0.3
+    },
+    {
+      "episode": 2,
+      "seed": 2002,
+      "steps": 14,
+      "reward": 130.6,
+      "progress": 0.8568,
+      "termination": "goal_reached",
+      "avg_lateral_m": 0.1335,
+      "max_lateral_m": 0.3
+    },
+    {
+      "episode": 3,
+      "seed": 2003,
+      "steps": 14,
+      "reward": 127.8,
+      "progress": 0.8331,
+      "termination": "goal_reached",
+      "avg_lateral_m": 0.1381,
+      "max_lateral_m": 0.3
+    },
+    {
+      "episode": 4,
+      "seed": 2004,
+      "steps": 14,
+      "reward": 128.37,
+      "progress": 0.8336,
+      "termination": "goal_reached",
+      "avg_lateral_m": 0.137,
+      "max_lateral_m": 0.3
+    },
+    {
+      "episode": 5,
+      "seed": 2005,
+      "steps": 14,
+      "reward": 129.32,
+      "progress": 0.8234,
+      "termination": "goal_reached",
+      "avg_lateral_m": 0.1344,
+      "max_lateral_m": 0.3
+    },
+    {
+      "episode": 6,
+      "seed": 2006,
+      "steps": 14,
+      "reward": 127.54,
+      "progress": 0.8207,
+      "termination": "goal_reached",
+      "avg_lateral_m": 0.1377,
+      "max_lateral_m": 0.3
+    },
+    {
+      "episode": 7,
+      "seed": 2007,
+      "steps": 14,
+      "reward": 127.54,
+      "progress": 0.8207,
+      "termination": "goal_reached",
+      "avg_lateral_m": 0.1377,
+      "max_lateral_m": 0.3
+    },
+    {
+      "episode": 8,
+      "seed": 2008,
+      "steps": 14,
+      "reward": 128.14,
+      "progress": 0.8938,
+      "termination": "goal_reached",
+      "avg_lateral_m": 0.1395,
+      "max_lateral_m": 0.3
+    },
+    {
+      "episode": 9,
+      "seed": 2009,
+      "steps": 14,
+      "reward": 130.62,
+      "progress": 0.8569,
+      "termination": "goal_reached",
+      "avg_lateral_m": 0.1335,
+      "max_lateral_m": 0.3
+    },
+    {
+      "episode": 10,
+      "seed": 2010,
+      "steps": 14,
+      "reward": 129.79,
+      "progress": 0.8196,
+      "termination": "goal_reached",
+      "avg_lateral_m": 0.1336,
+      "max_lateral_m": 0.3
+    },
+    {
+      "episode": 11,
+      "seed": 2011,
+      "steps": 14,
+      "reward": 127.8,
+      "progress": 0.8332,
+      "termination": "goal_reached",
+      "avg_lateral_m": 0.1381,
+      "max_lateral_m": 0.3
+    },
+    {
+      "episode": 12,
+      "seed": 2012,
+      "steps": 14,
+      "reward": 129.09,
+      "progress": 0.8199,
+      "termination": "goal_reached",
+      "avg_lateral_m": 0.1346,
+      "max_lateral_m": 0.3
+    },
+    {
+      "episode": 13,
+      "seed": 2013,
+      "steps": 14,
+      "reward": 127.84,
+      "progress": 0.8207,
+      "termination": "goal_reached",
+      "avg_lateral_m": 0.1373,
+      "max_lateral_m": 0.3
+    },
+    {
+      "episode": 14,
+      "seed": 2014,
+      "steps": 14,
+      "reward": 127.54,
+      "progress": 0.8207,
+      "termination": "goal_reached",
+      "avg_lateral_m": 0.1377,
+      "max_lateral_m": 0.3
+    },
+    {
+      "episode": 15,
+      "seed": 2015,
+      "steps": 14,
+      "reward": 128.72,
+      "progress": 0.8199,
+      "termination": "goal_reached",
+      "avg_lateral_m": 0.1354,
+      "max_lateral_m": 0.3
+    },
+    {
+      "episode": 16,
+      "seed": 2016,
+      "steps": 14,
+      "reward": 127.42,
+      "progress": 0.8196,
+      "termination": "goal_reached",
+      "avg_lateral_m": 0.1379,
+      "max_lateral_m": 0.3
+    },
+    {
+      "episode": 17,
+      "seed": 2017,
+      "steps": 14,
+      "reward": 127.54,
+      "progress": 0.8207,
+      "termination": "goal_reached",
+      "avg_lateral_m": 0.1377,
+      "max_lateral_m": 0.3
+    },
+    {
+      "episode": 18,
+      "seed": 2018,
+      "steps": 14,
+      "reward": 127.54,
+      "progress": 0.8208,
+      "termination": "goal_reached",
+      "avg_lateral_m": 0.1377,
+      "max_lateral_m": 0.3
+    },
+    {
+      "episode": 19,
+      "seed": 2019,
+      "steps": 14,
+      "reward": 127.54,
+      "progress": 0.8207,
+      "termination": "goal_reached",
+      "avg_lateral_m": 0.1377,
+      "max_lateral_m": 0.3
+    }
+  ]
+}
