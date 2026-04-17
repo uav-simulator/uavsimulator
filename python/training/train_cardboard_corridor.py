@@ -78,6 +78,10 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--no-export-onnx", action="store_true")
     p.add_argument("--maze-randomize", action="store_true",
                    help="Randomize maze params each episode (for track.cardboard_maze.v1)")
+    p.add_argument("--aruco-goal", action="store_true",
+                   help="Enable ArUco marker as parallel goal signal (+20 bonus if detected)")
+    p.add_argument("--aruco-distance-m", type=float, default=0.50,
+                   help="Distance threshold for ArUco goal detection (meters)")
     p.add_argument(
         "--device",
         default="auto",
@@ -175,6 +179,8 @@ def _make_env(
     rank: int,
     seed: int,
     maze_randomize: bool = False,
+    aruco_goal: bool = False,
+    aruco_goal_distance_m: float = 0.50,
 ):
     """Factory for creating a single env (used by SubprocVecEnv)."""
     def _init():
@@ -186,6 +192,8 @@ def _make_env(
             time_scale=time_scale,
             img_size=img_size,
             maze_randomize=maze_randomize,
+            aruco_goal=aruco_goal,
+            aruco_goal_distance_m=aruco_goal_distance_m,
         )
         env.reset(seed=seed + rank)
         return env
@@ -231,6 +239,8 @@ def main() -> int:
         time_scale=args.time_scale,
         img_size=args.img_size,
         maze_randomize=args.maze_randomize,
+        aruco_goal=args.aruco_goal,
+        aruco_goal_distance_m=args.aruco_distance_m,
     )
     print(f"  track:           {probe_env._reset_config['selectedTrackId']}")
     print(f"  corridor_width:  {probe_env.corridor_width_m:.2f}m")
@@ -259,6 +269,8 @@ def main() -> int:
                 rank=i,
                 seed=args.seed,
                 maze_randomize=args.maze_randomize,
+                aruco_goal=args.aruco_goal,
+                aruco_goal_distance_m=args.aruco_distance_m,
             )
             for i in range(num_envs)
         ])
@@ -377,6 +389,8 @@ def main() -> int:
         time_scale=1.0,
         img_size=args.img_size,
         maze_randomize=args.maze_randomize,
+        aruco_goal=args.aruco_goal,
+        aruco_goal_distance_m=args.aruco_distance_m,
     )
     results = []
     for ep in range(5):
