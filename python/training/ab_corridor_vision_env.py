@@ -72,6 +72,7 @@ class ABCorridorVisionEnv(gym.Env):
         aruco_goal_distance_m: float = 0.40,
         maze_randomize: bool = False,
         maze_param_ranges: dict | None = None,
+        maze_regen_every: int = 1,
     ):
         super().__init__()
 
@@ -144,6 +145,9 @@ class ABCorridorVisionEnv(gym.Env):
 
         # Maze randomization (only used if track is track.cardboard_maze.v1)
         self._maze_randomize = maze_randomize
+        self._maze_regen_every = max(1, int(maze_regen_every))
+        self._maze_reset_count = 0
+        self._maze_cached_params = None  # keep current trackParams between regens
         self._maze_param_ranges = maze_param_ranges or {
             "length_cells": (5, 12),
             "left_turns": (1, 4),
@@ -230,35 +234,50 @@ class ABCorridorVisionEnv(gym.Env):
 
         Uses the Python port of MazeGenerator so we get the SAME geometry as Unity
         (given same seed + params). This lets us compute progress/goal correctly.
+
+        If maze_regen_every > 1, reuses the cached params for that many resets
+        so the robot trains multiple episodes on the same maze before a new one.
         """
         import random as _random
         from training.maze_generator import MazeParams, generate as generate_maze
 
-        ranges = self._maze_param_ranges
-        rng = _random.Random(self._episode_seed)
+        # Reuse cached params if we're within the regen window
+        reuse = (
+            self._maze_cached_params is not None
+            and self._maze_reset_count % self._maze_regen_every != 0
+        )
+        self._maze_reset_count += 1
 
-        # Sample params. Try up to 10 times to get a valid maze.
-        sampled_params = None
-        geometry = None
-        for attempt in range(10):
-            try_seed = rng.randint(0, 999999)
-            params = MazeParams(
-                seed=try_seed,
-                length_cells=rng.randint(*ranges["length_cells"]),
-                corridor_width_m=round(rng.uniform(*ranges["corridor_width_m"]), 3),
-                left_turns=rng.randint(*ranges["left_turns"]),
-                right_turns=rng.randint(*ranges["right_turns"]),
-                wall_height_m=round(rng.uniform(*ranges["wall_height_m"]), 3),
-            )
-            try:
-                geometry = generate_maze(params)
-                sampled_params = params
-                break
-            except RuntimeError:
-                continue
+        if reuse:
+            sampled_params, geometry = self._maze_cached_params
+        else:
+            ranges = self._maze_param_ranges
+            rng = _random.Random(self._episode_seed)
 
-        if sampled_params is None or geometry is None:
-            return  # fall back to scenario default params
+            # Sample params. Try up to 10 times to get a valid maze.
+            sampled_params = None
+            geometry = None
+            for attempt in range(10):
+                try_seed = rng.randint(0, 999999)
+                params = MazeParams(
+                    seed=try_seed,
+                    length_cells=rng.randint(*ranges["length_cells"]),
+                    corridor_width_m=round(rng.uniform(*ranges["corridor_width_m"]), 3),
+                    left_turns=rng.randint(*ranges["left_turns"]),
+                    right_turns=rng.randint(*ranges["right_turns"]),
+                    wall_height_m=round(rng.uniform(*ranges["wall_height_m"]), 3),
+                )
+                try:
+                    geometry = generate_maze(params)
+                    sampled_params = params
+                    break
+                except RuntimeError:
+                    continue
+
+            if sampled_params is None or geometry is None:
+                return  # fall back to scenario default params
+
+            self._maze_cached_params = (sampled_params, geometry)
 
         # Inject into trackParams (replace existing maze.* keys)
         track_params = [kv for kv in config.get("trackParams", []) if not kv.get("key", "").startswith("maze.")]

@@ -78,6 +78,9 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--no-export-onnx", action="store_true")
     p.add_argument("--maze-randomize", action="store_true",
                    help="Randomize maze params each episode (for track.cardboard_maze.v1)")
+    p.add_argument("--maze-regen-every", type=int, default=1,
+                   help="Regenerate maze only every N resets (default 1 = every reset). "
+                        "Higher values let the robot train multiple episodes on the same maze.")
     p.add_argument("--aruco-goal", action="store_true",
                    help="Enable ArUco marker as parallel goal signal (+20 bonus if detected)")
     p.add_argument("--aruco-distance-m", type=float, default=0.50,
@@ -181,6 +184,7 @@ def _make_env(
     maze_randomize: bool = False,
     aruco_goal: bool = False,
     aruco_goal_distance_m: float = 0.50,
+    maze_regen_every: int = 1,
 ):
     """Factory for creating a single env (used by SubprocVecEnv)."""
     def _init():
@@ -194,6 +198,7 @@ def _make_env(
             maze_randomize=maze_randomize,
             aruco_goal=aruco_goal,
             aruco_goal_distance_m=aruco_goal_distance_m,
+            maze_regen_every=maze_regen_every,
         )
         env.reset(seed=seed + rank)
         return env
@@ -241,6 +246,7 @@ def main() -> int:
         maze_randomize=args.maze_randomize,
         aruco_goal=args.aruco_goal,
         aruco_goal_distance_m=args.aruco_distance_m,
+        maze_regen_every=args.maze_regen_every,
     )
     print(f"  track:           {probe_env._reset_config['selectedTrackId']}")
     print(f"  corridor_width:  {probe_env.corridor_width_m:.2f}m")
@@ -271,6 +277,7 @@ def main() -> int:
                 maze_randomize=args.maze_randomize,
                 aruco_goal=args.aruco_goal,
                 aruco_goal_distance_m=args.aruco_distance_m,
+                maze_regen_every=args.maze_regen_every,
             )
             for i in range(num_envs)
         ])
@@ -391,6 +398,7 @@ def main() -> int:
         maze_randomize=args.maze_randomize,
         aruco_goal=args.aruco_goal,
         aruco_goal_distance_m=args.aruco_distance_m,
+        maze_regen_every=args.maze_regen_every,
     )
     results = []
     for ep in range(5):
