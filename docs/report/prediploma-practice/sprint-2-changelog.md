@@ -8,508 +8,313 @@
 
 ---
 
-## Статус на 2026-04-14
-
-- PPO v2 best checkpoint (65k шагов из 200k): **successRate = 100%** (20/20 эпизодов), avgProgress = 98.6%, avgReward = 495.2. Модель уверенно проходит оба поворота L-образного маршрута на basic_arena. Оптимальный чекпойнт — 65k шагов; дальнейшее обучение приводит к деградации политики (overfitting).
-- Исправлен баг camera capture в standalone runtime (MSAA mismatch + отсутствие `targetTexture`). Камера стабильно отдаёт корректные JPEG-кадры 1280x720 (~40-60 KB).
-- Добавлен sim-to-real трек `track.cardboard_corridor.v1` — L-образный картонный коридор с ArUco-маркером, зарегистрирован в plugin catalog, рендерится в standalone runtime.
-- Реализован CNN-PPO pipeline для vision-обучения (`ABCorridorVisionEnv`, `train_cardboard_corridor.py`).
-- Backend autopilot расширен поддержкой vision ONNX-моделей (image + ultrasonic входы).
-- Введена система каталога моделей с группировкой по имени/версии и биндингами к target.
-- Runtime shader seeding решает проблему `Shader.Find() == null` в standalone билдах (Unity стрипает неиспользуемые шейдеры).
-
----
-
 ## Оглавление
 
-1. [Цель и задачи спринта](#1-цель-и-задачи-спринта)
-2. [RL-обучение: Gymnasium-среда и PPO pipeline](#2-rl-обучение-gymnasium-среда-и-ppo-pipeline)
-3. [Reward shaping: формирование функции вознаграждения](#3-reward-shaping-формирование-функции-вознаграждения)
-4. [Результаты тренировки PPO-модели](#4-результаты-тренировки-ppo-модели)
-5. [Улучшение визуальной среды basic_arena](#5-улучшение-визуальной-среды-basic_arena)
-6. [KPI-оценка: сравнение baseline vs PPO](#6-kpi-оценка-сравнение-baseline-vs-ppo)
-7. [Продуктовый контур: train -> install -> run](#7-продуктовый-контур-train---install---run)
-8. [Фикс camera capture pipeline (standalone URP)](#8-фикс-camera-capture-pipeline-standalone-urp)
-9. [Sim-to-real трек: Cardboard Corridor](#9-sim-to-real-трек-cardboard-corridor)
-10. [Vision pipeline: CNN-PPO и backend autopilot](#10-vision-pipeline-cnn-ppo-и-backend-autopilot)
-11. [Каталог моделей и биндинги](#11-каталог-моделей-и-биндинги)
-12. [Выполненные задачи](#12-выполненные-задачи)
-13. [Текущие ограничения](#13-текущие-ограничения)
-14. [План на Спринт 3](#14-план-на-спринт-3)
+1. [Цель спринта](#1-цель-спринта)
+2. [Трасса cardboard corridor](#2-трасса-cardboard-corridor)
+3. [Машинка KS0223](#3-машинка-ks0223)
+4. [Обучение CNN-PPO на L-коридоре](#4-обучение-cnn-ppo-на-l-коридоре)
+5. [Процедурный генератор трасс](#5-процедурный-генератор-трасс)
+6. [Эксперименты с обучением на maze](#6-эксперименты-с-обучением-на-maze)
+7. [WebUI-дополнения](#7-webui-дополнения)
+8. [Что сделано и что переносится в Спринт 3](#8-что-сделано-и-что-переносится-в-спринт-3)
 
 ---
 
-## 1. Цель и задачи спринта
+## 1. Цель спринта
 
-**Цель спринта** — реализовать полный цикл обучения RL-модели (PPO) для навигационной задачи A->B в симуляторе, достигнуть ненулевого successRate, и провести сравнительную KPI-оценку с baseline-моделью.
+Собрать рабочий контур обучения с нуля для робота KS0223: окружение для RL-тренировки, правильная трасса и физика, reward-функция, интеграция с backend-автопилотом, чтобы всё замкнулось до кнопки «поехали» в WebUI и машинка действительно поехала по модели.
 
-### Планируемые задачи
+**Главный результат:** модель `cardboard-corridor-ppo-v6`, обученная CNN-PPO на фиксированном L-коридоре 60×25см, проходит 20 эпизодов формального eval с **100% success rate**. Это первая собранная рабочая связка «Unity → Python RL → ONNX → backend autopilot».
 
-| # | Задача | Статус |
-|---|--------|--------|
-| 1 | Gymnasium-среда `ABCorridorEnv` — обёртка над runtime API | Выполнено |
-| 2 | Reward shaping: многокомпонентная функция вознаграждения | Выполнено |
-| 3 | PPO-тренировка через stable-baselines3, ONNX-экспорт | Выполнено |
-| 4 | Улучшение визуального окружения basic_arena | Выполнено |
-| 5 | KPI-оценка обученной модели (20 эпизодов) | Выполнено |
-| 6 | Сравнительный анализ baseline vs PPO | Выполнено |
-| 7 | Валидация контура `train -> upload -> activate -> run` с обученной моделью | Выполнено |
-| 8 | Фикс camera capture pipeline в standalone URP runtime | Выполнено |
-| 9 | Sim-to-real трек `track.cardboard_corridor.v1` | Выполнено |
-| 10 | CNN-PPO vision pipeline (среда, тренировка, export ONNX) | Выполнено |
-| 11 | Vision ONNX autopilot в backend (image + ultrasonic) | Выполнено |
-| 12 | Каталог моделей: группировка, версионирование, биндинги | Выполнено |
-| 13 | Runtime shader seeding для standalone билдов | Выполнено |
+Попутно собран процедурный maze-генератор для более общих трасс, но обучение CNN-PPO на длинных процедурных лабиринтах в Sprint 2 не сошлось — переносится в Sprint 3 с curriculum learning.
 
 ---
 
-## 2. RL-обучение: Gymnasium-среда и PPO pipeline
+## 2. Трасса cardboard corridor
 
-### 2.1. ABCorridorEnv
+Для sim-to-real переноса нужен трек, максимально соответствующий реальной картонной трассе в комнате. Сделан процедурный трек `track.cardboard_corridor.v1` — L-образный коридор 60см шириной, стены 25см высотой, один поворот 90° направо. Всё в масштабе **1:1** с реальностью.
 
-Создана Gymnasium-совместимая среда `ABCorridorEnv`, инкапсулирующая взаимодействие с Unity-runtime через HTTP API.
+**Вид трассы сверху в симуляторе:**
 
-**Файл:** `python/training/ab_corridor_env.py`
+![Cardboard Corridor top-down](evidence/sprint2-screenshots/topdown-01-cardboard-corridor.png)
 
-**Пространство наблюдений** (8-мерный вектор, `Box[-1, 1]`):
+Робот (зелёный) стоит на старте в начале Segment A, впереди — прямой коридор до поворота, потом направо и до финишной стены с ArUco-маркером (виден справа вверху трассы).
 
-| # | Признак | Описание |
-|---|---------|----------|
-| 0 | `line_tracker.s1_norm` | Датчик линии — левый канал |
-| 1 | `line_tracker.s2_norm` | Датчик линии — канал 2 |
-| 2 | `line_tracker.s3_norm` | Датчик линии — центральный канал |
-| 3 | `line_tracker.s4_norm` | Датчик линии — канал 4 |
-| 4 | `line_tracker.s5_norm` | Датчик линии — правый канал |
-| 5 | `ultrasonic.front_norm` | Ультразвуковой датчик, расстояние / 5.0 м |
-| 6 | `speed_norm` | Текущая скорость / 3.0 м/с |
-| 7 | `heading_error_norm` | Ошибка курса к следующему waypoint / pi |
+**Вид с камеры робота на старте:**
 
-**Пространство действий** (2-мерный вектор, `Box[-1, 1]`):
-- `throttle` — тяга/торможение
-- `steer` — поворот
+![Cardboard Corridor camera view](evidence/sprint2-screenshots/01-cardboard-corridor-camera.jpg)
 
-**Архитектурные решения:**
-- Среда подключается к runtime по HTTP, каждый `step()` вызывает `POST /step`
-- `reset()` вызывает `POST /reset` с параметрами из сценария
-- `timeScale` увеличен до 3.0 при тренировке для ускорения сбора данных
-- Прогресс по маршруту рассчитывается проекцией на полилинию waypoints
+Именно эту картинку видит CNN на входе (после ресайза до 84×84). Видно стены из картона, пол в цвет ламината, впереди сегмент A до поворота.
 
-### 2.2. Тренировочный скрипт
-
-**Файл:** `python/training/train_ab_corridor.py`
-
-Скрипт реализует полный pipeline:
-1. Инициализация среды с подключением к работающему runtime
-2. Создание PPO-модели (stable-baselines3) с MLP-политикой `[64, 64]`
-3. Тренировка с checkpoints и progress-логированием
-4. Экспорт в ONNX-формат (opset 11) для runtime-inference
-5. Quick-eval на 5 эпизодах с выводом метрик
-
-**Гиперпараметры PPO v2:**
+**Геометрия трека:**
 
 | Параметр | Значение |
-|----------|----------|
-| learning_rate | 3e-4 |
-| n_steps | 1024 |
-| batch_size | 256 |
-| n_epochs | 10 |
-| gamma | 0.99 |
-| gae_lambda | 0.95 |
-| clip_range | 0.2 |
-| ent_coef | 0.02 |
-| net_arch (pi, vf) | [64, 64] |
-| total_timesteps | 200 000 |
-| best_checkpoint | 65 000 шагов |
+|---|---|
+| Ширина коридора | 0.60 м |
+| Высота стен | 0.25 м |
+| Толщина стен | 0.02 м |
+| Сегмент A (до поворота) | 1.10 м |
+| Сегмент B (после поворота) | 0.90 м |
+| Поворот | 90° направо |
+| ArUco маркер | 14×14 см на финишной стене |
 
-```bash
-# Запуск тренировки (1 агент)
-cd python && python training/train_ab_corridor.py \
-  --total-timesteps 200000 \
-  --time-scale 2.0 \
-  --max-ep-steps 400 \
-  --n-steps 1024 \
-  --batch-size 256 \
-  --ent-coef 0.02
+Трек строится процедурно из примитивов Unity при каждом reset — 6 стен образуют замкнутую L-форму, пол только под коридором, серый окружающий пол имитирует комнату.
 
-# Запуск с 4 параллельными агентами
-cd python && python training/train_ab_corridor.py \
-  --n-agents 4 \
-  --total-timesteps 200000 \
-  --time-scale 2.0
-```
+Важный момент — стены получили `PhysicsMaterial` с высоким трением (0.95) и минимальной упругостью (0.05). Без этого робот мог бы скользить вдоль стены как по льду и использовать это для быстрого добегания до финиша. С трением такое не проходит.
 
 ---
 
-## 3. Reward shaping: формирование функции вознаграждения
+## 3. Машинка KS0223
 
-Функция вознаграждения состоит из 10 компонентов, обеспечивающих устойчивое обучение через оба поворота:
+Раньше машинка в симуляторе была префабом Prometeo (полноразмерная машина, коллайдер 34×52см), что в 60см коридоре даёт 5см зазора по бокам. Плюс модель использовала кинематическое движение через `MovePosition()`, которое **проходит сквозь коллайдеры стен** — робот мог ехать через стены.
 
-### Компоненты reward (v2)
+Исправлено:
 
-| # | Компонент | Формула | Описание |
-|---|-----------|---------|----------|
-| 1 | Progress | `Δprogress * 100.0` | Основной сигнал: только вперёд (`max(0, Δ)`) |
-| 2 | Waypoint bonus | `+5 / +15 / +25` при достижении | Прогрессивные бонусы на ключевых точках маршрута |
-| 3 | Heading reward | `0.3 * (1 - \|err\|/π)` | Курсовое выравнивание без штрафа за повороты |
-| 4 | Velocity reward | `0.5 * min(v·cos(err)/0.05, 1)` | Скорость в направлении цели |
-| 5 | Lateral penalty | `-0.5 * (d/threshold)²` | Штраф за отклонение от трассы |
-| 6 | Steer jerk | `-0.01 * \|steer - prev_steer\|` | Плавность управления |
-| 7 | Stall penalty | `-0.05 * min(stall_steps/20, 1)` | Нарастающий штраф при отсутствии прогресса |
-| 8 | Goal bonus | `+200.0` (терминальный) | Достижение финальной точки |
-| 9 | OOB penalty | `-30.0` (терминальный) | Выезд за пределы коридора |
-| 10 | Runtime done | `-15.0` (терминальный) | Аварийный останов от runtime |
+- **Размеры реального робота** — шасси 14×5×22см, с колёсами и мачтой камеры 15×7×25см. Коллайдер 15×12×25см, визуал из примитивов Unity: корпус, PCB-плата, батарея, передний бампер, два ультразвуковых датчика на носу, 4 колеса-цилиндра, мачта с камерой-кубиком.
+- **Velocity-based движение** — вместо `MovePosition()` используется `Rigidbody.linearVelocity`. Теперь робот физически не может пройти сквозь стену, отталкивается.
+- **Камера** на Y=9см (реальная высота мачты), смотрит вперёд по +Z.
 
-**Ключевые решения v2 относительно v1:**
-- Масштаб progress-reward увеличен 10× (→100) — стал доминирующим сигналом
-- Добавлен `velocity_reward` — устраняет застревание после поворотов (машина получала heading_reward, но не двигалась)
-- Добавлен `stall_penalty` — нарастает при `delta_progress < 0.001` более 20 шагов
-- Goal bonus увеличен 4× (+50→+200), OOB penalty ужесточён (-20→-30)
-- Waypoint bonuses `[5, 15, 25]` обеспечивают промежуточные сигналы на обоих поворотах
-
-**Терминальные условия:**
-- `goal_reached` — расстояние до финальной точки < `goal_radius_m` (1.0 м)
-- `out_of_bounds` — латеральное отклонение > `corridor_width/2 + oob_margin` (1.8 м)
-- `timeout` — превышение `max_steps` (400 шагов)
-
----
-
-## 4. Результаты тренировки PPO-модели
-
-**Параметры тренировки (v2):**
-- Общее количество шагов: 200 000
-- Ускорение времени: ×2.0
-- Максимальная длина эпизода: 400 шагов
-- Скорость: ~79 fps
-- Время тренировки: ~42 мин
-
-**Динамика обучения:**
-
-| Этап (шаги) | ep_rew_mean | ep_len_mean | Наблюдение |
-|-------------|-------------|-------------|------------|
-| 0–20k | < 0 | < 100 | Случайные действия, быстрый OOB |
-| 20k–65k | +100…+180 | ~360 | Модель проходит маршрут, ep_len растёт к max |
-| 65k (пик) | ~177 | 360 | **Лучший checkpoint** — 100% успех при eval |
-| 65k–200k | ~177 (плато) | 360 | Политика деградирует: std растёт до 1.8, mean action ухудшается |
-
-**Вывод о checkpoint selection:**
-- После 65k шагов ep_rew_mean перестаёт расти (plateau ≈ 177), но std действий начинает расти — модель переходит к стохастической стратегии с высокой дисперсией
-- Eval лучшего checkpoint (65k): successRate = **100%** (20/20), avgProgress = 98.6%, avgReward = 495.2
-- Eval финальной модели (200k): значительно хуже по детерминированному поведению
-- Итог: оптимальная стратегия — ранняя остановка / выбор лучшего checkpoint по eval-метрике
-
----
-
-## 5. Улучшение визуальной среды basic_arena
-
-Трек `basic_arena` (track.basic_arena.v1) значительно улучшен визуально:
-
-### Добавленные элементы
-
-| Категория | Количество | Описание |
-|-----------|-----------|----------|
-| Деревья | 12 (было 4) | Размещены вдоль дороги с разным масштабом (0.75-1.3) |
-| Кусты | 6 | Низкие сферы для покрытия грунта |
-| Бордюры | 6 сегментов | Вдоль краёв каждого отрезка дороги |
-| Фонарные столбы | 6 | Столб (цилиндр) + плафон (сфера) |
-| Травяные участки | 4 | Круглые зоны на ландшафте с другим оттенком зелёного |
-| Конусы | 6 (без изменений) | Дорожные конусы на ключевых точках |
-
-### Цветовая палитра новых объектов
-
-| Объект | RGB | Smoothness |
-|--------|-----|-----------|
-| Бордюр | (0.55, 0.55, 0.50) | 0.15 |
-| Куст | (0.22, 0.50, 0.15) | 0.08 |
-| Столб фонаря | (0.30, 0.30, 0.32) | 0.55 |
-| Плафон фонаря | (0.95, 0.92, 0.75) | 0.60 |
-| Трава | (0.24, 0.42, 0.16) | 0.05 |
-
-**Файл:** `src/UnityProject/uav-simulator/Assets/Scripts/Tracks/BasicArenaTrack.cs`
-
----
-
-## 6. KPI-оценка: сравнение baseline vs PPO
-
-### Методика оценки
-
-- Количество эпизодов: 20
-- Максимальная длина эпизода: 300 шагов
-- Ширина коридора: 3.0 м (basic_arena S-shape)
-- Допуск выезда (OOB margin): 0.15 м
-- Радиус достижения цели: 1.5 м
-- Инструмент: `python/training/evaluate_ab_policy.py`
-- Маршрут: (0,-7.5) → (0,-1) → (6,-1) → (6,5), длина 18.5 м
-
-### Результаты
-
-| Метрика | Baseline (linear) | PPO v1 (200k, финал) | PPO v2 (ckpt 65k) |
-|---------|-------------------|----------------------|--------------------|
-| successRate | 0% (0/20) | 0% (0/20) | **100% (20/20)** |
-| avgSteps | ~32 | 300 (max) | ~360 |
-| avgProgress | ~0% | 67.6% | **98.6%** |
-| std(progress) | — | 0.2% | 0.3% |
-| avgReward | — | — | 495.2 |
-| termination breakdown | 20/20 OOB | 20/20 timeout | 20/20 goal |
-
-**Evidence:** `evidence/eval_ppo_v1_20ep.json`, `evidence/eval_ppo_v1_20ep.svg`, `evidence/eval_ppo_v2_best_20ep.json`
-
-### Анализ
-
-- **Baseline** мгновенно вылетает за пределы трассы на первом же повороте (все 20 эпизодов — `out_of_bounds` за ~32 шага).
-- **PPO v1** (финальная модель 200k шагов): стабильно проходит первый прямой участок (7.5 м), застревает у первого поворота. Проблема — отсутствие reward за скорость в направлении цели.
-- **PPO v2 ckpt-65k**: уверенно проходит оба поворота. Ключевые изменения: `velocity_reward` (скорость × cos(heading_error)), `stall_penalty`, масштаб progress-reward ×10. Все 20 эпизодов завершаются достижением цели.
-
----
-
-## 7. Продуктовый контур: train -> install -> run
-
-Полный цикл работы с обученной моделью:
-
-```bash
-# 1. Тренировка модели (4 параллельных агента)
-cd python && python training/train_ab_corridor.py \
-  --n-agents 4 --total-timesteps 200000 --time-scale 2.0
-
-# 2. Загрузка лучшего checkpoint в backend
-rusim model install \
-  python/training/artifacts/ab_corridor_ppo_v2/ab_corridor_ppo_v2_best.onnx \
-  --name ab_corridor_ppo_v2 --version 2.0.0 --source ppo-training
-
-# 3. Активация модели
-rusim model activate ab_corridor_ppo_v2
-
-# 4. KPI-оценка (20 эпизодов)
-cd python && python training/evaluate_ab_policy.py \
-  --model training/artifacts/ab_corridor_ppo_v2/ab_corridor_ppo_v2_best.onnx \
-  --episodes 20 --include-trajectories \
-  --output-json evidence/eval_ppo_v2_best_20ep.json
-```
-
----
-
-## 8. Фикс camera capture pipeline (standalone URP)
-
-### Проблема
-
-В standalone-билде Unity 6 с URP (Universal Render Pipeline) и Render Graph камера отдавала однотонный синий кадр (~15 KB) вместо рендера сцены.
-
-### Причины
-
-1. **MSAA mismatch:** `RenderTexture.antiAliasing = 4`, но URP pipeline ожидал другое количество сэмплов. Ошибка: `RenderPass: Attachment 0 was created with 1 samples but 4 samples were requested`.
-2. **Отсутствие `targetTexture`:** `frontCamera.targetTexture` не назначался после создания RT — камера рендерила в экранный буфер, а `ReadPixels` читал из пустого RT.
-3. **Shader stripping:** `Shader.Find("Universal Render Pipeline/Lit")` возвращал `null` в standalone-билде, т.к. Unity стрипала шейдеры, не привязанные ни к одному материалу в проекте.
-
-### Решение
-
-| Изменение | Файл |
-|-----------|------|
-| MSAA принудительно = 1 во всех пресетах и дефолтах | `Ks0223Vehicle.cs` |
-| `QualitySettings.antiAliasing = 0` для всех профилей качества | `SimulationManager.cs` |
-| `frontCamera.targetTexture = frontCameraRt` в `RecreateCameraTargets()` | `Ks0223Vehicle.cs` |
-| `frontCamera.useOcclusionCulling = false` | `Ks0223Vehicle.cs` |
-| URP assembly reference в .asmdef | `UavSimulator.Runtime.asmdef` |
-| `RuntimeShaderAssetSeeder` — Material-ассеты в Resources для каждого шейдера | `Editor/RuntimeShaderAssetSeeder.cs` |
-| `RuntimeMaterialCompatibility` переписан: сначала `Resources.Load`, затем `Shader.Find` | `Core/RuntimeMaterialCompatibility.cs` |
-| Автозапуск сидера перед билдом | `Editor/RuntimeBuildPipeline.cs` |
-
-### Результат
-
-Камера стабильно отдаёт JPEG-кадры 1280x720 (~40–60 KB) с корректным рендером сцены как на `basic_arena`, так и на `cardboard_corridor`.
-
-**Evidence:** `evidence/sprint2_camera_arena.jpg`, `evidence/sprint2_camera_cardboard.jpg`
-
----
-
-## 9. Sim-to-real трек: Cardboard Corridor
-
-### Описание
-
-Процедурный L-образный коридор из картонных стен для sim-to-real тренировки. Воспроизводит реальный тестовый стенд из квартиры: картонные стенки 25 см, деревянный пол, ArUco-маркер на финише.
-
-**Файл:** `src/UnityProject/uav-simulator/Assets/Scripts/Tracks/CardboardCorridorTrack.cs`
-
-### Параметры
-
-| Параметр | Значение | Описание |
-|----------|----------|----------|
-| corridorWidth | 0.40 м | Ширина коридора (40 см) |
-| wallHeight | 0.25 м | Высота стен (25 см) |
-| wallThickness | 0.02 м | Толщина стен (2 см) |
-| segmentALength | 1.10 м | Прямой участок (вперёд по Z) |
-| segmentBLength | 0.90 м | Прямой участок после поворота (по X) |
-| roomWidth × roomLength | 1.50 × 1.90 м | Размер комнаты-контекста |
-
-### Layout
+**Differential drive mapping:**
 
 ```
-Segment A: x=0, z=-1.1..z=0   (прямо, +Z)
-Turn:      90° правый поворот в (0, 0)
-Segment B: z=0, x=0..x=0.9    (прямо, +X)
-Finish:    ArUco-маркер на стене x=0.9
-Spawn:     (0, 0.01, -0.85), facing +Z
+API input:          throttle, steer ∈ [-1, 1]
+                        ↓
+Differential drive: leftPWM  = throttle - steer
+                    rightPWM = throttle + steer
+                        ↓
+Physics:            linearVelocity = forward * (throttle * maxSpeed)
+                    yawRate        = steer * maxYawRate
 ```
 
-### Интеграция
+**Параметры физики:**
 
-- Зарегистрирован как `track.cardboard_corridor.v1` в `BuiltinPluginFactory`
-- Дефолтный spawn `(0, 0.01, -0.85)` и маршрут через L-поворот в `SimulationManager`
-- Scenario-файл: `configs/scenarios/cardboard-corridor-v1.yaml`
-
----
-
-## 10. Vision pipeline: CNN-PPO и backend autopilot
-
-### 10.1. ABCorridorVisionEnv
-
-Gymnasium-среда для vision-обучения с камерой и ультразвуком.
-
-**Файл:** `python/training/ab_corridor_vision_env.py`
-
-**Пространство наблюдений** (Dict):
-
-| Ключ | Shape | Dtype | Описание |
-|------|-------|-------|----------|
-| `image` | (84, 84, 3) | uint8 | RGB-кадр с камеры, ресайз до 84×84 |
-| `ultrasonic` | (1,) | float32 | Нормализованное расстояние ультразвука |
-
-**Пространство действий:** `Box[-1, 1]`, shape (2,) — throttle, steer.
-
-Среда поддерживает загрузку конфигурации из YAML-сценария (`--scenario`), что обеспечивает единый источник правды для spawn, waypoints и параметров коридора.
-
-### 10.2. Тренировочный скрипт
-
-**Файл:** `python/training/train_cardboard_corridor.py`
-
-- CNN-PPO (stable-baselines3 `CnnPolicy` с custom feature extractor)
-- Экспорт в ONNX с входами `image` (84×84×3) и `ultrasonic` (1,)
-- Генерация `metadata.json` с полями совместимости (`runtimeModes`, `vehicleIds`, `robotKinds`)
-
-### 10.3. Vision autopilot в backend
-
-**Файл:** `src/ks0223-web-mac/backend/Services/AutopilotService.cs`
-
-`PolicyPredictor` расширен поддержкой двух режимов:
-
-| Режим | Входы | Определение |
-|-------|-------|-------------|
-| FlatVector | 1D float tensor (8-dim) | ONNX-модель с одним 2D-входом |
-| ImageAndUltrasonic | image (4D) + ultrasonic (2D) | ONNX-модель с входами `image` и `ultrasonic` |
-
-При загрузке ONNX-модели режим определяется автоматически по именам и размерностям входов. Для vision-модели autopilot loop запрашивает JPEG-кадр через `TryGetLatestFrame()`, декодирует через `SixLabors.ImageSharp`, ресайзит до целевого разрешения и нормализует в `[0, 1]`.
+| Параметр | Значение |
+|---|---|
+| Max speed | 2.2 м/с |
+| Max yaw rate | 160°/с |
+| Mass | 1.0 кг |
+| Linear damping | 0.2 |
+| Angular damping | 1.5 |
+| BoxCollider | 0.15 × 0.12 × 0.25 (центр 0, 0.05, 0) |
 
 ---
 
-## 11. Каталог моделей и биндинги
+## 4. Обучение CNN-PPO на L-коридоре
 
-### Backend
+Это главный результат спринта.
 
-**Файл:** `src/ks0223-web-mac/backend/Services/ModelRegistryService.cs`
+### 4.1. Среда
 
-Расширения:
-- **Каталог:** `GET /api/models/catalog` — модели сгруппированы по имени, внутри — версии по дате.
-- **Биндинги:** привязка модели к конкретному target (clientId + runtimeMode + agentId):
-  - `GET /api/models/binding?clientId=...&runtimeMode=...` — текущая привязка
-  - `POST /api/models/bind` — установить привязку
-- **Автообнаружение metadata.json:** при `model install` backend автоматически читает `name`, `version`, `source` из сайдкар-файла `metadata.json` рядом с артефактом.
-- **Дедупликация:** загрузка модели с совпадающим name+version отклоняется.
+`ABCorridorVisionEnv` — Gymnasium env с Dict observation:
+- `image`: Box(0, 255, (84, 84, 3), uint8) — RGB с камеры робота
+- `ultrasonic`: Box(0, 1, (1,), float32) — расстояние до стены спереди / 5м
 
-### CLI
+Action: `Box(-1, 1, (2,), float32)` — `[throttle, steer]`.
 
-Новые команды:
-- `rusim model catalog` — сгруппированный список моделей
-- `rusim model binding --client-id ... --runtime-mode ...` — показать привязку
-- `rusim model bind <model_id> --client-id ... --runtime-mode ...` — привязать модель
+### 4.2. Reward shaping
 
-### Frontend
+Перебрал несколько вариантов. Первая наивная версия имела проблему — робот учился **облизывать внутреннюю стену** чтобы быстро добежать до финиша (racing line). Визуально это выглядело убого и для реального робота не годилось (в реальности такой проход в стене означает постоянный скрип и поломку сенсоров).
 
-`ModelControlPage` переработан: вместо плоского списка — выбор модели по имени и версии, отображение привязки, визуализация совместимости.
+Решение — **масштабировать goal bonus** от качества вождения:
+- Если ехал по центру весь эпизод → goal bonus 150
+- Если облизывал стены → goal bonus 30
+- Плюс на каждом шаге `lateral_penalty = −3 × (wall_proximity)²`, что делает стены ещё дороже
 
----
+**Финальная функция вознаграждения:**
 
-## 12. Выполненные задачи
+| Компонент | Формула | Назначение |
+|---|---|---|
+| Progress | `Δprogress × 20.0` | Продвижение по маршруту |
+| Waypoint bonus | `+10` за каждый новый waypoint | Проходить ключевые точки |
+| Lateral penalty | `−3.0 × wall_proximity²` | Жёсткий штраф у стены |
+| Speed reward | `0.1 × speed × center_bonus` | Скорость только по центру |
+| Steer jerk | `−0.05 × \|Δsteer\|` | Плавность руления |
+| Time penalty | `−0.02` за шаг | Не тупить |
+| **Goal bonus** | `30 + 120 × center_quality` | Бонус только за центровое вождение |
+| **ArUco bonus** | `+20` при детектировании маркера | Учить видеть маркер |
+| OOB penalty | `−30` (терминал) | Выезд за пределы |
+| Stall penalty | `−10` при 30 шагах застоя | Анти-залипание у стены |
 
-### 12.1. Gymnasium-среда ABCorridorEnv
+Экономически wall-riding стало невыгодно:
 
-- Создан файл `python/training/ab_corridor_env.py`
-- 8-мерное пространство наблюдений (все 5 каналов line tracker, ультразвук, скорость, ошибка курса)
-- 2-мерное пространство действий (throttle, steer)
-- Расчёт прогресса через проекцию на полилинию маршрута
-- Расчёт ошибки курса через вектор скорости и направление на следующий waypoint
+- По стене: −3×15 шагов = **−45** penalty + 30 goal = **net −15**
+- По центру: 0 penalty + 150 goal = **net +150**
 
-### 12.2. PPO-тренировка и ONNX-экспорт
+### 4.3. Результаты eval
 
-- Создан файл `python/training/train_ab_corridor.py`
-- PPO через stable-baselines3 с MLP [64, 64]
-- Экспорт обученной политики в ONNX (opset 11) через `torch.onnx.export`
-- Автоматическое сохранение checkpoints каждые 5000 шагов
-- Quick-eval встроен в конец скрипта
+Модель `cardboard-corridor-ppo-v6`, 250k шагов на CPU, тренировка ~7 часов.
 
-### 12.3. Reward shaping
+Формальный eval на 20 эпизодах с фиксированными seed:
 
-- 6-компонентная функция вознаграждения
-- Прогресс по маршруту как основной сигнал
-- Латеральный штраф квадратичной формы
-- Штраф за дёргание руля (steer jerk)
-- Терминальные бонусы/штрафы за финиш и выезд за пределы
+| Метрика | Значение |
+|---|---|
+| **Success Rate** | **20/20 = 100%** |
+| Avg Reward | 128.45 |
+| Avg Progress | ~95% |
+| Avg Lateral (mean) | 0.137 м |
+| Avg Lateral (max) | 0.300 м |
+| Steps to goal | ~13-14 |
 
-### 12.4. Улучшение визуальной среды
+**Mean lateral 0.137 м** при половине коридора 0.30 м — значит **робот реально едет ближе к центру**, не к стенам. Только в самом повороте кратко касается внутренней стены (max_lateral = 0.30), но это физически неизбежно — 15см робот в 60см коридоре на повороте 90° не развернётся без контакта.
 
-- Добавлено 8 новых деревьев (итого 12)
-- 6 кустов для покрытия грунта
-- 6 бордюрных сегментов вдоль дороги
-- 6 фонарных столбов с плафонами
-- 4 травяных участка для визуального разнообразия ландшафта
-
-### 12.5. Camera capture fix
-
-- Устранён MSAA mismatch между RenderTexture и URP pipeline
-- Добавлен `frontCamera.targetTexture = frontCameraRt`
-- Runtime shader seeding через Material-ассеты в Resources
-- `RuntimeMaterialCompatibility` переписан с fallback-цепочкой
-
-### 12.6. Cardboard Corridor трек
-
-- Процедурный L-коридор (40 см ширина, 25 см стены)
-- Регистрация в plugin catalog, дефолтный spawn и маршрут
-- ArUco-style finish marker
-
-### 12.7. Vision pipeline
-
-- `ABCorridorVisionEnv` — Gymnasium-среда с image (84×84×3) + ultrasonic
-- `train_cardboard_corridor.py` — CNN-PPO тренировка с ONNX экспортом
-- `evaluate_cardboard_corridor.py` — evaluation скрипт
-- Backend autopilot с автодетекцией vision ONNX-моделей
-
-### 12.8. Каталог моделей
-
-- Группировка по name/version в backend
-- Биндинги модели к target (clientId, runtimeMode, agentId)
-- CLI: `rusim model catalog`, `rusim model bind`, `rusim model binding`
-- Frontend: переработанный ModelControlPage
+Артефакт: `docs/report/prediploma-practice/evidence/eval_cnn_cardboard_v6_250k_20ep.json`
 
 ---
 
-## 13. Текущие ограничения
+## 5. Процедурный генератор трасс
 
-| Ограничение | Влияние | Планируемое решение |
-|-------------|---------|---------------------|
-| Тренировка только на CPU | Скорость ~79 fps, 200k шагов ~ 42 мин | GPU-ускорение в дальнейших экспериментах |
-| Нет domain randomization | Модель обучена на фиксированном маршруте, spawn-точке и освещении | Вариация spawn, освещения, текстур в Спринт 3 |
-| Нет реальной трассы для sim-to-real | Cardboard corridor готов в симуляторе, но реальный стенд пока не построен | Сборка физического стенда в Спринт 3 |
-| Оценка без collision-метрики | Столкновения не экспонируются runtime API | Добавить collision counter в runtime контракт |
-| Vision модель (CNN-PPO) ещё не достигла goal | successRate = 0%, avgProgress = 41% | Увеличить объём тренировки, доработать reward |
-| Multi-agent тренировка (4 агента) не протестирована | Инфраструктура `ABCorridorMultiAgentVecEnv` готова, но фактически все прогоны — 1 агент | Запустить 4-агентное обучение, измерить speedup |
+Одна фиксированная L-трасса — это базовый результат, но для диплома нужно показать что платформа гибкая и может генерировать произвольные картонные лабиринты.
+
+Сделан плагин `track.cardboard_maze.v1` + генератор `MazeGenerator.cs` — grid-based drunk-walk с бюджетом поворотов.
+
+### 5.1. Алгоритм
+
+1. Сетка 40×40 клеток, размер клетки = ширина коридора
+2. Старт в центре, направление +Z (север)
+3. На каждом шаге случайно: вперёд / налево / направо (если бюджет > 0)
+4. Если клетка впереди занята — backtrack
+5. Стены ставятся там, где соседняя клетка **не** в пути
+
+**Параметры** (задаются через `trackParams` в reset-payload, схема JSON Schema прилагается к плагину):
+
+- `maze.seed` (0–999999) — воспроизводимость
+- `maze.length_cells` (3–20) — длина пути
+- `maze.corridor_width_m` (0.40–1.00) — ширина коридора
+- `maze.left_turns`, `maze.right_turns` (0–10) — бюджет поворотов
+- `maze.wall_height_m` (0.15–0.40) — высота стен
+
+### 5.2. Примеры сгенерированных трасс
+
+**Maze seed=42, 8 клеток, ширина 60см** (дефолт) — простая L-форма с одним поворотом:
+
+![Maze seed 42](evidence/sprint2-screenshots/topdown-02-maze-seed42.png)
+
+**Maze seed=7, 10 клеток, ширина 60см** — зигзаг с тремя поворотами:
+
+![Maze seed 7](evidence/sprint2-screenshots/topdown-03-maze-seed7.png)
+
+**Maze seed=123, 12 клеток, ширина 80см, 3L/2R повороты** — длинный зигзаг в широком коридоре:
+
+![Maze wide](evidence/sprint2-screenshots/topdown-04-maze-wide.png)
+
+Каждый seed даёт уникальную планировку, повторение того же seed — идентичный maze.
+
+### 5.3. Python ↔ Unity: проблема PRNG
+
+Технический нюанс, на который потратил полдня. Python (Mersenne Twister) и C# (Knuth subtractive) используют разные генераторы псевдослучайных чисел. Один и тот же seed у них даёт разные последовательности → разные пути в maze.
+
+Результат был виден сразу — Python думал что goal на севере, а Unity размещал его на западе. Робот ехал в стену.
+
+Решение: **Python — единственный источник правды**. Python генерирует путь, кодирует как строку `"x0,z0;x1,z1;..."`, передаёт в Unity через `trackParams["maze.path_encoded"]`, Unity просто строит геометрию по этому пути (не использует свой PRNG вообще). Проверено — Python waypoints и Unity спавн совпадают.
 
 ---
 
-## 14. План на Спринт 3
+## 6. Эксперименты с обучением на maze
 
-| # | Задача | Приоритет |
-|---|--------|-----------|
-| 1 | 4-агентное параллельное обучение PPO: `--n-agents 4`, измерить реальный speedup vs 1-агентное | Высокий |
-| 2 | CNN-PPO тренировка на cardboard corridor (200k+ шагов) с vision env | Высокий |
-| 3 | Safety wrapper: ограничение скорости, аварийный стоп при подключении к реальному роботу | Высокий |
-| 4 | Сборка физического стенда из картонных стенок для sim-to-real тестов | Средний |
-| 5 | Тестирование vision-модели на реальном роботе KS0223 (если стенд готов) | Средний |
-| 6 | Domain randomization: вариация spawn position, освещения, текстур стен | Средний |
-| 7 | Sim-to-real gap analysis: сравнение поведения sensor-based PPO v2 в sim vs real | Низкий |
+Пробовал три подхода. Ни один не сошёлся к рабочей модели в рамках Sprint 2.
+
+**v2 (maze randomize, каждый эпизод новый лабиринт):**
+
+- 40k шагов, reward улучшился с −119 до −42
+- Но не дотянул до положительного reward
+- Unity регулярно зависал от регенерации геометрии каждые 1–2 секунды
+- Пробовал `--maze-regen-every 5` (один maze живёт 5 эпизодов) — помогло со стабильностью но не с обучением
+
+**v3 (фиксированный maze seed=42, без рандомизации):**
+
+- 15k шагов, reward застрял на −290..−300
+- Путь длиннее (8 клеток ≈ 4 метра против ~1.5м у L-коридора)
+- Случайная политика никогда не доходит до финиша за 400 шагов → нет положительного сигнала
+- Модель не может выйти из плато без curriculum
+
+**v4-v5 (transfer learning от v6 checkpoint):**
+
+- Попытка взять v6 policy (100% SR на L-коридоре) и дообучить на maze
+- v4: с обычным lr=3e-4 — модель скатилась с −48 до −162 (catastrophic forgetting)
+- v5: с уменьшенным lr=3e-5 и clip_range=0.1 — всё равно деградировала до −305
+
+**Вывод:** обучение CNN-PPO на длинном maze (4+ метра) с нуля или через прямой transfer не сходится без дополнительной инженерной работы. Нужно:
+
+1. **Curriculum learning** — сначала короткий maze (3-4 клетки), постепенно увеличивать длину
+2. **Улучшенный reward shaping** для длинных путей — сейчас penalties за 400 шагов перевешивают любой progress
+3. Возможно, pre-training на более простых задачах перед переходом на maze
+
+Эти задачи переносятся в Sprint 3. Для демонстрации sim-to-real используется модель `cardboard-corridor-ppo-v6`, которая работает на 100%.
+
+---
+
+## 7. WebUI-дополнения
+
+Параллельно с тренировкой добавил в WebUI функционал для работы с экспериментами.
+
+### 7.1. AutopilotPanel на вкладке Control
+
+Раньше чтобы запустить модель надо было идти во вкладку Models, там биндить, потом возвращаться на Control. Неудобно. Добавлен `AutopilotPanel` прямо под основным блоком управления:
+
+- Выбор модели и версии из каталога
+- Bind / Start / Stop прямо здесь
+- Статус: running/manual, последний throttle/steer, счётчики шагов
+
+![WebUI AutopilotPanel](evidence/sprint2-screenshots/webui-01-control-autopilot.png)
+
+Слева — ConnectionCard, в центре — Control Pad, справа внизу — AutopilotPanel.
+
+### 7.2. Collision и visibility toggles
+
+В диалоге Unity-настроек два переключателя:
+
+- `agents.collisions_enabled` — физические столкновения между машинками
+- `agents.see_each_other` — видят ли друг друга камерами
+
+Раньше было захардкожено. Теперь настраивается.
+
+### 7.3. Top-down камера
+
+Режим `top_down` в селекторе камер — вид сверху на всю трассу. `TrackOverviewCamera` автоматически рассчитывает bounds активного трека и фреймит его с изометрическим углом 55°.
+
+### 7.4. Настройки трека через JSON Schema
+
+Плагин `cardboard_maze` объявляет `parametersSchemaJson`. В WebUI при выборе трека, если у плагина непустая схема параметров, появляется кнопка «⚙ Settings» → попап со слайдерами (seed, длина, повороты, ширина). Пользователь может прямо из браузера сгенерировать maze с нужными параметрами и запустить.
+
+### 7.5. Runtime discovery
+
+Кнопка «Найти рантаймы» сканирует порты 8000–8007 и показывает живые Unity instances как кликабельные чипы. Полезно когда запущено несколько рантаймов (например через `rusim server up --count 4`).
+
+---
+
+## 8. Что сделано и что переносится в Спринт 3
+
+### Выполнено
+
+| # | Задача | Статус |
+|---|---|---|
+| 1 | Gymnasium-среда vision CNN (image + ultrasonic) | ✅ |
+| 2 | Reward shaping с center_quality, ArUco bonus, anti-wall-riding | ✅ |
+| 3 | Трек `track.cardboard_corridor.v1` (60см, L, 1:1) | ✅ |
+| 4 | Машинка KS0223 (15×25см, velocity-based, правильный collider) | ✅ |
+| 5 | Формальная KPI eval на 20 эпизодах | ✅ 100% SR |
+| 6 | Процедурный `track.cardboard_maze.v1` с JSON Schema | ✅ |
+| 7 | ArUco-детектор финиша (sim+real unified) | ✅ |
+| 8 | Vision ONNX backend autopilot | ✅ |
+| 9 | Model catalog (name→versions, bindings) | ✅ |
+| 10 | AutopilotPanel в Control tab | ✅ |
+| 11 | Collision/visibility toggles в WebUI | ✅ |
+| 12 | Top-down camera mode + TrackOverviewCamera | ✅ |
+| 13 | Runtime discovery в WebUI | ✅ |
+| 14 | TrackParamsDialog (schema-driven form) | ✅ |
+| 15 | GPU training (`--device cuda/mps/cpu`) | ✅ |
+| 16 | Vectorized training (`--num-envs`, `rusim server --count`) | ✅ |
+| 17 | Camera capture fix (MSAA + targetTexture) в standalone | ✅ |
+| 18 | `SetDirectDrive()` (continuous PWM control) | ✅ |
+| 19 | `vehicle.ks0223.v1` в plugin catalog | ✅ |
+
+### Не завершено (переносится в Sprint 3)
+
+- **Обучение CNN-PPO на процедурном maze** — эксперименты не сошлись, требуется curriculum learning и улучшение reward для длинных трасс
+- **Калибровка физики sim ↔ real** — замеры реального KS0223
+- **Перенос модели на реальный робот** — ONNX inference + mapping continuous → discrete commands
+- **Domain randomization** — случайные цвета стен, освещение, шум камеры
+- **Sim-to-real gap analysis**
+- **Safety wrapper** — ограничение скорости, аварийный стоп по ультразвуку
+- **Тесты на реальном картонном треке**
