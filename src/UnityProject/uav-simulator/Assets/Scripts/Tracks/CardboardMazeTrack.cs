@@ -126,33 +126,7 @@ namespace UavSimulator.Tracks
                 SetMaterial(go, CardboardBase, 0.05f);
                 var collider = go.GetComponent<Collider>();
                 if (collider != null) collider.material = wallPhysMat;
-                AddCorrugationStripes(go, wall);
-            }
-        }
-
-        private void AddCorrugationStripes(GameObject wall, WallSegment seg)
-        {
-            bool isZWall = seg.Scale.x < seg.Scale.z;
-            float wallLen = isZWall ? seg.Scale.z : seg.Scale.x;
-            float stripeWidth = 0.01f;
-            int stripeCount = Mathf.FloorToInt(wallLen / (stripeWidth * 2f));
-            for (int i = 0; i < stripeCount; i++)
-            {
-                float offset = -wallLen * 0.5f + stripeWidth + i * stripeWidth * 2f;
-                Vector3 scale, pos;
-                if (isZWall)
-                {
-                    scale = new Vector3(wallThickness + 0.001f, wallHeight * 0.95f, stripeWidth);
-                    pos = seg.Position + new Vector3(0f, 0f, offset);
-                }
-                else
-                {
-                    scale = new Vector3(stripeWidth, wallHeight * 0.95f, wallThickness + 0.001f);
-                    pos = seg.Position + new Vector3(offset, 0f, 0f);
-                }
-                var stripe = CreateBox($"{wall.name}_s{i}", scale, pos);
-                SetMaterial(stripe, CardboardStripe, 0.03f);
-                DisableCollider(stripe);
+                // No corrugation stripes — too expensive to regenerate every episode
             }
         }
 
