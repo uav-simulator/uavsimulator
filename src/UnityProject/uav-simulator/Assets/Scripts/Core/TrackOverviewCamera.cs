@@ -10,11 +10,11 @@ namespace UavSimulator.Core
     /// </summary>
     public sealed class TrackOverviewCamera : MonoBehaviour
     {
-        [SerializeField] private float isoPitchDeg = 55f;      // 0 = top-down, 90 = horizontal
-        [SerializeField] private float isoYawDeg = 15f;         // slight rotation for depth
-        [SerializeField] private float paddingRatio = 0.25f;    // extra margin around bounds
+        [SerializeField] private float isoPitchDeg = 75f;      // closer to top-down (90=straight down)
+        [SerializeField] private float isoYawDeg = 10f;         // slight rotation for depth
+        [SerializeField] private float paddingRatio = 0.5f;     // 50% extra margin to always see full track
         [SerializeField] private float minHeight = 1.5f;
-        [SerializeField] private float maxHeight = 30f;
+        [SerializeField] private float maxHeight = 50f;
 
         // Fallback bounds when no track geometry found (L-corridor defaults)
         private static readonly Vector3 FallbackCenter = new Vector3(0.30f, 0f, -0.40f);
@@ -112,10 +112,10 @@ namespace UavSimulator.Core
             Bounds combined = default;
             foreach (var r in renderers)
             {
-                // Skip huge surrounding floor — it'd inflate the bounds beyond the actual corridor.
-                // Heuristic: skip renderers whose XZ area > 3m² (surrounding floor is 2.5x2.5 = 6.25m²).
-                var size = r.bounds.size;
-                if (size.x * size.z > 3.0f) continue;
+                // Skip the surrounding gray floor (named "SurroundFloor") — it'd inflate bounds
+                if (r.gameObject != null && r.gameObject.name.StartsWith("SurroundFloor")) continue;
+                // Skip track light (no renderer usually, but be safe)
+                if (r.gameObject != null && r.gameObject.name.StartsWith("TrackLight")) continue;
 
                 if (!hasBounds)
                 {
