@@ -76,6 +76,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--img-size", type=int, default=84)
     p.add_argument("--resume", default="", help="Path to SB3 checkpoint .zip to resume from")
     p.add_argument("--no-export-onnx", action="store_true")
+    p.add_argument("--maze-randomize", action="store_true",
+                   help="Randomize maze params each episode (for track.cardboard_maze.v1)")
     p.add_argument(
         "--device",
         default="auto",
@@ -172,6 +174,7 @@ def _make_env(
     img_size: int,
     rank: int,
     seed: int,
+    maze_randomize: bool = False,
 ):
     """Factory for creating a single env (used by SubprocVecEnv)."""
     def _init():
@@ -182,6 +185,7 @@ def _make_env(
             oob_margin_m=0.10,
             time_scale=time_scale,
             img_size=img_size,
+            maze_randomize=maze_randomize,
         )
         env.reset(seed=seed + rank)
         return env
@@ -226,6 +230,7 @@ def main() -> int:
         oob_margin_m=0.10,
         time_scale=args.time_scale,
         img_size=args.img_size,
+        maze_randomize=args.maze_randomize,
     )
     print(f"  track:           {probe_env._reset_config['selectedTrackId']}")
     print(f"  corridor_width:  {probe_env.corridor_width_m:.2f}m")
@@ -253,6 +258,7 @@ def main() -> int:
                 img_size=args.img_size,
                 rank=i,
                 seed=args.seed,
+                maze_randomize=args.maze_randomize,
             )
             for i in range(num_envs)
         ])
@@ -370,6 +376,7 @@ def main() -> int:
         oob_margin_m=0.10,
         time_scale=1.0,
         img_size=args.img_size,
+        maze_randomize=args.maze_randomize,
     )
     results = []
     for ep in range(5):
