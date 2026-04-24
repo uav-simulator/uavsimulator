@@ -75,6 +75,10 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--img-size", type=int, default=84)
     p.add_argument("--resume", default="", help="Path to SB3 checkpoint .zip to resume from")
+    p.add_argument("--start-timestep", type=int, default=0,
+                   help="Initial num_timesteps value after --resume. 0 (default) makes curriculum "
+                        "start at stage A regardless of loaded checkpoint. Set to the checkpoint's "
+                        "original step count to continue curriculum progression.")
     p.add_argument("--no-export-onnx", action="store_true")
     p.add_argument("--maze-randomize", action="store_true",
                    help="Randomize maze params each episode (for track.cardboard_maze.v1)")
@@ -297,9 +301,9 @@ def main() -> int:
         model.lr_schedule = get_schedule_fn(args.learning_rate)
         model.clip_range = get_schedule_fn(args.clip_range)
         model.ent_coef = args.ent_coef
-        model.num_timesteps = 0  # fresh counter so curriculum sees step 0
+        model.num_timesteps = args.start_timestep
         print(f"  resume: lr={args.learning_rate} clip={args.clip_range} "
-              f"ent_coef={args.ent_coef} (timesteps reset to 0)")
+              f"ent_coef={args.ent_coef} (timesteps reset to {args.start_timestep})")
     else:
         print(f"Creating new PPO model with MultiInputPolicy (device={device_str})...")
         model = PPO(
