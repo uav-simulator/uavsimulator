@@ -1,0 +1,159 @@
+{
+  "kind": "cardboard-corridor-eval",
+  "modelName": "cardboard-corridor-policy",
+  "modelVersion": "v1.0.0",
+  "modelKind": "ppo",
+  "modelPath": "<repo>/python/training/artifacts/cardboard-corridor-ppo-v6/1.0.0/checkpoints/cardboard_cnn_ppo_250000_steps.zip",
+  "scenario": "<repo>/configs/scenarios/cardboard-maze-stageA-eval.yaml",
+  "episodes": 10,
+  "successCount": 0,
+  "successRate": 0.0,
+  "avgReward": 18.542,
+  "avgProgress": 0.6684,
+  "avgSteps": 12.7,
+  "terminationCounts": {
+    "runtime_done": 10
+  },
+  "episodeData": [
+    {
+      "episode": 0,
+      "seed": 7000,
+      "steps": 8,
+      "reward": 18.662,
+      "progress": 0.671,
+      "lateralDistance": 0.0223,
+      "termination": "runtime_done",
+      "position": {
+        "x": 1.610449194908142,
+        "y": 0.019999980926513672,
+        "z": 0.02228769287467003
+      }
+    },
+    {
+      "episode": 1,
+      "seed": 7001,
+      "steps": 10,
+      "reward": 21.353,
+      "progress": 0.8169,
+      "lateralDistance": 0.0192,
+      "termination": "runtime_done",
+      "position": {
+        "x": 1.9606473445892334,
+        "y": 0.019999992102384567,
+        "z": 0.019150134176015854
+      }
+    },
+    {
+      "episode": 2,
+      "seed": 7002,
+      "steps": 7,
+      "reward": 16.913,
+      "progress": 0.6134,
+      "lateralDistance": 0.1223,
+      "termination": "runtime_done",
+      "position": {
+        "x": 1.4722652435302734,
+        "y": 0.01999976485967636,
+        "z": 0.12232980877161026
+      }
+    },
+    {
+      "episode": 3,
+      "seed": 7003,
+      "steps": 10,
+      "reward": 19.086,
+      "progress": 0.687,
+      "lateralDistance": 0.0209,
+      "termination": "runtime_done",
+      "position": {
+        "x": 1.6488463878631592,
+        "y": 0.019999995827674866,
+        "z": 0.020861182361841202
+      }
+    },
+    {
+      "episode": 4,
+      "seed": 7004,
+      "steps": 10,
+      "reward": 18.086,
+      "progress": 0.6381,
+      "lateralDistance": 0.0191,
+      "termination": "runtime_done",
+      "position": {
+        "x": 1.5313364267349243,
+        "y": 0.0199999138712883,
+        "z": 0.019081473350524902
+      }
+    },
+    {
+      "episode": 5,
+      "seed": 7005,
+      "steps": 32,
+      "reward": 17.996,
+      "progress": 0.5896,
+      "lateralDistance": 0.0181,
+      "termination": "runtime_done",
+      "position": {
+        "x": 1.4150270223617554,
+        "y": 0.020000014454126358,
+        "z": 0.018110038712620735
+      }
+    },
+    {
+      "episode": 6,
+      "seed": 7006,
+      "steps": 21,
+      "reward": 17.792,
+      "progress": 0.638,
+      "lateralDistance": 0.0351,
+      "termination": "runtime_done",
+      "position": {
+        "x": 1.53121817111969,
+        "y": 0.019999802112579346,
+        "z": 0.035109519958496094
+      }
+    },
+    {
+      "episode": 7,
+      "seed": 7007,
+      "steps": 10,
+      "reward": 18.046,
+      "progress": 0.6381,
+      "lateralDistance": 0.02,
+      "termination": "runtime_done",
+      "position": {
+        "x": 1.531351089477539,
+        "y": 0.019999932497739792,
+        "z": 0.019961096346378326
+      }
+    },
+    {
+      "episode": 8,
+      "seed": 7008,
+      "steps": 11,
+      "reward": 20.352,
+      "progress": 0.7524,
+      "lateralDistance": 0.0263,
+      "termination": "runtime_done",
+      "position": {
+        "x": 1.805872917175293,
+        "y": 0.020000003278255463,
+        "z": 0.026272378861904144
+      }
+    },
+    {
+      "episode": 9,
+      "seed": 7009,
+      "steps": 8,
+      "reward": 17.13,
+      "progress": 0.6399,
+      "lateralDistance": 0.1476,
+      "termination": "runtime_done",
+      "position": {
+        "x": 1.5358538627624512,
+        "y": 0.020000003278255463,
+        "z": 0.14763131737709045
+      }
+    }
+  ]
+}
