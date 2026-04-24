@@ -1,0 +1,22 @@
+scenarioId: robustness-medium_L_4c
+displayName: Robustness medium_L_4c
+version: 1
+runtime: {runtimeMode: unity-sim, headless: false, timeScale: 1.0, seed: 42}
+world:
+  trackId: track.cardboard_maze.v1
+  params:
+    maze.seed: 42
+    maze.length_cells: 4
+    maze.corridor_width_m: 0.60
+    maze.left_turns: 0
+    maze.right_turns: 1
+    maze.wall_height_m: 0.25
+vehicle: {vehicleId: vehicle.ks0223.v1, params: {camera.profile: high}}
+sensors:
+  camera: {enabled: true, profile: high}
+  telemetry: {profile: default}
+  lineTracker: {enabled: false}
+  ultrasonic: {enabled: true}
+route: {params: {goal.radius_m: 0.24}, loop: false, reachDistanceM: 0.24}
+agents: {count: 1, isolated: true, seeEachOther: false}
+logging: {enabled: true, tag: robustness-medium_L_4c}
