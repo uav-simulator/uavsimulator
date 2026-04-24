@@ -105,3 +105,6 @@ dist/
 # Python training artifacts
 python/training/artifacts/
 python/training/logs/
+
+# Local IDE/agent cache
+.claude/
