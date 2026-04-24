@@ -81,6 +81,9 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--maze-regen-every", type=int, default=1,
                    help="Regenerate maze only every N resets (default 1 = every reset). "
                         "Higher values let the robot train multiple episodes on the same maze.")
+    p.add_argument("--curriculum", action="store_true",
+                   help="Enable staged maze curriculum (overrides --maze-randomize ranges "
+                        "from easy to full over training timesteps). Implies --maze-randomize.")
     p.add_argument("--aruco-goal", action="store_true",
                    help="Enable ArUco marker as parallel goal signal (+20 bonus if detected)")
     p.add_argument("--aruco-distance-m", type=float, default=0.50,
@@ -207,6 +210,8 @@ def _make_env(
 
 def main() -> int:
     args = parse_args()
+    if args.curriculum:
+        args.maze_randomize = True
     output_dir = resolve_artifact_dir(ROOT, args.output_dir, args.model_name, args.model_version)
     log_dir = Path(args.log_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -287,6 +292,14 @@ def main() -> int:
     if args.resume:
         print(f"Resuming from checkpoint: {args.resume}")
         model = PPO.load(args.resume, env=train_env, device=device_str)
+        from stable_baselines3.common.utils import get_schedule_fn
+        model.learning_rate = args.learning_rate
+        model.lr_schedule = get_schedule_fn(args.learning_rate)
+        model.clip_range = get_schedule_fn(args.clip_range)
+        model.ent_coef = args.ent_coef
+        model.num_timesteps = 0  # fresh counter so curriculum sees step 0
+        print(f"  resume: lr={args.learning_rate} clip={args.clip_range} "
+              f"ent_coef={args.ent_coef} (timesteps reset to 0)")
     else:
         print(f"Creating new PPO model with MultiInputPolicy (device={device_str})...")
         model = PPO(
@@ -317,6 +330,11 @@ def main() -> int:
             name_prefix="cardboard_cnn_ppo",
         ),
     ]
+
+    if args.curriculum:
+        from training.maze_curriculum import MazeCurriculumCallback
+        callbacks.append(MazeCurriculumCallback())
+        print("  Curriculum: staged maze difficulty enabled (A-easy → B → C → D-full)")
 
     print(f"\nStarting training for {args.total_timesteps} timesteps...")
     t0 = time.time()

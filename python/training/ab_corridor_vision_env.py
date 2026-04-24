@@ -276,6 +276,11 @@ class ABCorridorVisionEnv(gym.Env):
         except Exception:
             return [(0.0, 0.0), (0.0, 0.60)]
 
+    def set_maze_param_ranges(self, ranges: dict) -> None:
+        """Update the ranges sampled by maze randomization (for curriculum learning)."""
+        self._maze_param_ranges = dict(ranges)
+        self._maze_cached_params = None
+
     def _apply_maze_randomization(self, config: dict) -> None:
         """Sample random maze params, inject into trackParams, regenerate waypoints locally.
 
