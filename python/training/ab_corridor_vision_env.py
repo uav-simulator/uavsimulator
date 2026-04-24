@@ -409,8 +409,12 @@ class ABCorridorVisionEnv(gym.Env):
         self._update_kinematics(step)
 
         obs = self._build_observation(step)
-        reward, terminated, truncated = self._compute_reward(step, steer)
+        reward, terminated, truncated, breakdown = self._compute_reward(step, steer)
         info = self._build_info(step)
+        # Reserved key: reward_breakdown — kept stable because SubprocVecEnv pickles
+        # info across process boundaries and downstream tools (diagnostics,
+        # TensorBoard callbacks) rely on this schema. Values are plain Python floats.
+        info["reward_breakdown"] = breakdown
 
         self._prev_steer = steer
         if self._step_count >= self.max_steps and not terminated:
@@ -558,7 +562,18 @@ class ABCorridorVisionEnv(gym.Env):
                   jerk_penalty + speed_reward + time_penalty +
                   goal_bonus + oob_penalty + stall_penalty)
         self._last_termination_reason = termination_reason
-        return float(reward), terminated, False
+        breakdown = {
+            "progress": float(progress_reward),
+            "waypoint_bonus": float(waypoint_bonus),
+            "lateral_penalty": float(lateral_penalty),
+            "steer_jerk": float(jerk_penalty),
+            "speed": float(speed_reward),
+            "time": float(time_penalty),
+            "goal_bonus": float(goal_bonus),
+            "oob_penalty": float(oob_penalty),
+            "stall_penalty": float(stall_penalty),
+        }
+        return float(reward), terminated, False, breakdown
 
     # ── route math ──
 
