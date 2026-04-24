@@ -1,21 +1,84 @@
 {
   "tag": "corridor",
   "scenario": "<repo>/configs/scenarios/cardboard-corridor-v1.yaml",
-  "pose": {
-    "position": {
-      "x": 0.0,
-      "y": 0.009999999776482582,
-      "z": -0.8500000238418579
+  "raw_telemetry": {
+    "pose": {
+      "position": {
+        "x": 0.0,
+        "y": 0.009999999776482582,
+        "z": -0.8500000238418579
+      },
+      "rotation": {
+        "x": 0.0,
+        "y": 0.0,
+        "z": 0.0,
+        "w": 1.0
+      }
     },
-    "rotation": {
+    "linearVelocity": {
       "x": 0.0,
       "y": 0.0,
-      "z": 0.0,
-      "w": 1.0
-    }
+      "z": 0.0
+    },
+    "angularVelocity": {
+      "x": 0.0,
+      "y": 0.0,
+      "z": 0.0
+    },
+    "speed": 0.0,
+    "timestamp": 1777027009181,
+    "timeBase": "unix_ms",
+    "telemetry": [
+      {
+        "key": "drive.left_pwm_norm",
+        "value": "0"
+      },
+      {
+        "key": "drive.right_pwm_norm",
+        "value": "0"
+      },
+      {
+        "key": "sensor.speedometer.mps",
+        "value": "0"
+      },
+      {
+        "key": "sensor.ultrasonic.front.m",
+        "value": "0.12"
+      },
+      {
+        "key": "sensor.line_tracker.s1_norm",
+        "value": "0"
+      },
+      {
+        "key": "sensor.line_tracker.s2_norm",
+        "value": "0"
+      },
+      {
+        "key": "sensor.line_tracker.s3_norm",
+        "value": "0"
+      },
+      {
+        "key": "sensor.line_tracker.s4_norm",
+        "value": "0"
+      },
+      {
+        "key": "sensor.line_tracker.s5_norm",
+        "value": "0"
+      },
+      {
+        "key": "power.battery.voltage_v",
+        "value": "8.4"
+      },
+      {
+        "key": "power.battery.current_a",
+        "value": "0.114"
+      },
+      {
+        "key": "power.motor.estimated_w",
+        "value": "0.96"
+      }
+    ]
   },
-  "ultrasonic_front_m": 0.12,
-  "speed": 0.0,
   "trackParams": [
     {
       "key": "spawn.position",

@@ -13,7 +13,7 @@ Script: `python/diagnostics/compare_spawn_frames.py`
 | y               | 0.010                  | 0.010                  | 0.000               |
 | z               | -0.850                 | 0.000                  | -0.850 (irrelevant — different coordinate systems) |
 | rotation.y (quat) | 0.000 (yaw=0°)       | 0.707 (yaw≈90°)        | **90° yaw difference** |
-| ultrasonic front | 0.12 m               | 0.66 m                 | **+0.54 m difference** |
+| ultrasonic front | 0.12 m               | 0.66 m                 | **+0.54 m difference** (see `raw_telemetry.telemetry[].key=="sensor.ultrasonic.front.m"`) |
 
 **Spawn position is consistent (y=0.010 in both)**. The z-offset difference is meaningless — the maze track origin is different from the corridor track origin. The XY position within each track is (0,0) in both cases. Spawn itself is not the problem.
 

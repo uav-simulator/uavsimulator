@@ -25,25 +25,24 @@ def dump(scenario_path: Path, out_dir: Path, tag: str):
     cfg["seed"] = 42
     step = client.reset(cfg)
 
-    pose = step.get("telemetry", {}).get("pose", {})
-    ultra = step.get("telemetry", {}).get("sensors", {}).get("ultrasonic", {})
     frame_b64 = step.get("frame", {}).get("dataBase64", "")
-
     if frame_b64:
         img = Image.open(BytesIO(base64.b64decode(frame_b64)))
         img.save(out_dir / f"{tag}_frame.png")
         print(f"  {tag}: frame saved ({img.size})")
+    else:
+        print(f"  {tag}: WARNING no frame in /step response (camera streaming disabled?)")
 
     telemetry = {
         "tag": tag,
         "scenario": str(scenario_path),
-        "pose": pose,
-        "ultrasonic": ultra,
+        "raw_telemetry": step.get("state", {}),
         "trackParams": cfg.get("trackParams", []),
     }
     with (out_dir / f"{tag}_telemetry.json").open("w") as f:
         json.dump(telemetry, f, indent=2)
-    print(f"  {tag}: pose={pose} ultrasonic={ultra}")
+    pose = step.get("state", {}).get("pose", {})
+    print(f"  {tag}: pose={pose}")
 
 
 def main() -> int:
