@@ -1,0 +1,49 @@
+{
+  "tag": "corridor",
+  "scenario": "<repo>/configs/scenarios/cardboard-corridor-v1.yaml",
+  "pose": {
+    "position": {
+      "x": 0.0,
+      "y": 0.009999999776482582,
+      "z": -0.8500000238418579
+    },
+    "rotation": {
+      "x": 0.0,
+      "y": 0.0,
+      "z": 0.0,
+      "w": 1.0
+    }
+  },
+  "ultrasonic_front_m": 0.12,
+  "speed": 0.0,
+  "trackParams": [
+    {
+      "key": "spawn.position",
+      "value": "0.000,0.010,-0.850"
+    },
+    {
+      "key": "corridor.width_m",
+      "value": "0.6"
+    },
+    {
+      "key": "goal.radius_m",
+      "value": "0.25"
+    },
+    {
+      "key": "obstacle.count",
+      "value": "0"
+    },
+    {
+      "key": "route.waypoints",
+      "value": "0.000,0.000,-0.550;0.000,0.000,-0.150;0.300,0.000,0.000;0.600,0.000,0.000"
+    },
+    {
+      "key": "route.loop",
+      "value": "false"
+    },
+    {
+      "key": "route.reach_distance_m",
+      "value": "0.25"
+    }
+  ]
+}

@@ -1,0 +1,49 @@
+{
+  "tag": "maze_stageA",
+  "scenario": "<repo>/configs/scenarios/cardboard-maze-stageA-eval.yaml",
+  "pose": {
+    "position": {
+      "x": 0.0,
+      "y": 0.009999999776482582,
+      "z": 0.0
+    },
+    "rotation": {
+      "x": 0.0,
+      "y": 0.7071068286895752,
+      "z": 0.0,
+      "w": 0.7071068286895752
+    }
+  },
+  "ultrasonic_front_m": 0.66,
+  "speed": 0.0,
+  "trackParams": [
+    {
+      "key": "goal.radius_m",
+      "value": "0.24"
+    },
+    {
+      "key": "maze.seed",
+      "value": "42"
+    },
+    {
+      "key": "maze.length_cells",
+      "value": "5"
+    },
+    {
+      "key": "maze.corridor_width_m",
+      "value": "0.6"
+    },
+    {
+      "key": "maze.left_turns",
+      "value": "0"
+    },
+    {
+      "key": "maze.right_turns",
+      "value": "1"
+    },
+    {
+      "key": "maze.wall_height_m",
+      "value": "0.25"
+    }
+  ]
+}
