@@ -422,6 +422,7 @@ public sealed class AutopilotService
         private readonly ILogger logger;
         private readonly InferenceSession? onnxSession = null;
         private readonly PredictorMode mode = PredictorMode.FlatVector;
+        private readonly bool isDiscreteAction = false;
         private readonly string? flatInputName = null;
         private readonly int flatInputSize = 0;
         private readonly string? imageInputName = null;
@@ -461,11 +462,14 @@ public sealed class AutopilotService
                     }
                 }
 
+                isDiscreteAction = TryDetectDiscreteActionMode(onnxSession, model.MetadataPath);
+
                 this.logger.LogInformation(
-                    "Loaded ONNX model {ModelId} from {Path} with autopilot mode {Mode}",
+                    "Loaded ONNX model {ModelId} from {Path} with autopilot mode {Mode} (discrete={IsDiscrete})",
                     model.ModelId,
                     model.ArtifactPath,
-                    mode);
+                    mode,
+                    isDiscreteAction);
             }
             catch (Exception ex)
             {
@@ -477,6 +481,19 @@ public sealed class AutopilotService
         }
 
         public bool RequiresFrame => mode == PredictorMode.ImageAndUltrasonic;
+
+        // Mirror of python/training/discrete_action_wrapper.py ACTION_TABLE.
+        // Order: 0=DirStop, 1=DirForward, 2=DirBack, 3=DirLeft, 4=DirRight.
+        // Values picked so that resolution via AutopilotService.ResolveCommand maps
+        // each row back to its labeled command (asserted in train wrapper test).
+        private static readonly (float Throttle, float Steer)[] DiscreteActionTable =
+        [
+            (0.0f,  0.0f),
+            (+0.7f, 0.0f),
+            (-0.7f, 0.0f),
+            (0.0f, +0.9f),
+            (0.0f, -0.9f),
+        ];
 
         public (float throttle, float steer) Predict(IReadOnlyDictionary<string, string> telemetry, byte[]? frameBytes)
         {
@@ -494,6 +511,27 @@ public sealed class AutopilotService
                 if (output.Length == 0)
                 {
                     throw new InvalidOperationException("ONNX model produced an empty action tensor");
+                }
+
+                // Discrete-categorical policy: output is (batch, 5) action logits.
+                // Argmax selects the discrete action; map through DiscreteActionTable
+                // to a representative (throttle, steer) tuple that downstream
+                // safety filter + ResolveCommand will route to the same command on
+                // the real robot. Lets us deploy v9-style discrete policies without
+                // changing the safety/ramp/E-stop pipeline.
+                if (isDiscreteAction && output.Length == DiscreteActionTable.Length)
+                {
+                    var bestIdx = 0;
+                    var bestVal = output[0];
+                    for (var i = 1; i < output.Length; i++)
+                    {
+                        if (output[i] > bestVal)
+                        {
+                            bestVal = output[i];
+                            bestIdx = i;
+                        }
+                    }
+                    return DiscreteActionTable[bestIdx];
                 }
 
                 var throttle = Math.Clamp(output[0], -1f, 1f);
@@ -536,6 +574,52 @@ public sealed class AutopilotService
             }
 
             return [NamedOnnxValue.CreateFromTensor(flatInputName!, tensor)];
+        }
+
+        private static bool TryDetectDiscreteActionMode(InferenceSession session, string metadataPath)
+        {
+            // 1. Prefer metadata.actionSchema.type == "discrete-categorical"
+            try
+            {
+                if (!string.IsNullOrWhiteSpace(metadataPath) && File.Exists(metadataPath))
+                {
+                    using var doc = JsonDocument.Parse(File.ReadAllText(metadataPath));
+                    if (doc.RootElement.TryGetProperty("actionSchema", out var actionSchema))
+                    {
+                        if (actionSchema.TryGetProperty("type", out var typeProp) &&
+                            typeProp.ValueKind == JsonValueKind.String &&
+                            string.Equals(typeProp.GetString(), "discrete-categorical", StringComparison.OrdinalIgnoreCase))
+                        {
+                            return true;
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                // metadata parse failure → fall through to ONNX shape heuristic
+            }
+
+            // 2. Fallback: detect by ONNX output shape — single output of trailing dim 5
+            var firstOutput = session.OutputMetadata.FirstOrDefault();
+            if (firstOutput.Value is null)
+            {
+                return false;
+            }
+            var dims = firstOutput.Value.Dimensions;
+            if (dims is null || dims.Length == 0)
+            {
+                return false;
+            }
+            // expect (batch, 5) — last positive dim equals 5
+            for (var i = dims.Length - 1; i >= 0; i--)
+            {
+                if (dims[i] > 0)
+                {
+                    return dims[i] == DiscreteActionTable.Length;
+                }
+            }
+            return false;
         }
 
         private static bool TryResolveVisionMode(
