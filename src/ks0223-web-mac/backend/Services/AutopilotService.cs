@@ -712,27 +712,7 @@ public sealed class AutopilotService
         }
 
         private static float ExtractNormalizedUltrasonic(IReadOnlyDictionary<string, string> telemetry)
-        {
-            var frontMeters = ParseValue(
-                telemetry,
-                "sensor.ultrasonic.front.m",
-                "ultrasonic.front_m",
-                "ultrasonic.front.m");
-            if (frontMeters <= 0f)
-            {
-                var distanceCentimeters = ParseValue(
-                    telemetry,
-                    "sensor.range.front_cm",
-                    "ultrasonic.distance_cm",
-                    "ultrasonic.scan.center_cm");
-                if (distanceCentimeters > 0f)
-                {
-                    frontMeters = distanceCentimeters / 100f;
-                }
-            }
-
-            return Clamp01(frontMeters / 5f);
-        }
+            => Clamp01(ExtractFrontMeters(telemetry) / 5f);
 
         private static int ResolveInputSize(int[]? dimensions)
         {
