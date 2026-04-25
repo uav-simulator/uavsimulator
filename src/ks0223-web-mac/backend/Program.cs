@@ -2,6 +2,7 @@ using Ks0223.Web.Backend.Hubs;
 using Ks0223.Web.Backend.Models;
 using Ks0223.Web.Backend.Options;
 using Ks0223.Web.Backend.Services;
+using Microsoft.Extensions.Options;
 using System.Text.Json;
 var builder = WebApplication.CreateBuilder(args);
 if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("ASPNETCORE_URLS")))
@@ -13,6 +14,7 @@ builder.Services.Configure<PiConnectionOptions>(builder.Configuration.GetSection
 builder.Services.Configure<LoggingOptions>(builder.Configuration.GetSection("SessionLogs"));
 builder.Services.Configure<CameraOptions>(builder.Configuration.GetSection("Camera"));
 builder.Services.Configure<SensorBridgeOptions>(builder.Configuration.GetSection("SensorBridge"));
+builder.Services.Configure<AutopilotSafetyOptions>(builder.Configuration.GetSection("AutopilotSafety"));
 
 builder.Services.AddSignalR();
 builder.Services.AddHttpClient();
@@ -43,6 +45,11 @@ builder.Services.AddSingleton<SessionLogger>();
 builder.Services.AddSingleton<TelemetryParser>();
 builder.Services.AddSingleton<RuntimeSessionManager>();
 builder.Services.AddSingleton<ModelRegistryService>();
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddSingleton<AutopilotSafetyFilter>(sp => new AutopilotSafetyFilter(
+    sp.GetRequiredService<IOptions<AutopilotSafetyOptions>>().Value,
+    sp.GetRequiredService<TimeProvider>(),
+    sp.GetRequiredService<ILogger<AutopilotSafetyFilter>>()));
 builder.Services.AddSingleton<AutopilotService>();
 builder.Services.AddHostedService(serviceProvider => serviceProvider.GetRequiredService<RuntimeSessionManager>());
 
