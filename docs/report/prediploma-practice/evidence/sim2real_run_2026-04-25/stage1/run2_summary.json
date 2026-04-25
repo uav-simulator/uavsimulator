@@ -1,0 +1,12 @@
+{
+  "run": 2,
+  "throttle_max": 0.5,
+  "duration_s": 10.262,
+  "final_reason": "estop_triggered",
+  "ultrasonic_start_cm": 80.51,
+  "ultrasonic_end_cm": 8.42,
+  "delta_cm": 72.09,
+  "steps_total": 68,
+  "snapshots_count": 10,
+  "estop_count": 1
+}
