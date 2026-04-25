@@ -151,7 +151,8 @@ public sealed class AutopilotService
 
                 var (rawThrottle, rawSteer) = running.Predictor!.Predict(telemetry.Flat, frameBytes);
                 var frontM = ExtractFrontMeters(telemetry.Flat);
-                var decision = safetyFilter.Apply(rawThrottle, rawSteer, frontM);
+                var (leftM, rightM) = ExtractSideMeters(telemetry.Flat);
+                var decision = safetyFilter.Apply(rawThrottle, rawSteer, frontM, leftM, rightM);
                 var throttle = decision.Throttle;
                 var steer = decision.Steer;
                 var command = decision.EStopActive ? "DirStop" : ResolveCommand(throttle, steer);
@@ -342,6 +343,13 @@ public sealed class AutopilotService
         }
 
         return frontMeters;
+    }
+
+    private static (float LeftM, float RightM) ExtractSideMeters(IReadOnlyDictionary<string, string> flat)
+    {
+        var leftCm = ParseValue(flat, "sensor.ultrasonic.left.cm", "ultrasonic.scan.left_cm");
+        var rightCm = ParseValue(flat, "sensor.ultrasonic.right.cm", "ultrasonic.scan.right_cm");
+        return (leftCm > 0f ? leftCm / 100f : 0f, rightCm > 0f ? rightCm / 100f : 0f);
     }
 
     private static float ParseValue(IReadOnlyDictionary<string, string> flat, params string[] keys)
