@@ -484,15 +484,17 @@ public sealed class AutopilotService
 
         // Mirror of python/training/discrete_action_wrapper.py ACTION_TABLE.
         // Order: 0=DirStop, 1=DirForward, 2=DirBack, 3=DirLeft, 4=DirRight.
-        // Values picked so that resolution via AutopilotService.ResolveCommand maps
-        // each row back to its labeled command (asserted in train wrapper test).
+        // DirLeft/Right include forward throttle 0.5 so Unity training env
+        // (Ackermann vehicle) can actually move-while-turning. After safety
+        // throttle clip (ThrottleMax=0.5 default) and ResolveCommand routing,
+        // each row maps to its labeled real-robot command.
         private static readonly (float Throttle, float Steer)[] DiscreteActionTable =
         [
             (0.0f,  0.0f),
-            (+0.7f, 0.0f),
-            (-0.7f, 0.0f),
-            (0.0f, +0.9f),
-            (0.0f, -0.9f),
+            (+1.0f, 0.0f),
+            (-1.0f, 0.0f),
+            (+0.5f, +1.0f),
+            (+0.5f, -1.0f),
         ];
 
         public (float throttle, float steer) Predict(IReadOnlyDictionary<string, string> telemetry, byte[]? frameBytes)
