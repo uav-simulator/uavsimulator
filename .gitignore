@@ -78,6 +78,7 @@ Thumbs.db
 *.unityproj
 *.sln
 !src/ks0223-web-mac/backend/backend.csproj
+!src/ks0223-web-mac/backend.Tests/backend.Tests.csproj
 
 # Packed files
 *.apk

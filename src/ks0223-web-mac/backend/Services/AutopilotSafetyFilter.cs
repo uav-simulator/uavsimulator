@@ -1,0 +1,138 @@
+using Ks0223.Web.Backend.Options;
+
+namespace Ks0223.Web.Backend.Services;
+
+public readonly record struct SafetyDecision(float Throttle, float Steer, bool EStopActive);
+
+public readonly record struct SafetyStatus(bool EStopActive, long EStopTriggerCount, float ThrottleMax);
+
+public sealed class AutopilotSafetyFilter
+{
+    private readonly AutopilotSafetyOptions options;
+    private readonly TimeProvider timeProvider;
+    private readonly ILogger<AutopilotSafetyFilter> logger;
+
+    private bool eStopActive;
+    private long eStopTriggerCount;
+    private DateTimeOffset? eStopHoldUntil;
+    private DateTimeOffset lastCallTime;
+    private DateTimeOffset rampStartTime;
+    private bool initialized;
+
+    public AutopilotSafetyFilter(
+        AutopilotSafetyOptions options,
+        TimeProvider timeProvider,
+        ILogger<AutopilotSafetyFilter> logger)
+    {
+        this.options = options;
+        this.timeProvider = timeProvider;
+        this.logger = logger;
+    }
+
+    public void Reset()
+    {
+        var now = timeProvider.GetUtcNow();
+        eStopActive = false;
+        eStopHoldUntil = null;
+        lastCallTime = now;
+        rampStartTime = now;
+        initialized = true;
+    }
+
+    public SafetyDecision Apply(float modelThrottle, float modelSteer, float frontDistanceM)
+    {
+        if (!options.Enabled)
+        {
+            return new SafetyDecision(
+                Math.Clamp(modelThrottle, -1f, 1f),
+                Math.Clamp(modelSteer, -1f, 1f),
+                false);
+        }
+
+        if (!initialized)
+        {
+            Reset();
+        }
+
+        var now = timeProvider.GetUtcNow();
+        var clampedSteer = Math.Clamp(modelSteer, -1f, 1f);
+
+        // --- Deadman check ---
+        var msSinceLastCall = (now - lastCallTime).TotalMilliseconds;
+        var deadmanFired = msSinceLastCall > options.DeadmanMs;
+        if (deadmanFired)
+        {
+            rampStartTime = now;
+        }
+
+        lastCallTime = now;
+
+        // --- Ultrasonic E-stop (only when distance is known) ---
+        if (frontDistanceM > 0f && frontDistanceM < options.EStopDistanceM)
+        {
+            if (!eStopActive || eStopHoldUntil is null)
+            {
+                // rising edge: starts (or restarts) a timed hold
+                eStopTriggerCount += 1;
+                eStopHoldUntil = now.AddMilliseconds(options.EStopHoldMs);
+                eStopActive = true;
+                logger.LogInformation(
+                    "[autopilot] E-STOP triggered (ultrasonic={Dist:F2}m < {Threshold:F2}m); held for {HoldMs}ms",
+                    frontDistanceM,
+                    options.EStopDistanceM,
+                    options.EStopHoldMs);
+            }
+        }
+
+        // --- E-stop hold release ---
+        var holdJustExpired = false;
+        if (eStopActive && eStopHoldUntil.HasValue && now >= eStopHoldUntil.Value)
+        {
+            eStopActive = false;
+            eStopHoldUntil = null;
+            holdJustExpired = true;
+        }
+
+        // --- Deadman output: zero throttle + EStopActive=true unless hold just expired this call ---
+        // When hold just expired in the same call, the release takes precedence over deadman E-stop flag.
+        if (deadmanFired && !holdJustExpired)
+        {
+            return new SafetyDecision(0f, clampedSteer, true);
+        }
+
+        if (deadmanFired)
+        {
+            // hold expired this same call — zero throttle but report released state
+            return new SafetyDecision(0f, clampedSteer, false);
+        }
+
+        // --- During ultrasonic hold: block forward, allow reverse ---
+        if (eStopActive)
+        {
+            if (modelThrottle < 0f)
+            {
+                return new SafetyDecision(Math.Max(modelThrottle, -1f), clampedSteer, false);
+            }
+
+            return new SafetyDecision(0f, clampedSteer, true);
+        }
+
+        // --- Throttle clip ---
+        float clipped = modelThrottle >= 0f
+            ? Math.Min(modelThrottle, options.ThrottleMax)
+            : Math.Max(modelThrottle, -1f);
+
+        // --- Ramp-up (forward only) ---
+        var rampElapsedMs = (now - rampStartTime).TotalMilliseconds;
+        var rampScale = options.RampUpMs > 0
+            ? (float)Math.Min(1.0, rampElapsedMs / options.RampUpMs)
+            : 1f;
+
+        var throttle = clipped >= 0f ? clipped * rampScale : clipped;
+
+        return new SafetyDecision(throttle, clampedSteer, false);
+    }
+
+    public SafetyStatus GetStatus() =>
+        new(eStopActive, eStopTriggerCount, options.ThrottleMax);
+}

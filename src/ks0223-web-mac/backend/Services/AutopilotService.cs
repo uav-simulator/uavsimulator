@@ -17,6 +17,7 @@ public sealed class AutopilotService
     private readonly object gate = new();
     private readonly RuntimeSessionManager runtimeSessionManager;
     private readonly ModelRegistryService modelRegistry;
+    private readonly AutopilotSafetyFilter safetyFilter;
     private readonly ILogger<AutopilotService> logger;
 
     private AutopilotState state = AutopilotState.Stopped();
@@ -24,10 +25,12 @@ public sealed class AutopilotService
     public AutopilotService(
         RuntimeSessionManager runtimeSessionManager,
         ModelRegistryService modelRegistry,
+        AutopilotSafetyFilter safetyFilter,
         ILogger<AutopilotService> logger)
     {
         this.runtimeSessionManager = runtimeSessionManager;
         this.modelRegistry = modelRegistry;
+        this.safetyFilter = safetyFilter;
         this.logger = logger;
     }
 
@@ -92,6 +95,7 @@ public sealed class AutopilotService
             state = running;
         }
 
+        safetyFilter.Reset();
         running.LoopTask = Task.Run(() => LoopAsync(running), CancellationToken.None);
         logger.LogInformation("Autopilot started for {ClientId}/{RuntimeMode} with model {ModelId}", clientId, runtimeMode, model.ModelId);
         return running.ToDto();
@@ -145,8 +149,12 @@ public sealed class AutopilotService
                     frameBytes = latestFrame;
                 }
 
-                var (throttle, steer) = running.Predictor!.Predict(telemetry.Flat, frameBytes);
-                var command = ResolveCommand(throttle, steer);
+                var (rawThrottle, rawSteer) = running.Predictor!.Predict(telemetry.Flat, frameBytes);
+                var frontM = ExtractFrontMeters(telemetry.Flat);
+                var decision = safetyFilter.Apply(rawThrottle, rawSteer, frontM);
+                var throttle = decision.Throttle;
+                var steer = decision.Steer;
+                var command = decision.EStopActive ? "DirStop" : ResolveCommand(throttle, steer);
 
                 runtimeSessionManager.SetDirectDrive(
                     running.ClientId!,
@@ -162,6 +170,7 @@ public sealed class AutopilotService
                     running.AgentId,
                     token);
 
+                var safetyStatus = safetyFilter.GetStatus();
                 lock (gate)
                 {
                     if (!ReferenceEquals(state, running))
@@ -174,6 +183,8 @@ public sealed class AutopilotService
                     running.LastThrottle = throttle;
                     running.LastSteer = steer;
                     running.LastCommand = command;
+                    running.EStopActive = decision.EStopActive;
+                    running.EStopTriggerCount = safetyStatus.EStopTriggerCount;
 
                     if (response.Sent)
                     {
@@ -316,6 +327,21 @@ public sealed class AutopilotService
             speedNorm,
             1f,
         ];
+    }
+
+    private static float ExtractFrontMeters(IReadOnlyDictionary<string, string> flat)
+    {
+        var frontMeters = ParseValue(flat, "sensor.ultrasonic.front.m", "ultrasonic.front_m", "ultrasonic.front.m");
+        if (frontMeters <= 0f)
+        {
+            var cm = ParseValue(flat, "sensor.range.front_cm", "ultrasonic.distance_cm", "ultrasonic.scan.center_cm");
+            if (cm > 0f)
+            {
+                frontMeters = cm / 100f;
+            }
+        }
+
+        return frontMeters;
     }
 
     private static float ParseValue(IReadOnlyDictionary<string, string> flat, params string[] keys)
@@ -773,6 +799,8 @@ public sealed class AutopilotService
         public PolicyPredictor? Predictor { get; private set; }
         public CancellationTokenSource? Cancellation { get; private set; }
         public Task? LoopTask { get; set; }
+        public bool EStopActive { get; set; }
+        public long EStopTriggerCount { get; set; }
 
         public static AutopilotState Running(
             string clientId,
@@ -818,6 +846,7 @@ public sealed class AutopilotService
                 LastThrottle = previous.LastThrottle,
                 LastSteer = previous.LastSteer,
                 LastError = lastError,
+                EStopTriggerCount = previous.EStopTriggerCount,
             };
 
         public AutopilotStatusDto ToDto() =>
@@ -835,6 +864,8 @@ public sealed class AutopilotService
                 LastThrottle,
                 LastSteer,
                 LastError,
-                Mode);
+                Mode,
+                EStopActive: EStopActive,
+                EStopTriggerCount: EStopTriggerCount);
     }
 }

@@ -211,4 +211,8 @@ public sealed record AutopilotStatusDto(
     float LastThrottle,
     float LastSteer,
     string? LastError,
-    string Mode);
+    string Mode,
+    bool SafetyEnabled = true,
+    bool EStopActive = false,
+    long EStopTriggerCount = 0,
+    float ThrottleMax = 0.5f);
