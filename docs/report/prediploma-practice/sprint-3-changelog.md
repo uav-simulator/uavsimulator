@@ -173,3 +173,40 @@ Curriculum дал **значительное улучшение reward/progress*
 1. **[training]** v9 transfer-from-v8@120k с усиленным goal-shaping: увеличить per-step distance-to-goal коэффициент и/или добавить bonus за приближение в последние 20% дистанции, без изменения curriculum. Бюджет 100k шагов (transfer быстрее сходится).
 2. **[training]** Повторить тот же 10-сценарный sweep на v9 — это даст чистый A/B v8 vs v9 на одной reward-функции.
 3. **[sim2real]** Параллельно — продолжать sim2real-подготовку на v6 (подтверждённый 100% SR на L-коридоре) и не блокировать deploy ожиданием v9.
+
+## Результаты (День 3, 25.04.2026) — Sim-to-real первый прогон
+
+### Что сделано
+
+- **Backend поднят локально** (`dotnet run`, порт 5287), TCP-коннект к Pi установился, OLED робота сменил `State: Disconnect` на коннект-статус.
+- **Camera UDP pipeline подтверждён рабочим:** ~34 fps приёма JPEG-кадров от `FramesSend.py` на Pi после ICMP-ping handshake (sender ловит `source IP` из echo, дальше шлёт UDP на :5051). 19 КБ/кадр, IP-фрагментация без потерь в WiFi.
+- **v6 ONNX экспортирован** из SB3 zip ([export_v6_onnx.py](../../python/training/export_v6_onnx.py), 3.5 МБ, opset 18) — у v6 ONNX отсутствовал в артефактах после Sprint 2. Загружен через `/api/models/upload`, активирован, привязан к `runtimeMode=real-robot`.
+- **Калибровка реального KS0223** двумя DirForward-бёрстами + рулеткой Никиты: **v ≈ 0.73 м/с** на `drive_speed_percent: 80`. Sim-to-real скорость gap × 1.5 (ожидаемая sim ~1.0 м/с). Ультразвук занижает абсолютное расстояние на ~25%, дельта при движении на 30–50% (фильтр сглаживания ~150 мс).
+- **Stage 1 / Run 1: автопилот 50% throttle на физической L-трассе.** 57 шагов, 8.7 с, **E-stop @ 10.49 см ультразвук**, **1 контакт со стеной** (правая стена сегмента А завалилась). Прерван по протоколу безопасности (≥1 контакт = стоп). Stage 2/3 не запускались.
+- **Safety wrapper подтверждён работающим в проде:** E-stop триггер, sticky hold, throttle clip 0.5, `eStopTriggerCount` reset на старте сессии — всё ровно как в unit-тестах. Инфраструктура sim-to-real готова.
+
+### Поведение модели v6 на реале
+
+Модель почти весь прогон выдавала `steer = +1.00` (полный лево), throttle прыгал между +0.5 и -0.95. Из 57 шагов: ~45 DirLeft (= ротация на месте у diff-drive ks0223), ~10 DirBack, почти 0 DirForward. Робот **крутился на месте** и снёс правую стену.
+
+### Корневые причины sim-to-real провала
+
+1. **Visual domain gap (главный).** Камера KS0223 наклонена сильно вниз и видит пол + кусок дивана/оранжевую тумбу сбоку — не видит «коридор» как в Unity тренировке. Distribution shift → policy collapses to constant max-steer.
+2. **Control mapping gap.** В Unity `vehicle.prometeo.sport.v1` пара `(throttle=+0.5, steer=+1)` = forward arc вперёд-влево. На KS0223 эта же пара через `AutopilotService.ResolveCommand` маппится в `DirLeft` = in-place rotation. Модель ожидала движение по дуге, получила вращение.
+3. **Отсутствие domain randomization** при тренировке v6/v7/v8 (фиксированные текстуры/освещение/угол камеры).
+
+Полный отчёт: [evidence/sim2real_run_2026-04-25/README.md](./evidence/sim2real_run_2026-04-25/README.md).
+
+### Verdict против sprint-3 критериев
+
+- [x] **Safety wrapper end-to-end в проде** — PASS (E-stop сработал, никаких ложных срабатываний за 57 шагов, robot wall-slam перехвачен).
+- [x] **Sim-to-real инфраструктура готова** — PASS (TCP, UDP-камера, ONNX inference, telemetry, model registry все работают).
+- [ ] **v6 проходит реальную L-трассу** — FAIL (0/1 успешных запусков, 1 контакт со стеной за 1 прогон). Прерван дальше, чтобы не разносить трассу.
+
+### Следующие шаги
+
+1. **[training]** v9/v10 с **domain randomization**: randomized texture/lighting/camera-angle, motion blur, noise. Это базовый фикс №1 для visual sim-to-real, у v6/v7/v8 его не было.
+2. **[backend]** Расширить `ResolveCommand` маппинг (или ввести `DirArcLeft`/`DirArcRight` для diff-drive forward-with-bias), либо переобучить модель на vehicle plugin с in-place rotation. Текущий маппинг даёт «крутится на месте» при steer≥0.55, что физически отличается от того что модель видела в обучении.
+3. **[sim2real]** Поднять servo-угол камеры (API уже есть в Pi, но не использовался), чтобы реальный кадр приближался к sim-углу.
+4. **[sim2real]** ArUco на финише как минимум для одной попытки — модель имела +20 reward bonus за aruco_goal в обучении, а на реале этого сигнала не было совсем.
+5. **[reporting]** Финальный отчёт диплома: sprint 3 закрыт с честным sim-to-real результатом + dependency на новую тренировочную итерацию для production-готового policy.

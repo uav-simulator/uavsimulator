@@ -1,0 +1,41 @@
+{
+  "method": "physical_ruler + ultrasonic_delta",
+  "linear_speed_bursts": [
+    {
+      "burst_idx": 1,
+      "duration_s": 0.5,
+      "ultrasonic_before_cm": 95.6,
+      "ultrasonic_after_cm": 82.3,
+      "ultrasonic_delta_cm": 13.3,
+      "ruler_actual_cm": 35.0,
+      "v_mps_from_ruler": 0.70
+    },
+    {
+      "burst_idx": 2,
+      "duration_s": 0.3,
+      "ultrasonic_before_cm": 59.0,
+      "ultrasonic_after_cm": 42.8,
+      "ultrasonic_delta_cm": 16.3,
+      "ruler_actual_cm": 23.0,
+      "v_mps_from_ruler": 0.77
+    }
+  ],
+  "v_real_mps_avg": 0.735,
+  "drive_speed_percent_config": 80,
+  "yaw_rate_skipped": "robot in narrow corridor; rotation would face it sideways into wall",
+  "ultrasonic_observations": {
+    "absolute_distance_accurate": true,
+    "delta_underreports_by_pct": "30-50%",
+    "likely_cause": "smoothing filter or ~150ms sample interval (config.sample_interval_ms=150)",
+    "implication_for_safety": "fine for E-stop @ 12cm absolute threshold; not used for delta in autopilot loop"
+  },
+  "throttle_max_semantics": {
+    "real_robot_speed_is_constant": "0.73 m/s when DirForward is sent (motor at 80%)",
+    "throttle_max_effect": "AutopilotService.ResolveCommand maps |throttle| < 0.15 -> DirStop. Lower ThrottleMax (0.5 vs 1.0) clips model output but does not reduce per-step speed.",
+    "stages_translate_to": "frequency of DirForward vs DirStop, not per-step speed"
+  },
+  "sim_to_real_v_gap_estimate": {
+    "note": "v6 trained in Unity prometeo.sport.v1; expected sim v ~ 1.0-2.0 m/s. Real ~0.73 m/s. Robot will take more steps to traverse same distance vs sim eval (sim eval avg ~13 steps).",
+    "predicted_real_steps_to_finish": "20-30 steps for 110+90cm corridor at 7 Hz inference"
+  }
+}
