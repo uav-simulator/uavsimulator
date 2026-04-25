@@ -76,13 +76,9 @@ def test_rejects_non_box_action_space():
 
 def test_action_table_thresholds_match_resolve_command():
     """Verify each (throttle,steer) routes to the expected command per backend
-    ResolveCommand thresholds:
-        throttle < -0.25 → DirBack
-        |throttle| < 0.15 + |steer|>0.55 → DirLeft/DirRight
-        |throttle| < 0.15 → DirStop
-        steer > 0.45 → DirLeft (when throttle > 0.15)
-        steer < -0.45 → DirRight
-        else → DirForward
+    ResolveCommand thresholds. DirLeft/Right include forward throttle 0.5 so
+    Unity Ackermann vehicle can move-and-turn during training; ResolveCommand
+    (throttle>0.15 + steer>0.45 → DirLeft) routes them to expected real cmd.
     """
 
     def resolve(throttle, steer):
@@ -107,3 +103,27 @@ def test_action_table_thresholds_match_resolve_command():
             f"Action {idx} ({name}): throttle={throttle}, steer={steer} → "
             f"resolves to {actual}, expected {name}"
         )
+
+
+def test_action_table_distinguishability_in_unity_sim():
+    """Каждое действие должно давать distinct физическое поведение в Unity:
+    либо ненулевой throttle (forward/backward motion), либо пара (throttle>0,
+    |steer|>0) для arc turn. DirStop единственное с zero throttle+zero steer.
+    """
+    table = ACTION_TABLE
+    # DirStop: zero throttle AND zero steer
+    assert table[0][0] == 0.0 and table[0][1] == 0.0
+
+    # DirForward: forward throttle, zero steer
+    assert table[1][0] > 0.5 and table[1][1] == 0.0
+
+    # DirBack: reverse throttle, zero steer
+    assert table[2][0] < -0.5 and table[2][1] == 0.0
+
+    # DirLeft: forward throttle (movement!) + positive steer (turn)
+    assert table[3][0] > 0.0, "DirLeft must have non-zero throttle else Unity gives no motion"
+    assert table[3][1] > 0.5
+
+    # DirRight: forward throttle + negative steer
+    assert table[4][0] > 0.0, "DirRight must have non-zero throttle else Unity gives no motion"
+    assert table[4][1] < -0.5

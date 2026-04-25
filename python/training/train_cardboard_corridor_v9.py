@@ -301,6 +301,7 @@ def main() -> int:
             enable_latency=enable_latency,
             latency_steps=args.latency_steps,
             seed=args.seed,
+            enable_discrete=not args.disable_discrete,
         )
         train_env = Monitor(wrapped, filename=str(log_dir / "train_v9_monitor"))
         probe_track = base_env._reset_config["selectedTrackId"]
@@ -330,6 +331,7 @@ def main() -> int:
                 maze_regen_every=args.maze_regen_every,
                 aruco_goal=args.aruco_goal,
                 aruco_distance_m=args.aruco_distance_m,
+                enable_discrete=not args.disable_discrete,
             )
             for i in range(num_envs)
         ])
