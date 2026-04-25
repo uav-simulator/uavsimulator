@@ -132,3 +132,44 @@
 5. **[sim2real]** Калибровка реального KS0223: замерить maxSpeed и maxYawRate vs sim (2.2 м/с, 160°/с).
 6. **[sim2real]** Собрать картонный стенд по геометрии `cardboard-corridor-v1.yaml` (ширина 0.60м, высота 0.25м, L-форма с правым поворотом, ArUco на финише).
 7. **[sim2real]** Первые прогоны v6 или v7 на физической L-трассе, логирование sim-vs-real метрик.
+
+## Результаты (День 2, 25.04.2026)
+
+### Что сделано
+
+- **Запущено обучение `cardboard-maze-ppo-v8`** с нуля (без transfer от v6) на 3× Unity runtime (`:8000-:8002`), 150k шагов, ~70 минут wall-clock (~36 fps).
+- **Curriculum пройден полностью:** A-easy (0–25k) → B-medium (25k–60k) → C-hard (60k–100k) → D-full (100k–150k). Все 10 промежуточных чекпоинтов сохранены.
+- **Best-checkpoint выбор:** override 150k → **120k**. Внутри одной curriculum-стадии (D-full) `ep_rew_mean` упал с −1 (на 120k) до −22 (на 150k), что указывает на overfitting на сложные образцы / шумную ленту в финале. 120k скопирован поверх `cardboard-maze-ppo-v8_sb3.zip`.
+- **Robustness sweep (10 сценариев × 10 эпизодов)** запущен на single-runtime (свернули с трёх до одного для детерминизма). Артефакты: `docs/report/prediploma-practice/evidence/v8_robustness/eval_*.json` + `log_*.txt`.
+- **L-corridor regression eval (20 эпизодов, seed_offset=3000)** на v8@120k: SR 100%, reward 108.45, progress 77.0%. Артефакт: `docs/report/prediploma-practice/evidence/v8_robustness/eval_corridor_regression.json`.
+
+### Robustness sweep — v8@120k (10 эпизодов на сценарий)
+
+| Сценарий | SR | avgReward | avgProgress | avgSteps |
+|---|---|---|---|---|
+| short_L_3c | 0% | -11.63 | 17.3% | 19 |
+| medium_L_4c | 0% | +3.58 | 46.4% | 34 |
+| long_L_7c | 0% | +27.79 | 72.7% | 80 |
+| long_L_9c | 0% | +40.19 | 79.5% | 111 |
+| left_turn | 0% | +13.42 | 58.9% | 49 |
+| straight_5c | 0% | +13.55 | 59.0% | 48 |
+| zigzag_6c_RL | 0% | -17.20 | 67.5% | 76 |
+| zigzag_7c_RR | 0% | +35.53 | 73.4% | 74 |
+| narrow_05m | 0% | +3.05 | 51.2% | 39 |
+| wide_07m | 0% | +14.10 | 65.2% | 63 |
+| **SR ≥ 50%** | **0/10** | — | — | — |
+
+### Verdict против sprint-3 критериев
+
+- [ ] ≥ 3/10 сценариев с SR ≥ 50% — **FAIL** (0/10, как и v7).
+- [x] L-corridor SR ≥ 80% — **PASS** (100% / 20 из 20, reward 108.45 vs 116.74 у v6).
+
+### Анализ
+
+Curriculum дал **значительное улучшение reward/progress** по сравнению с v7 (zigzag_6c_RL: −350.98 → −17.20; long_L_7c: −2.46 → +27.79; long_L_9c: −13.05 → +40.19), но **не закрыл финальный goal-step**: на длинных и зигзаг-сценариях агент проходит 60–80% дистанции, тратит много шагов и не достигает финиша до timeout. Гипотеза: per-step shaping слишком слабый относительно step penalty, поэтому интегральный reward выходит положительным даже без `goal_reached`. Полный side-by-side: [v8_vs_v7_vs_v6.md](./evidence/v8_vs_v7_vs_v6.md).
+
+### Следующие шаги
+
+1. **[training]** v9 transfer-from-v8@120k с усиленным goal-shaping: увеличить per-step distance-to-goal коэффициент и/или добавить bonus за приближение в последние 20% дистанции, без изменения curriculum. Бюджет 100k шагов (transfer быстрее сходится).
+2. **[training]** Повторить тот же 10-сценарный sweep на v9 — это даст чистый A/B v8 vs v9 на одной reward-функции.
+3. **[sim2real]** Параллельно — продолжать sim2real-подготовку на v6 (подтверждённый 100% SR на L-коридоре) и не блокировать deploy ожиданием v9.
