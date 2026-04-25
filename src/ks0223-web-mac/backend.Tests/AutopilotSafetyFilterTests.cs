@@ -221,4 +221,61 @@ public sealed class AutopilotSafetyFilterTests
         var afterDecision = filter.Apply(0.5f, 0f, 1.0f);
         Assert.Equal(0f, afterDecision.Throttle);
     }
+
+    // 10. Lateral E-stop triggers when left ultrasonic is too close
+    [Fact]
+    public void Lateral_EStop_Triggers_On_Left_Side()
+    {
+        var fake = new FakeTimeProvider();
+        var filter = CreateFilter(timeProvider: fake);
+        filter.Reset();
+
+        // front safe (1m), left close (0.06m < 0.08m threshold), right safe (1m)
+        var decision = filter.Apply(0.5f, 0f, 1.0f, 0.06f, 1.0f);
+
+        Assert.True(decision.EStopActive);
+        Assert.Equal(0f, decision.Throttle);
+        Assert.Equal(1L, filter.GetStatus().EStopTriggerCount);
+    }
+
+    // 11. Lateral E-stop triggers when right ultrasonic is too close
+    [Fact]
+    public void Lateral_EStop_Triggers_On_Right_Side()
+    {
+        var fake = new FakeTimeProvider();
+        var filter = CreateFilter(timeProvider: fake);
+        filter.Reset();
+
+        var decision = filter.Apply(0.5f, 0f, 1.0f, 1.0f, 0.05f);
+
+        Assert.True(decision.EStopActive);
+        Assert.Equal(0f, decision.Throttle);
+    }
+
+    // 12. Lateral E-stop ignores zero (no-reading) values, doesn't false-trigger
+    [Fact]
+    public void Lateral_EStop_Ignores_Zero_Reading()
+    {
+        var fake = new FakeTimeProvider();
+        var filter = CreateFilter(timeProvider: fake);
+        filter.Reset();
+
+        // both lateral values 0 (sensor scan hasn't completed yet) — must NOT trigger
+        var decision = filter.Apply(0.5f, 0f, 1.0f, 0f, 0f);
+
+        Assert.False(decision.EStopActive);
+        Assert.Equal(0L, filter.GetStatus().EStopTriggerCount);
+    }
+
+    // 13. Existing 3-arg overload still works (backward compat)
+    [Fact]
+    public void Existing_3Arg_Overload_Still_Works()
+    {
+        var fake = new FakeTimeProvider();
+        var filter = CreateFilter(timeProvider: fake);
+        filter.Reset();
+
+        var decision = filter.Apply(0.5f, 0f, 0.10f);
+        Assert.True(decision.EStopActive);
+    }
 }

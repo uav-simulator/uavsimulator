@@ -41,6 +41,14 @@ public sealed class AutopilotSafetyFilter
     }
 
     public SafetyDecision Apply(float modelThrottle, float modelSteer, float frontDistanceM)
+        => Apply(modelThrottle, modelSteer, frontDistanceM, 0f, 0f);
+
+    public SafetyDecision Apply(
+        float modelThrottle,
+        float modelSteer,
+        float frontDistanceM,
+        float lateralLeftDistanceM,
+        float lateralRightDistanceM)
     {
         if (!options.Enabled)
         {
@@ -68,20 +76,36 @@ public sealed class AutopilotSafetyFilter
 
         lastCallTime = now;
 
-        // --- Ultrasonic E-stop (only when distance is known) ---
+        // --- Ultrasonic E-stop (front; only when distance is known) ---
         // 0 or negative means no usable reading — skip rather than false-trigger
         if (frontDistanceM > 0f && frontDistanceM < options.EStopDistanceM)
         {
             if (!eStopActive || eStopHoldUntil is null)
             {
-                // rising edge: starts (or restarts) a timed hold
                 eStopTriggerCount += 1;
                 eStopHoldUntil = now.AddMilliseconds(options.EStopHoldMs);
                 eStopActive = true;
                 logger.LogInformation(
-                    "[autopilot] E-STOP triggered (ultrasonic={Dist:F2}m < {Threshold:F2}m); held for {HoldMs}ms",
+                    "[autopilot] E-STOP front (ultrasonic={Dist:F2}m < {Threshold:F2}m); held {HoldMs}ms",
                     frontDistanceM,
                     options.EStopDistanceM,
+                    options.EStopHoldMs);
+            }
+        }
+
+        // --- Lateral E-stop (auto-scan left/right; only fresh readings) ---
+        var lateralMinM = MinPositive(lateralLeftDistanceM, lateralRightDistanceM);
+        if (lateralMinM > 0f && lateralMinM < options.LateralEStopDistanceM)
+        {
+            if (!eStopActive || eStopHoldUntil is null)
+            {
+                eStopTriggerCount += 1;
+                eStopHoldUntil = now.AddMilliseconds(options.EStopHoldMs);
+                eStopActive = true;
+                logger.LogInformation(
+                    "[autopilot] E-STOP lateral (min(L,R)={Dist:F2}m < {Threshold:F2}m); held {HoldMs}ms",
+                    lateralMinM,
+                    options.LateralEStopDistanceM,
                     options.EStopHoldMs);
             }
         }
@@ -138,4 +162,12 @@ public sealed class AutopilotSafetyFilter
 
     public SafetyStatus GetStatus() =>
         new(eStopActive, eStopTriggerCount, options.ThrottleMax);
+
+    private static float MinPositive(float a, float b)
+    {
+        if (a > 0f && b > 0f) return Math.Min(a, b);
+        if (a > 0f) return a;
+        if (b > 0f) return b;
+        return 0f;
+    }
 }
