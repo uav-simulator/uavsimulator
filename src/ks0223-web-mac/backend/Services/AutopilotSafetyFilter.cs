@@ -33,6 +33,7 @@ public sealed class AutopilotSafetyFilter
     {
         var now = timeProvider.GetUtcNow();
         eStopActive = false;
+        eStopTriggerCount = 0;
         eStopHoldUntil = null;
         lastCallTime = now;
         rampStartTime = now;
@@ -68,6 +69,7 @@ public sealed class AutopilotSafetyFilter
         lastCallTime = now;
 
         // --- Ultrasonic E-stop (only when distance is known) ---
+        // 0 or negative means no usable reading — skip rather than false-trigger
         if (frontDistanceM > 0f && frontDistanceM < options.EStopDistanceM)
         {
             if (!eStopActive || eStopHoldUntil is null)
@@ -128,6 +130,7 @@ public sealed class AutopilotSafetyFilter
             ? (float)Math.Min(1.0, rampElapsedMs / options.RampUpMs)
             : 1f;
 
+        // ramp-up applies only to forward throttle — reverse is unscaled per spec
         var throttle = clipped >= 0f ? clipped * rampScale : clipped;
 
         return new SafetyDecision(throttle, clampedSteer, false);
