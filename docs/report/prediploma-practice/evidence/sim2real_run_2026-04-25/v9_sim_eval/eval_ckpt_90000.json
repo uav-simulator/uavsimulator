@@ -1,0 +1,87 @@
+{
+  "kind": "cardboard-corridor-v9-eval",
+  "modelName": "cardboard-corridor-ppo-v9",
+  "modelVersion": "1.0.0",
+  "modelKind": "ppo",
+  "modelPath": "<repo>/python/training/artifacts/cardboard-corridor-ppo-v9/1.0.0/checkpoints/cardboard_v9_ppo_90000_steps.zip",
+  "episodes": 5,
+  "successCount": 0,
+  "successRate": 0.0,
+  "avgReward": -125.224,
+  "avgProgress": 0.4986,
+  "avgSteps": 79.0,
+  "actionCounts": {
+    "DirStop": 0,
+    "DirForward": 395,
+    "DirBack": 0,
+    "DirLeft": 0,
+    "DirRight": 0
+  },
+  "actionDistribution": {
+    "DirStop": 0.0,
+    "DirForward": 1.0,
+    "DirBack": 0.0,
+    "DirLeft": 0.0,
+    "DirRight": 0.0
+  },
+  "terminationCounts": {
+    "stalled": 5
+  },
+  "episodeData": [
+    {
+      "episode": 0,
+      "seed": 3000,
+      "steps": 79,
+      "reward": -125.454,
+      "progress": 0.4986,
+      "termination": "stalled",
+      "uniqueActions": 1,
+      "mostCommonAction": "DirForward",
+      "mostCommonPct": 1.0
+    },
+    {
+      "episode": 1,
+      "seed": 3001,
+      "steps": 79,
+      "reward": -126.143,
+      "progress": 0.4986,
+      "termination": "stalled",
+      "uniqueActions": 1,
+      "mostCommonAction": "DirForward",
+      "mostCommonPct": 1.0
+    },
+    {
+      "episode": 2,
+      "seed": 3002,
+      "steps": 79,
+      "reward": -124.294,
+      "progress": 0.4986,
+      "termination": "stalled",
+      "uniqueActions": 1,
+      "mostCommonAction": "DirForward",
+      "mostCommonPct": 1.0
+    },
+    {
+      "episode": 3,
+      "seed": 3003,
+      "steps": 79,
+      "reward": -125.925,
+      "progress": 0.4986,
+      "termination": "stalled",
+      "uniqueActions": 1,
+      "mostCommonAction": "DirForward",
+      "mostCommonPct": 1.0
+    },
+    {
+      "episode": 4,
+      "seed": 3004,
+      "steps": 79,
+      "reward": -124.306,
+      "progress": 0.4986,
+      "termination": "stalled",
+      "uniqueActions": 1,
+      "mostCommonAction": "DirForward",
+      "mostCommonPct": 1.0
+    }
+  ]
+}

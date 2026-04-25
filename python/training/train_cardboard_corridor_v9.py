@@ -89,6 +89,11 @@ def parse_args() -> argparse.Namespace:
                    help="Disable image augmentation (for ablation / debugging)")
     p.add_argument("--disable-anti-spin", action="store_true")
     p.add_argument("--disable-latency", action="store_true")
+    p.add_argument("--disable-discrete", action="store_true",
+                   help="Keep continuous (throttle, steer) action space (v6-style). "
+                        "Implies disable-anti-spin and disable-latency.")
+    p.add_argument("--resume", default="",
+                   help="Path to SB3 checkpoint .zip to resume from (transfer learning)")
     p.add_argument("--maze-randomize", action="store_true",
                    help="Randomize maze params each episode (requires track.cardboard_maze.v1)")
     p.add_argument("--maze-regen-every", type=int, default=1)
@@ -136,13 +141,16 @@ def _wrap_env(
     enable_latency: bool,
     latency_steps: int,
     seed: int,
+    enable_discrete: bool = True,
 ):
     """Apply v9 wrapper stack: Discrete → Latency → AntiSpin → ImageAug."""
-    env = DiscreteActionWrapper(base_env)
-    if enable_latency and latency_steps > 0:
-        env = DelayedActionWrapper(env, delay_steps=latency_steps)
-    if enable_anti_spin:
-        env = AntiSpinRewardWrapper(env)
+    env = base_env
+    if enable_discrete:
+        env = DiscreteActionWrapper(env)
+        if enable_latency and latency_steps > 0:
+            env = DelayedActionWrapper(env, delay_steps=latency_steps)
+        if enable_anti_spin:
+            env = AntiSpinRewardWrapper(env)
     if enable_aug:
         env = ImageAugObservationWrapper(env, enable=True, seed=seed)
     return env
@@ -164,6 +172,7 @@ def _make_env(
     maze_regen_every: int = 1,
     aruco_goal: bool = False,
     aruco_distance_m: float = 0.50,
+    enable_discrete: bool = True,
 ):
     def _init():
         base_env = ABCorridorVisionEnv(
@@ -185,6 +194,7 @@ def _make_env(
             enable_latency=enable_latency,
             latency_steps=latency_steps,
             seed=seed + rank,
+            enable_discrete=enable_discrete,
         )
         wrapped.reset(seed=seed + rank)
         return wrapped

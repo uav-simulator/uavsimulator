@@ -1,0 +1,142 @@
+{
+  "kind": "cardboard-corridor-v9-eval",
+  "modelName": "cardboard-corridor-ppo-v9",
+  "modelVersion": "1.0.0",
+  "modelKind": "onnx",
+  "modelPath": "<repo>/python/training/artifacts/cardboard-corridor-ppo-v9/1.0.0/cardboard-corridor-ppo-v9.onnx",
+  "episodes": 10,
+  "successCount": 0,
+  "successRate": 0.0,
+  "avgReward": -126.23,
+  "avgProgress": 0.4986,
+  "avgSteps": 79.6,
+  "actionCounts": {
+    "DirStop": 0,
+    "DirForward": 796,
+    "DirBack": 0,
+    "DirLeft": 0,
+    "DirRight": 0
+  },
+  "actionDistribution": {
+    "DirStop": 0.0,
+    "DirForward": 1.0,
+    "DirBack": 0.0,
+    "DirLeft": 0.0,
+    "DirRight": 0.0
+  },
+  "terminationCounts": {
+    "stalled": 10
+  },
+  "episodeData": [
+    {
+      "episode": 0,
+      "seed": 3000,
+      "steps": 79,
+      "reward": -124.232,
+      "progress": 0.4986,
+      "termination": "stalled",
+      "uniqueActions": 1,
+      "mostCommonAction": "DirForward",
+      "mostCommonPct": 1.0
+    },
+    {
+      "episode": 1,
+      "seed": 3001,
+      "steps": 80,
+      "reward": -127.338,
+      "progress": 0.4986,
+      "termination": "stalled",
+      "uniqueActions": 1,
+      "mostCommonAction": "DirForward",
+      "mostCommonPct": 1.0
+    },
+    {
+      "episode": 2,
+      "seed": 3002,
+      "steps": 79,
+      "reward": -124.339,
+      "progress": 0.4986,
+      "termination": "stalled",
+      "uniqueActions": 1,
+      "mostCommonAction": "DirForward",
+      "mostCommonPct": 1.0
+    },
+    {
+      "episode": 3,
+      "seed": 3003,
+      "steps": 81,
+      "reward": -130.241,
+      "progress": 0.4986,
+      "termination": "stalled",
+      "uniqueActions": 1,
+      "mostCommonAction": "DirForward",
+      "mostCommonPct": 1.0
+    },
+    {
+      "episode": 4,
+      "seed": 3004,
+      "steps": 80,
+      "reward": -126.824,
+      "progress": 0.4986,
+      "termination": "stalled",
+      "uniqueActions": 1,
+      "mostCommonAction": "DirForward",
+      "mostCommonPct": 1.0
+    },
+    {
+      "episode": 5,
+      "seed": 3005,
+      "steps": 79,
+      "reward": -125.97,
+      "progress": 0.4986,
+      "termination": "stalled",
+      "uniqueActions": 1,
+      "mostCommonAction": "DirForward",
+      "mostCommonPct": 1.0
+    },
+    {
+      "episode": 6,
+      "seed": 3006,
+      "steps": 79,
+      "reward": -124.591,
+      "progress": 0.4986,
+      "termination": "stalled",
+      "uniqueActions": 1,
+      "mostCommonAction": "DirForward",
+      "mostCommonPct": 1.0
+    },
+    {
+      "episode": 7,
+      "seed": 3007,
+      "steps": 80,
+      "reward": -127.287,
+      "progress": 0.4986,
+      "termination": "stalled",
+      "uniqueActions": 1,
+      "mostCommonAction": "DirForward",
+      "mostCommonPct": 1.0
+    },
+    {
+      "episode": 8,
+      "seed": 3008,
+      "steps": 79,
+      "reward": -124.345,
+      "progress": 0.4986,
+      "termination": "stalled",
+      "uniqueActions": 1,
+      "mostCommonAction": "DirForward",
+      "mostCommonPct": 1.0
+    },
+    {
+      "episode": 9,
+      "seed": 3009,
+      "steps": 80,
+      "reward": -127.136,
+      "progress": 0.4986,
+      "termination": "stalled",
+      "uniqueActions": 1,
+      "mostCommonAction": "DirForward",
+      "mostCommonPct": 1.0
+    }
+  ]
+}

@@ -1,0 +1,89 @@
+{
+  "kind": "cardboard-corridor-eval",
+  "modelName": "cardboard-corridor-policy",
+  "modelVersion": "v1.0.0",
+  "modelKind": "onnx",
+  "modelPath": "<repo>/python/training/artifacts/cardboard-corridor-ppo-v6/1.0.0/cardboard-corridor-ppo-v6.onnx",
+  "scenario": "<repo>/configs/scenarios/cardboard-corridor-v1.yaml",
+  "episodes": 5,
+  "successCount": 5,
+  "successRate": 1.0,
+  "avgReward": 94.701,
+  "avgProgress": 0.7903,
+  "avgSteps": 34.8,
+  "terminationCounts": {
+    "goal_reached": 5
+  },
+  "episodeData": [
+    {
+      "episode": 0,
+      "seed": 3000,
+      "steps": 34,
+      "reward": 94.768,
+      "progress": 0.7953,
+      "lateralDistance": 0.0348,
+      "termination": "goal_reached",
+      "position": {
+        "x": 0.388036847114563,
+        "y": 0.01999998837709427,
+        "z": -0.03480016812682152
+      }
+    },
+    {
+      "episode": 1,
+      "seed": 3001,
+      "steps": 34,
+      "reward": 99.574,
+      "progress": 0.7932,
+      "lateralDistance": 0.0329,
+      "termination": "goal_reached",
+      "position": {
+        "x": 0.38586631417274475,
+        "y": 0.019999995827674866,
+        "z": -0.03292907401919365
+      }
+    },
+    {
+      "episode": 2,
+      "seed": 3002,
+      "steps": 36,
+      "reward": 88.721,
+      "progress": 0.7682,
+      "lateralDistance": 0.0668,
+      "termination": "goal_reached",
+      "position": {
+        "x": 0.36000674962997437,
+        "y": 0.019999995827674866,
+        "z": -0.06684480607509613
+      }
+    },
+    {
+      "episode": 3,
+      "seed": 3003,
+      "steps": 35,
+      "reward": 94.125,
+      "progress": 0.7994,
+      "lateralDistance": 0.0301,
+      "termination": "goal_reached",
+      "position": {
+        "x": 0.39234811067581177,
+        "y": 0.01999998837709427,
+        "z": -0.030100969597697258
+      }
+    },
+    {
+      "episode": 4,
+      "seed": 3004,
+      "steps": 35,
+      "reward": 96.318,
+      "progress": 0.7952,
+      "lateralDistance": 0.0316,
+      "termination": "goal_reached",
+      "position": {
+        "x": 0.3879087567329407,
+        "y": 0.019999995827674866,
+        "z": -0.031575821340084076
+      }
+    }
+  ]
+}
