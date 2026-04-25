@@ -85,25 +85,25 @@ public sealed class AutopilotSafetyFilter
         }
 
         // --- E-stop hold release ---
-        var holdJustExpired = false;
         if (eStopActive && eStopHoldUntil.HasValue && now >= eStopHoldUntil.Value)
         {
             eStopActive = false;
             eStopHoldUntil = null;
-            holdJustExpired = true;
         }
 
-        // --- Deadman output: zero throttle + EStopActive=true unless hold just expired this call ---
-        // When hold just expired in the same call, the release takes precedence over deadman E-stop flag.
-        if (deadmanFired && !holdJustExpired)
-        {
-            return new SafetyDecision(0f, clampedSteer, true);
-        }
-
+        // --- Deadman output: deadman always dominates, even if a hold expired this same call ---
+        // A deadman timeout is a fresh stop event; stale hold state is moot.
         if (deadmanFired)
         {
-            // hold expired this same call — zero throttle but report released state
-            return new SafetyDecision(0f, clampedSteer, false);
+            eStopTriggerCount += 1;
+            eStopActive = true;
+            eStopHoldUntil = now.AddMilliseconds(options.EStopHoldMs);
+            var elapsedMs = (long)msSinceLastCall;
+            logger.LogWarning(
+                "[autopilot] deadman timeout ({ElapsedMs}ms > {DeadmanMs}ms); forcing stop",
+                elapsedMs,
+                options.DeadmanMs);
+            return new SafetyDecision(0f, clampedSteer, true);
         }
 
         // --- During ultrasonic hold: block forward, allow reverse ---

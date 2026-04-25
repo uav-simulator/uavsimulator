@@ -54,6 +54,8 @@ public sealed class AutopilotSafetyFilterTests
     }
 
     // 3. E-stop releases after hold duration elapses
+    // Keep the loop alive during the hold (calls < DeadmanMs=300ms apart) so only
+    // the hold-expiry path fires, not the deadman.
     [Fact]
     public void EStop_Releases_After_HoldMs_Elapsed()
     {
@@ -61,11 +63,15 @@ public sealed class AutopilotSafetyFilterTests
         var filter = CreateFilter(timeProvider: fake);
         filter.Reset();
 
-        // Trigger E-stop
+        // Trigger E-stop at t=0
         filter.Apply(0.5f, 0f, 0.10f);
 
-        // Advance past the 500ms hold
-        fake.Advance(TimeSpan.FromMilliseconds(600));
+        // t=250ms: still within hold — keep lastCallTime fresh (< 300ms deadman)
+        fake.Advance(TimeSpan.FromMilliseconds(250));
+        filter.Apply(0.5f, 0f, 0.10f); // still within hold, E-stop persists
+
+        // t=510ms: past 500ms hold boundary, only 260ms since last call (< deadman)
+        fake.Advance(TimeSpan.FromMilliseconds(260));
 
         var decision = filter.Apply(0.5f, 0f, 1.0f);
         Assert.False(decision.EStopActive);
@@ -178,5 +184,41 @@ public sealed class AutopilotSafetyFilterTests
         Assert.Equal(1.0f, decision.Throttle, 3);
         Assert.Equal(-1.0f, decision.Steer, 3);
         Assert.False(decision.EStopActive);
+    }
+
+    // 9. Deadman dominates when hold expiry and deadman fire simultaneously
+    // Design choice: deadman increments EStopTriggerCount (it is a distinct fresh stop event,
+    // separate from the ultrasonic trigger that set the original hold).
+    [Fact]
+    public void Deadman_Wins_When_Hold_Expires_Simultaneously()
+    {
+        var fake = new FakeTimeProvider();
+        // Use default options: EStopHoldMs=500, DeadmanMs=300, RampUpMs=200, ThrottleMax=0.5
+        var filter = CreateFilter(timeProvider: fake);
+        filter.Reset();
+
+        // Advance past ramp-up
+        fake.Advance(TimeSpan.FromMilliseconds(300));
+        filter.Apply(0.5f, 0f, 1.0f); // seed lastCallTime
+
+        // Step 1: trigger ultrasonic E-stop (count=1, hold armed for 500ms)
+        var estopDecision = filter.Apply(0.5f, 0f, 0.10f);
+        Assert.True(estopDecision.EStopActive);
+        Assert.Equal(1L, filter.GetStatus().EStopTriggerCount);
+
+        // Step 2: advance 600ms — hold expired (>500ms) AND deadman elapsed (>300ms)
+        fake.Advance(TimeSpan.FromMilliseconds(600));
+
+        // Step 3: call with safe distance and forward throttle request
+        // Expected: deadman dominates → EStopActive=true, throttle=0, count incremented to 2
+        var raceDecision = filter.Apply(0.5f, 0f, 1.0f);
+        Assert.True(raceDecision.EStopActive);
+        Assert.Equal(0f, raceDecision.Throttle);
+        Assert.Equal(2L, filter.GetStatus().EStopTriggerCount);
+
+        // Step 4: immediate next call — deadman re-armed the hold; ramp restarted from t=0
+        // eStopActive=true means forward is blocked; throttle must be 0
+        var afterDecision = filter.Apply(0.5f, 0f, 1.0f);
+        Assert.Equal(0f, afterDecision.Throttle);
     }
 }
