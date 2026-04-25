@@ -89,6 +89,14 @@ def parse_args() -> argparse.Namespace:
                    help="Disable image augmentation (for ablation / debugging)")
     p.add_argument("--disable-anti-spin", action="store_true")
     p.add_argument("--disable-latency", action="store_true")
+    p.add_argument("--maze-randomize", action="store_true",
+                   help="Randomize maze params each episode (requires track.cardboard_maze.v1)")
+    p.add_argument("--maze-regen-every", type=int, default=1)
+    p.add_argument("--curriculum", action="store_true",
+                   help="Enable staged maze curriculum. Implies --maze-randomize.")
+    p.add_argument("--aruco-goal", action="store_true",
+                   help="Enable ArUco bonus (+20 if detected)")
+    p.add_argument("--aruco-distance-m", type=float, default=0.50)
     return p.parse_args()
 
 
@@ -152,6 +160,10 @@ def _make_env(
     enable_anti_spin: bool,
     enable_latency: bool,
     latency_steps: int,
+    maze_randomize: bool = False,
+    maze_regen_every: int = 1,
+    aruco_goal: bool = False,
+    aruco_distance_m: float = 0.50,
 ):
     def _init():
         base_env = ABCorridorVisionEnv(
@@ -161,6 +173,10 @@ def _make_env(
             oob_margin_m=0.10,
             time_scale=time_scale,
             img_size=img_size,
+            maze_randomize=maze_randomize,
+            maze_regen_every=maze_regen_every,
+            aruco_goal=aruco_goal,
+            aruco_goal_distance_m=aruco_distance_m,
         )
         wrapped = _wrap_env(
             base_env,
@@ -221,6 +237,8 @@ def export_to_onnx_discrete(model: PPO, output_path: Path, img_size: int = 84) -
 
 def main() -> int:
     args = parse_args()
+    if args.curriculum:
+        args.maze_randomize = True
     output_dir = resolve_artifact_dir(ROOT, args.output_dir, args.model_name, args.model_version)
     log_dir = Path(args.log_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -261,6 +279,10 @@ def main() -> int:
             oob_margin_m=0.10,
             time_scale=args.time_scale,
             img_size=args.img_size,
+            maze_randomize=args.maze_randomize,
+            maze_regen_every=args.maze_regen_every,
+            aruco_goal=args.aruco_goal,
+            aruco_goal_distance_m=args.aruco_distance_m,
         )
         wrapped = _wrap_env(
             base_env,
@@ -294,6 +316,10 @@ def main() -> int:
                 enable_anti_spin=enable_anti_spin,
                 enable_latency=enable_latency,
                 latency_steps=args.latency_steps,
+                maze_randomize=args.maze_randomize,
+                maze_regen_every=args.maze_regen_every,
+                aruco_goal=args.aruco_goal,
+                aruco_distance_m=args.aruco_distance_m,
             )
             for i in range(num_envs)
         ])
@@ -306,6 +332,10 @@ def main() -> int:
             oob_margin_m=0.10,
             time_scale=args.time_scale,
             img_size=args.img_size,
+            maze_randomize=args.maze_randomize,
+            maze_regen_every=args.maze_regen_every,
+            aruco_goal=args.aruco_goal,
+            aruco_goal_distance_m=args.aruco_distance_m,
         )
         probe_track = probe_env._reset_config["selectedTrackId"]
         probe_corridor_w = probe_env.corridor_width_m
@@ -348,6 +378,10 @@ def main() -> int:
             name_prefix="cardboard_v9_ppo",
         ),
     ]
+    if args.curriculum:
+        from training.maze_curriculum import MazeCurriculumCallback
+        callbacks.append(MazeCurriculumCallback())
+        print("  Curriculum: staged maze difficulty enabled (A-easy → B → C → D-full)")
 
     print(f"\nStarting training for {args.total_timesteps} timesteps...")
     t0 = time.time()
