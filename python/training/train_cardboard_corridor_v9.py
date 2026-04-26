@@ -101,6 +101,8 @@ def parse_args() -> argparse.Namespace:
                    help="Enable staged maze curriculum. Implies --maze-randomize.")
     p.add_argument("--strong-aug", action="store_true",
                    help="Aggressive image augmentations (rev13: enabled — wider brightness/contrast/blur/noise)")
+    p.add_argument("--real-cam-postprocess", action="store_true",
+                   help="rev18: dim+desaturate+JPEG-recompress 84x84 obs to mimic real USB camera characteristics")
     p.add_argument("--lateral-penalty-mult", type=float, default=1.0,
                    help="Multiplier for lateral wall-proximity penalty (rev13: 5.0)")
     p.add_argument("--ultrasonic-noise-sigma", type=float, default=0.0,
@@ -202,6 +204,7 @@ def _make_env(
     ultrasonic_noise_sigma: float = 0.0,
     ultrasonic_dropout_prob: float = 0.0,
     strong_aug: bool = False,
+    real_cam_postprocess: bool = False,
 ):
     def _init():
         base_env = ABCorridorVisionEnv(
@@ -218,6 +221,7 @@ def _make_env(
             lateral_penalty_mult=lateral_penalty_mult,
             ultrasonic_noise_sigma=ultrasonic_noise_sigma,
             ultrasonic_dropout_prob=ultrasonic_dropout_prob,
+            real_cam_postprocess=real_cam_postprocess,
         )
         wrapped = _wrap_env(
             base_env,
@@ -329,6 +333,7 @@ def main() -> int:
             lateral_penalty_mult=args.lateral_penalty_mult,
             ultrasonic_noise_sigma=args.ultrasonic_noise_sigma,
             ultrasonic_dropout_prob=args.ultrasonic_dropout_prob,
+            real_cam_postprocess=args.real_cam_postprocess,
         )
         wrapped = _wrap_env(
             base_env,
@@ -373,6 +378,7 @@ def main() -> int:
                 ultrasonic_noise_sigma=args.ultrasonic_noise_sigma,
                 ultrasonic_dropout_prob=args.ultrasonic_dropout_prob,
                 strong_aug=args.strong_aug,
+                real_cam_postprocess=args.real_cam_postprocess,
             )
             for i in range(num_envs)
         ])
