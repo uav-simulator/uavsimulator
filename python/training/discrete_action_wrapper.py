@@ -41,18 +41,23 @@ import gymnasium as gym
 import numpy as np
 from gymnasium import spaces
 
-# Action index → (throttle, steer)
-# DirLeft/Right include forward throttle so Unity Ackermann vehicle actually
-# moves+turns (pure-steer in Unity gives no motion → collapse). On real
-# ks0223 these still map to DirLeft/Right via ResolveCommand (steer>0.45
-# threshold dominates) — backend maps them to in-place rotation regardless.
+# Action index -> (throttle, steer).
+# Unity vehicle.ks0223.v1 (Ks0223Vehicle.cs) is a true differential-drive:
+# linear and angular velocities are *decoupled*, exactly matching real KS0223
+# motor commands. So pure-steer (0, ±1) gives in-place rotation in BOTH
+# sim and real — no sim-to-real gap on this dimension.
+#
+# Earlier experiment with (0.5, ±1) "forward+turn arc" was a misdiagnosis:
+# the v9 collapse was caused by env stall_penalty terminating rotation
+# episodes (in-place rotation → linear speed = 0 → stall trigger), not by
+# the action mapping itself. See AbCorridorVisionEnv._compute_reward.
 ACTION_TABLE = np.array(
     [
         [0.0, 0.0],    # 0: DirStop
-        [+1.0, 0.0],   # 1: DirForward (full throttle for sim distinguishability)
+        [+1.0, 0.0],   # 1: DirForward
         [-1.0, 0.0],   # 2: DirBack
-        [+0.5, +1.0],  # 3: DirLeft  — forward + strong left turn arc
-        [+0.5, -1.0],  # 4: DirRight — forward + strong right turn arc
+        [0.0, +1.0],   # 3: DirLeft  — pure in-place rotation (left)
+        [0.0, -1.0],   # 4: DirRight — pure in-place rotation (right)
     ],
     dtype=np.float32,
 )

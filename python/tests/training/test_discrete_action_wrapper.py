@@ -105,25 +105,26 @@ def test_action_table_thresholds_match_resolve_command():
         )
 
 
-def test_action_table_distinguishability_in_unity_sim():
-    """Каждое действие должно давать distinct физическое поведение в Unity:
-    либо ненулевой throttle (forward/backward motion), либо пара (throttle>0,
-    |steer|>0) для arc turn. DirStop единственное с zero throttle+zero steer.
+def test_action_table_pure_diff_drive():
+    """Каждое действие matches real KS0223 differential-drive physics:
+    DirStop = zero/zero, DirForward/Back = pure linear, DirLeft/Right =
+    pure in-place rotation (zero throttle, ±1 steer). Unity Ks0223Vehicle
+    реализует ту же decoupled physics, так что sim2real gap = 0 по action.
     """
     table = ACTION_TABLE
     # DirStop: zero throttle AND zero steer
     assert table[0][0] == 0.0 and table[0][1] == 0.0
 
-    # DirForward: forward throttle, zero steer
-    assert table[1][0] > 0.5 and table[1][1] == 0.0
+    # DirForward: max forward, no steer
+    assert table[1][0] == 1.0 and table[1][1] == 0.0
 
-    # DirBack: reverse throttle, zero steer
-    assert table[2][0] < -0.5 and table[2][1] == 0.0
+    # DirBack: max reverse, no steer
+    assert table[2][0] == -1.0 and table[2][1] == 0.0
 
-    # DirLeft: forward throttle (movement!) + positive steer (turn)
-    assert table[3][0] > 0.0, "DirLeft must have non-zero throttle else Unity gives no motion"
-    assert table[3][1] > 0.5
+    # DirLeft: pure left rotation (no linear)
+    assert table[3][0] == 0.0, "DirLeft must be pure rotation (real KS0223 = in-place)"
+    assert table[3][1] == 1.0
 
-    # DirRight: forward throttle + negative steer
-    assert table[4][0] > 0.0, "DirRight must have non-zero throttle else Unity gives no motion"
-    assert table[4][1] < -0.5
+    # DirRight: pure right rotation
+    assert table[4][0] == 0.0, "DirRight must be pure rotation (real KS0223 = in-place)"
+    assert table[4][1] == -1.0
