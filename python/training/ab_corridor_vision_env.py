@@ -410,7 +410,7 @@ class ABCorridorVisionEnv(gym.Env):
         self._update_kinematics(step)
 
         obs = self._build_observation(step)
-        reward, terminated, truncated, breakdown = self._compute_reward(step, steer)
+        reward, terminated, truncated, breakdown = self._compute_reward(step, steer, throttle)
         info = self._build_info(step)
         # Reserved key: reward_breakdown — kept stable because SubprocVecEnv pickles
         # info across process boundaries and downstream tools (diagnostics,
@@ -482,14 +482,18 @@ class ABCorridorVisionEnv(gym.Env):
 
     # ── reward ──
 
-    def _compute_reward(self, step: dict[str, Any], steer: float):
+    def _compute_reward(self, step: dict[str, Any], steer: float, throttle: float = 0.0):
         pos = self._current_position(step)
         px, pz = pos["x"], pos["z"]
 
         progress = self._route_progress(px, pz)
         delta_progress = progress - self._prev_progress
         self._prev_progress = progress
-        progress_reward = delta_progress * 20.0
+        # v7 reward shaping (Apr 26 fix DirBack collapse):
+        # multiplier 20 -> 100. Previously progress_reward maxed ~+0.4/step
+        # while lateral_penalty was -3.0/step. PPO chose "die fast" optimum.
+        # 5x progress now puts forward motion as dominant positive signal.
+        progress_reward = delta_progress * 100.0
 
         # Waypoint bonuses
         waypoint_bonus = self._collect_waypoint_bonus(px, pz)
@@ -513,6 +517,15 @@ class ABCorridorVisionEnv(gym.Env):
 
         # Time penalty
         time_penalty = -0.02
+
+        # v7 reward fix (Apr 26): survival bonus + backward action penalty.
+        # B. survival_bonus: per-step positive for staying alive; counters
+        #    "die fast" local minimum where DirBack quickly hits OOB and
+        #    accumulates less total negative reward than rotating in corridor.
+        # D. backward_penalty: explicit penalty for DirBack actions; PPO
+        #    learned to use DirBack as escape hatch from negative landscape.
+        survival_bonus = 0.1
+        backward_penalty = -0.5 if throttle < -0.25 else 0.0
 
         # Goal — bonus scaled by how centered the driving was
         terminated = False
@@ -578,7 +591,8 @@ class ABCorridorVisionEnv(gym.Env):
 
         reward = (progress_reward + waypoint_bonus + lateral_penalty +
                   jerk_penalty + speed_reward + time_penalty +
-                  goal_bonus + oob_penalty + stall_penalty)
+                  goal_bonus + oob_penalty + stall_penalty +
+                  survival_bonus + backward_penalty)
         self._last_termination_reason = termination_reason
         breakdown = {
             "progress": float(progress_reward),
@@ -590,6 +604,8 @@ class ABCorridorVisionEnv(gym.Env):
             "goal_bonus": float(goal_bonus),
             "oob_penalty": float(oob_penalty),
             "stall_penalty": float(stall_penalty),
+            "survival_bonus": float(survival_bonus),
+            "backward_penalty": float(backward_penalty),
         }
         return float(reward), terminated, False, breakdown
 
