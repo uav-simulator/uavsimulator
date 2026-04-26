@@ -1693,26 +1693,54 @@ def _spawn_process(cmd: list[str], cwd: Path, env: Dict[str, str], log_file: Pat
 
 
 def _resolve_runtime_executable(runtime_app: Path) -> Path:
-    if runtime_app.suffix != ".app":
-        raise ValueError(f"Expected macOS app bundle (.app), got: {runtime_app}")
-    binary_name = runtime_app.stem
-    executable = runtime_app / "Contents" / "MacOS" / binary_name
-    if executable.exists():
-        return _ensure_executable_file(executable)
-    candidates = [
-        item
-        for item in (runtime_app / "Contents" / "MacOS").glob("*")
-        if item.is_file() and not item.name.startswith("._")
-    ]
-    if len(candidates) == 1:
-        return _ensure_executable_file(candidates[0])
-    preferred = next((item for item in candidates if item.name == binary_name), None)
-    if preferred:
-        return _ensure_executable_file(preferred)
-    executable_candidates = [item for item in candidates if os.access(item, os.X_OK)]
-    if len(executable_candidates) == 1:
-        return _ensure_executable_file(executable_candidates[0])
-    raise FileNotFoundError(f"Runtime executable not found in app bundle: {runtime_app}")
+    # macOS app bundle: <runtime_app>.app/Contents/MacOS/<binary>
+    if runtime_app.suffix == ".app":
+        binary_name = runtime_app.stem
+        executable = runtime_app / "Contents" / "MacOS" / binary_name
+        if executable.exists():
+            return _ensure_executable_file(executable)
+        candidates = [
+            item
+            for item in (runtime_app / "Contents" / "MacOS").glob("*")
+            if item.is_file() and not item.name.startswith("._")
+        ]
+        if len(candidates) == 1:
+            return _ensure_executable_file(candidates[0])
+        preferred = next((item for item in candidates if item.name == binary_name), None)
+        if preferred:
+            return _ensure_executable_file(preferred)
+        executable_candidates = [item for item in candidates if os.access(item, os.X_OK)]
+        if len(executable_candidates) == 1:
+            return _ensure_executable_file(executable_candidates[0])
+        raise FileNotFoundError(f"Runtime executable not found in app bundle: {runtime_app}")
+
+    # Windows Standalone build: directory tree containing <name>.exe + UnityPlayer.dll
+    if runtime_app.is_dir():
+        exe_candidates = [item for item in runtime_app.glob("*.exe") if item.is_file() and item.name != "UnityCrashHandler64.exe"]
+        if len(exe_candidates) == 1:
+            return exe_candidates[0]
+        if len(exe_candidates) > 1:
+            preferred = next((item for item in exe_candidates if "uav-simulator" in item.stem), None)
+            if preferred:
+                return preferred
+            raise RuntimeError(
+                f"Multiple .exe files in runtime dir, ambiguous: {[c.name for c in exe_candidates]}"
+            )
+        # Linux Standalone: directory tree with executable bit on a single binary
+        linux_candidates = [
+            item
+            for item in runtime_app.iterdir()
+            if item.is_file() and os.access(item, os.X_OK) and item.suffix == ""
+        ]
+        if len(linux_candidates) == 1:
+            return _ensure_executable_file(linux_candidates[0])
+        raise FileNotFoundError(
+            f"No .exe or executable file found in runtime directory: {runtime_app}"
+        )
+
+    raise ValueError(
+        f"Unsupported runtime path: {runtime_app}. Expected macOS .app bundle or Windows/Linux build directory."
+    )
 
 
 def _ensure_executable_file(path: Path) -> Path:
