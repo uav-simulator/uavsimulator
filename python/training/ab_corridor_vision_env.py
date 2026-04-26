@@ -73,6 +73,9 @@ class ABCorridorVisionEnv(gym.Env):
         maze_randomize: bool = False,
         maze_param_ranges: dict | None = None,
         maze_regen_every: int = 1,
+        lateral_penalty_mult: float = 1.0,
+        ultrasonic_noise_sigma: float = 0.0,
+        ultrasonic_dropout_prob: float = 0.0,
     ):
         super().__init__()
 
@@ -158,6 +161,12 @@ class ABCorridorVisionEnv(gym.Env):
             "corridor_width_m": (0.50, 0.80),
             "wall_height_m": (0.20, 0.30),
         }
+
+        # Sim2real noise injection
+        self._lateral_penalty_mult = float(lateral_penalty_mult)
+        self._ultrasonic_noise_sigma = float(ultrasonic_noise_sigma)
+        self._ultrasonic_dropout_prob = float(ultrasonic_dropout_prob)
+        self._noise_rng = np.random.default_rng()
 
         # ArUco goal detection (optional — runs alongside policy)
         self._aruco_detector = None
@@ -438,7 +447,16 @@ class ABCorridorVisionEnv(gym.Env):
 
         # Ultrasonic
         tm = self._telemetry_map(step)
-        front_dist = self._parse_float(tm, "sensor.ultrasonic.front.m") / 5.0
+        front_m = self._parse_float(tm, "sensor.ultrasonic.front.m")
+        # Sim2real: add Gaussian noise + occasional dropout to mimic real sonar
+        if self._ultrasonic_dropout_prob > 0.0 and \
+                self._noise_rng.random() < self._ultrasonic_dropout_prob:
+            # 50/50 — return 0 (no echo) or saturated max (5m): real sonar fails both ways
+            front_m = 0.0 if self._noise_rng.random() < 0.5 else 5.0
+        elif self._ultrasonic_noise_sigma > 0.0:
+            front_m = front_m + self._noise_rng.normal(0.0, self._ultrasonic_noise_sigma)
+            front_m = max(0.0, front_m)
+        front_dist = front_m / 5.0
         ultrasonic = np.array([np.clip(front_dist, 0.0, 1.0)], dtype=np.float32)
 
         return {"image": image, "ultrasonic": ultrasonic}
@@ -509,7 +527,7 @@ class ABCorridorVisionEnv(gym.Env):
         # v9 reward fix: lateral_penalty multiplier 3.0 -> 1.0.
         # Wall proximity -3/step dominated reward landscape, blocking
         # exploration of recovery actions (rotation) when robot is near wall.
-        lateral_penalty = -1.0 * wall_proximity ** 2
+        lateral_penalty = -1.0 * self._lateral_penalty_mult * wall_proximity ** 2
 
         # Steer jerk penalty
         jerk_penalty = -0.05 * abs(steer - self._prev_steer)
