@@ -527,6 +527,14 @@ class ABCorridorVisionEnv(gym.Env):
         survival_bonus = 0.1
         backward_penalty = -0.5 if throttle < -0.25 else 0.0
 
+        # v8 reward fix: heading alignment bonus.
+        # v9-rev7 reached DirForward+DirStop only (no rotation), stalls at
+        # ~25% progress = first turn in maze. Without rotation reward signal,
+        # PPO never learned to turn. Bonus = 0.5 * cos(angle_to_next_waypoint),
+        # so facing toward goal gives +0.5/step, opposite -0.5/step.
+        # This rewards rotation actions WHEN they align robot with goal.
+        heading_bonus = self._compute_heading_alignment_bonus(step, px, pz)
+
         # Goal — bonus scaled by how centered the driving was
         terminated = False
         goal_bonus = 0.0
@@ -592,7 +600,7 @@ class ABCorridorVisionEnv(gym.Env):
         reward = (progress_reward + waypoint_bonus + lateral_penalty +
                   jerk_penalty + speed_reward + time_penalty +
                   goal_bonus + oob_penalty + stall_penalty +
-                  survival_bonus + backward_penalty)
+                  survival_bonus + backward_penalty + heading_bonus)
         self._last_termination_reason = termination_reason
         breakdown = {
             "progress": float(progress_reward),
@@ -606,6 +614,7 @@ class ABCorridorVisionEnv(gym.Env):
             "stall_penalty": float(stall_penalty),
             "survival_bonus": float(survival_bonus),
             "backward_penalty": float(backward_penalty),
+            "heading_bonus": float(heading_bonus),
         }
         return float(reward), terminated, False, breakdown
 
@@ -717,6 +726,51 @@ class ABCorridorVisionEnv(gym.Env):
             wx, wz = self.waypoints[wi]
             if math.hypot(px - wx, pz - wz) <= self.waypoint_reach_radius_m:
                 self._reached_waypoints.add(wi)
+
+    def _compute_heading_alignment_bonus(self, step: dict[str, Any], px: float, pz: float) -> float:
+        """Bonus 0.5 * cos(angle_to_next_waypoint) — rewards rotation toward goal.
+
+        Returns bonus в [-0.5, +0.5]:
+        - +0.5 when robot is exactly facing the next unreached waypoint
+        - 0.0 when 90° off
+        - -0.5 when facing directly away
+
+        Useful when robot stalls at corner — rotation actions which align
+        heading toward next waypoint now have positive reward signal.
+        """
+        # Find next unreached waypoint
+        next_wp = None
+        for wi in range(len(self.waypoints)):
+            if wi not in self._reached_waypoints:
+                next_wp = self.waypoints[wi]
+                break
+        if next_wp is None:
+            return 0.0  # all reached, no signal needed
+
+        wp_x, wp_z = next_wp
+        # Direction from robot to waypoint
+        dx, dz = wp_x - px, wp_z - pz
+        dist = math.hypot(dx, dz)
+        if dist < 1e-3:
+            return 0.0  # at waypoint, no direction
+
+        # Robot heading from quaternion. Unity's "forward" is +Z локально;
+        # rotated by yaw (Y axis quaternion) gives world-space forward.
+        rot = ((step.get("state") or {}).get("pose") or {}).get("rotation") or {}
+        qx = float(rot.get("x", 0.0))
+        qy = float(rot.get("y", 0.0))
+        qz = float(rot.get("z", 0.0))
+        qw = float(rot.get("w", 1.0))
+        # Yaw extraction (rotation around Y axis)
+        yaw_rad = math.atan2(2.0 * (qw * qy + qx * qz),
+                             1.0 - 2.0 * (qy * qy + qz * qz))
+        # Robot's forward unit vector в world XZ plane
+        fx, fz = math.sin(yaw_rad), math.cos(yaw_rad)
+        # Direction to waypoint normalized
+        nx, nz = dx / dist, dz / dist
+        # Cosine of angle between heading and waypoint direction
+        alignment = fx * nx + fz * nz  # ∈ [-1, +1]
+        return 0.5 * alignment
 
     def _collect_waypoint_bonus(self, px: float, pz: float) -> float:
         waypoint_bonus = 0.0
