@@ -15,6 +15,11 @@ namespace UavSimulator.Tracks
     /// Robot spawns at (0, 0.01, −0.85) facing +Z.
     ///
     /// 6 walls form a closed L-shape. All walls have active colliders.
+    ///
+    /// rev20: domain randomization — wall/floor color jitter (HSV), light
+    /// intensity/hue jitter, optional skybox-null with random ambient.
+    /// Each ResetTrack(seed) destroys existing children and rebuilds with new
+    /// visuals so each episode trains the policy on a different scene.
     /// </summary>
     public sealed class CardboardCorridorTrack : TrackBase
     {
@@ -24,6 +29,18 @@ namespace UavSimulator.Tracks
         [SerializeField] private float segmentALength = 1.10f;
         [SerializeField] private float segmentBLength = 0.90f;
 
+        // rev20 domain randomization knobs
+        [SerializeField] private bool randomizeVisuals = true;
+        [SerializeField] private float wallHueJitterDegrees = 25f;        // ±degrees in HSV hue
+        [SerializeField] private float wallValueJitterRange = 0.15f;       // ±value in HSV
+        [SerializeField] private float wallSaturationJitterRange = 0.15f;  // ±saturation
+        [SerializeField] private float lightIntensityMin = 0.45f;
+        [SerializeField] private float lightIntensityMax = 1.10f;
+        [SerializeField] private float lightHueJitterDegrees = 30f;
+        [SerializeField] private float skyboxNullProbability = 0.50f;
+        [SerializeField] private float cameraPitchJitterDegrees = 4f;
+
+        // Base palette — randomization perturbs around these.
         private static readonly Color CardboardBase = new Color(0.76f, 0.60f, 0.42f);
         private static readonly Color CardboardStripe = new Color(0.68f, 0.52f, 0.36f);
         private static readonly Color FloorColor = new Color(0.72f, 0.58f, 0.40f);
@@ -33,9 +50,61 @@ namespace UavSimulator.Tracks
 
         private bool built;
 
-        private void Awake() => BuildIfNeeded();
+        // rev20 randomization state
+        private System.Random rng;
+        private Color randomizedCardboardBase;
+        private Color randomizedCardboardStripe;
+        private Color randomizedFloorColor;
+        private Color randomizedSurroundFloorColor;
 
-        public override void ResetTrack(int seed) => BuildIfNeeded();
+        private void Awake()
+        {
+            // Awake fires before any seeded reset; use a deterministic default
+            // seed so first frame is valid even if ResetTrack hasn't run yet.
+            if (rng == null) rng = new System.Random(0);
+            if (randomizeVisuals) JitterPalette();
+            BuildIfNeeded();
+        }
+
+        public override void ResetTrack(int seed)
+        {
+            rng = new System.Random(seed);
+            if (randomizeVisuals)
+            {
+                // Destroy current children and rebuild with new visuals.
+                for (int i = transform.childCount - 1; i >= 0; i--)
+                {
+                    var child = transform.GetChild(i).gameObject;
+                    if (Application.isPlaying) UnityEngine.Object.Destroy(child);
+                    else UnityEngine.Object.DestroyImmediate(child);
+                }
+                JitterPalette();
+                built = false;
+            }
+            BuildIfNeeded();
+        }
+
+        private void JitterPalette()
+        {
+            randomizedCardboardBase = JitterColor(CardboardBase, wallHueJitterDegrees, wallSaturationJitterRange, wallValueJitterRange);
+            randomizedCardboardStripe = JitterColor(CardboardStripe, wallHueJitterDegrees, wallSaturationJitterRange, wallValueJitterRange);
+            randomizedFloorColor = JitterColor(FloorColor, wallHueJitterDegrees, wallSaturationJitterRange, wallValueJitterRange);
+            randomizedSurroundFloorColor = JitterColor(SurroundFloorColor, wallHueJitterDegrees, wallSaturationJitterRange, wallValueJitterRange);
+        }
+
+        private Color JitterColor(Color baseColor, float hueDeg, float satRange, float valRange)
+        {
+            Color.RGBToHSV(baseColor, out var h, out var s, out var v);
+            h = (h + (float)(rng.NextDouble() - 0.5) * hueDeg / 360f + 1f) % 1f;
+            s = Mathf.Clamp01(s + (float)(rng.NextDouble() - 0.5) * 2f * satRange);
+            v = Mathf.Clamp01(v + (float)(rng.NextDouble() - 0.5) * 2f * valRange);
+            return Color.HSVToRGB(h, s, v);
+        }
+
+        private Color WallColor() => randomizeVisuals ? randomizedCardboardBase : CardboardBase;
+        private Color StripeColor() => randomizeVisuals ? randomizedCardboardStripe : CardboardStripe;
+        private Color FloorColorActive() => randomizeVisuals ? randomizedFloorColor : FloorColor;
+        private Color SurroundFloorColorActive() => randomizeVisuals ? randomizedSurroundFloorColor : SurroundFloorColor;
 
         private void BuildIfNeeded()
         {
@@ -61,7 +130,7 @@ namespace UavSimulator.Tracks
             var floor = CreateBox("SurroundFloor",
                 new Vector3(2.5f, 0.01f, 2.5f),
                 new Vector3(0.30f, -0.005f, -0.40f));
-            SetMaterial(floor, SurroundFloorColor, 0.3f);
+            SetMaterial(floor, SurroundFloorColorActive(), 0.3f);
         }
 
         // ── Corridor floor ──────────────────────────────────────────
@@ -76,7 +145,7 @@ namespace UavSimulator.Tracks
             var floorA = CreateBox("CorridorFloorA",
                 new Vector3(corridorWidth, 0.01f, aLen),
                 new Vector3(0f, floorY, -segmentALength * 0.5f + hw * 0.5f));
-            SetMaterial(floorA, FloorColor, 0.2f);
+            SetMaterial(floorA, FloorColorActive(), 0.2f);
 
             // Segment B floor: from x=+hw to x=+segB (no overlap with turn)
             float bLen = segmentBLength - hw;
@@ -85,7 +154,7 @@ namespace UavSimulator.Tracks
                 var floorB = CreateBox("CorridorFloorB",
                     new Vector3(bLen, 0.01f, corridorWidth),
                     new Vector3(hw + bLen * 0.5f, floorY, 0f));
-                SetMaterial(floorB, FloorColor, 0.2f);
+                SetMaterial(floorB, FloorColorActive(), 0.2f);
             }
         }
 
@@ -135,7 +204,7 @@ namespace UavSimulator.Tracks
         private void CreateCardboardWall(string name, Vector3 scale, Vector3 position)
         {
             var wall = CreateBox(name, scale, position);
-            SetMaterial(wall, CardboardBase, 0.05f);
+            SetMaterial(wall, WallColor(), 0.05f);
 
             // High-friction physics material — prevents wall-sliding
             var collider = wall.GetComponent<Collider>();
@@ -174,7 +243,7 @@ namespace UavSimulator.Tracks
                 }
 
                 var stripe = CreateBox($"{name}_s{i}", stripeScale, stripePos);
-                SetMaterial(stripe, CardboardStripe, 0.03f);
+                SetMaterial(stripe, StripeColor(), 0.03f);
                 DisableCollider(stripe);
             }
         }
@@ -225,8 +294,24 @@ namespace UavSimulator.Tracks
             lightGo.transform.localRotation = Quaternion.Euler(50f, -30f, 0f);
             var dirLight = lightGo.AddComponent<Light>();
             dirLight.type = LightType.Directional;
-            dirLight.color = new Color(1f, 0.97f, 0.92f);
-            dirLight.intensity = 1.0f;
+            if (randomizeVisuals)
+            {
+                var baseColor = new Color(1f, 0.97f, 0.92f);
+                dirLight.color = JitterColor(baseColor, lightHueJitterDegrees, 0.10f, 0.10f);
+                dirLight.intensity = lightIntensityMin + (float)rng.NextDouble() * (lightIntensityMax - lightIntensityMin);
+                if ((float)rng.NextDouble() < skyboxNullProbability)
+                {
+                    RenderSettings.skybox = null;
+                    RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
+                    var ambient = JitterColor(new Color(0.45f, 0.45f, 0.45f), 20f, 0.10f, 0.10f);
+                    RenderSettings.ambientLight = ambient;
+                }
+            }
+            else
+            {
+                dirLight.color = new Color(1f, 0.97f, 0.92f);
+                dirLight.intensity = 1.0f;
+            }
             dirLight.shadows = LightShadows.Soft;
         }
 
