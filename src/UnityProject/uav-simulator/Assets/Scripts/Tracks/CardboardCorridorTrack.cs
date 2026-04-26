@@ -71,15 +71,19 @@ namespace UavSimulator.Tracks
             rng = new System.Random(seed);
             if (randomizeVisuals)
             {
-                // Destroy current children and rebuild with new visuals.
+                // DestroyImmediate so the children are gone *this* frame; otherwise
+                // BuildIfNeeded sees the still-alive Destroy()-pending children, marks
+                // built=true and returns without rebuilding (silent DR failure).
                 for (int i = transform.childCount - 1; i >= 0; i--)
                 {
                     var child = transform.GetChild(i).gameObject;
-                    if (Application.isPlaying) UnityEngine.Object.Destroy(child);
-                    else UnityEngine.Object.DestroyImmediate(child);
+                    UnityEngine.Object.DestroyImmediate(child);
                 }
                 JitterPalette();
                 built = false;
+                BuildTrack();
+                built = true;
+                return;
             }
             BuildIfNeeded();
         }
