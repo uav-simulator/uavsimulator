@@ -45,6 +45,7 @@ from training.anti_spin_reward import AntiSpinRewardWrapper
 from training.discrete_action_wrapper import ACTION_NAMES, DiscreteActionWrapper
 from training.image_aug_wrapper import ImageAugObservationWrapper
 from training.latency_wrapper import DelayedActionWrapper
+from training.multi_agent_vision_env import MultiAgentVisionVecEnv
 from training.model_artifacts import (
     build_compatibility,
     build_model_metadata,
@@ -103,6 +104,8 @@ def parse_args() -> argparse.Namespace:
                    help="Aggressive image augmentations (rev13: enabled — wider brightness/contrast/blur/noise)")
     p.add_argument("--real-cam-postprocess", action="store_true",
                    help="rev18: dim+desaturate+JPEG-recompress 84x84 obs to mimic real USB camera characteristics")
+    p.add_argument("--multi-agent", action="store_true",
+                   help="rev18: 1 Unity process x N agents (avoids SubprocVecEnv pipe crashes on Win)")
     p.add_argument("--lateral-penalty-mult", type=float, default=1.0,
                    help="Multiplier for lateral wall-proximity penalty (rev13: 5.0)")
     p.add_argument("--ultrasonic-noise-sigma", type=float, default=0.0,
@@ -318,7 +321,31 @@ def main() -> int:
     print(f"  Discrete actions: {dict(enumerate(ACTION_NAMES))}")
     print()
 
-    if num_envs == 1:
+    if args.multi_agent:
+        from sim_client.scenario_loader import load_scenario_file
+        sc = load_scenario_file(args.scenario)
+        route = (sc.get("route") or {})
+        params = route.get("params") or {}
+        ma_waypoints = [(float(w[0]), float(w[1])) for w in route.get("waypoints", [])]
+        ma_corridor_w = float(params.get("corridor.width_m", 0.60))
+        ma_goal_r = float(params.get("goal.radius_m", 0.25))
+        print(f"  Multi-agent mode: 1 Unity x {num_envs} agents (port {args.base_url})")
+        train_env = MultiAgentVisionVecEnv(
+            n_agents=num_envs,
+            base_url=args.base_url,
+            scenario_path=args.scenario,
+            max_steps=args.max_ep_steps,
+            time_scale=args.time_scale,
+            img_size=args.img_size,
+            corridor_width_m=ma_corridor_w,
+            goal_radius_m=ma_goal_r,
+            waypoints=ma_waypoints if ma_waypoints else None,
+            real_cam_postprocess=args.real_cam_postprocess,
+        )
+        probe_track = "track.cardboard_corridor.v1"
+        probe_corridor_w = ma_corridor_w
+        probe_goal_r = ma_goal_r
+    elif num_envs == 1:
         base_env = ABCorridorVisionEnv(
             base_url=args.base_url,
             scenario_path=args.scenario,

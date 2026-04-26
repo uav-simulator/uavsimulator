@@ -149,6 +149,7 @@ class MultiAgentVisionVecEnv(VecEnv):
         waypoints: Optional[list[tuple[float, float]]] = None,
         track_id: str = "track.cardboard_corridor.v1",
         vehicle_id: str = "vehicle.ks0223.v1",
+        real_cam_postprocess: bool = False,
     ) -> None:
         self.n_agents = n_agents
         self.client = SimClient(base_url, timeout_s=60.0)
@@ -181,6 +182,7 @@ class MultiAgentVisionVecEnv(VecEnv):
         self._step_count = 0
         self._pending_actions: Optional[np.ndarray] = None
         self._episode_seed = 0
+        self._real_cam_postprocess = bool(real_cam_postprocess)
 
     def _build_reset_config(self) -> dict[str, Any]:
         flags = [
@@ -380,6 +382,18 @@ class MultiAgentVisionVecEnv(VecEnv):
             image = np.asarray(pil, dtype=np.uint8)
         else:
             image = np.zeros((self.img_size, self.img_size, 3), dtype=np.uint8)
+
+        if self._real_cam_postprocess and image.ndim == 3 and image.shape[2] == 3:
+            x = image.astype(np.float32) * 0.85
+            luma = (x * np.array([0.299, 0.587, 0.114], dtype=np.float32)).sum(
+                axis=-1, keepdims=True
+            )
+            x = x * 0.75 + luma * 0.25
+            x = np.clip(x, 0.0, 255.0).astype(np.uint8)
+            buf = io.BytesIO()
+            Image.fromarray(x).save(buf, format="JPEG", quality=60)
+            buf.seek(0)
+            image = np.asarray(Image.open(buf).convert("RGB"))
 
         tm = _telemetry_map(step)
         front_m = _parse_float(tm, "sensor.ultrasonic.front.m")
