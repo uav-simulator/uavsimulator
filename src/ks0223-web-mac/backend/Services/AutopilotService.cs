@@ -1,4 +1,6 @@
 using Ks0223.Web.Backend.Models;
+using Microsoft.AspNetCore.Hosting.Server;
+using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.ML.OnnxRuntime;
 using Microsoft.ML.OnnxRuntime.Tensors;
 using System.Globalization;
@@ -13,11 +15,19 @@ public sealed class AutopilotService
 {
     private const int MinLoopIntervalMs = 80;
     private const int MaxLoopIntervalMs = 1000;
+    private const int DefaultMaxDurationSeconds = 60;
+    private const int MaxDurationSecondsHardCap = 600;
+    private const int RepeatedCommandThreshold = 15;
+    private const int StaleTelemetryAfterMs = 1500;
+    private const int EStopWindowSeconds = 10;
+    private const int EStopWindowThreshold = 5;
 
     private readonly object gate = new();
     private readonly RuntimeSessionManager runtimeSessionManager;
     private readonly ModelRegistryService modelRegistry;
     private readonly AutopilotSafetyFilter safetyFilter;
+    private readonly SessionVideoRecorder videoRecorder;
+    private readonly IServer server;
     private readonly ILogger<AutopilotService> logger;
 
     private AutopilotState state = AutopilotState.Stopped();
@@ -26,11 +36,15 @@ public sealed class AutopilotService
         RuntimeSessionManager runtimeSessionManager,
         ModelRegistryService modelRegistry,
         AutopilotSafetyFilter safetyFilter,
+        SessionVideoRecorder videoRecorder,
+        IServer server,
         ILogger<AutopilotService> logger)
     {
         this.runtimeSessionManager = runtimeSessionManager;
         this.modelRegistry = modelRegistry;
         this.safetyFilter = safetyFilter;
+        this.videoRecorder = videoRecorder;
+        this.server = server;
         this.logger = logger;
     }
 
@@ -43,7 +57,7 @@ public sealed class AutopilotService
                 if (!string.IsNullOrWhiteSpace(clientId) &&
                     !string.Equals(state.ClientId, clientId.Trim(), StringComparison.Ordinal))
                 {
-                    return AutopilotState.Stopped().ToDto();
+                    return AutopilotState.Stopped().ToDto() with { ThrottleMax = safetyFilter.GetStatus().ThrottleMax };
                 }
 
                 if (!string.IsNullOrWhiteSpace(runtimeMode))
@@ -51,12 +65,12 @@ public sealed class AutopilotService
                     var normalizedMode = RuntimeModes.Normalize(runtimeMode);
                     if (!string.Equals(state.RuntimeMode, normalizedMode, StringComparison.Ordinal))
                     {
-                        return AutopilotState.Stopped().ToDto();
+                        return AutopilotState.Stopped().ToDto() with { ThrottleMax = safetyFilter.GetStatus().ThrottleMax };
                     }
                 }
             }
 
-            return state.ToDto();
+            return state.ToDto() with { ThrottleMax = safetyFilter.GetStatus().ThrottleMax };
         }
     }
 
@@ -66,6 +80,7 @@ public sealed class AutopilotService
         var runtimeMode = RuntimeModes.Normalize(request.RuntimeMode);
         var agentId = string.IsNullOrWhiteSpace(request.AgentId) ? null : request.AgentId.Trim();
         var loopIntervalMs = Math.Clamp(request.LoopIntervalMs ?? 140, MinLoopIntervalMs, MaxLoopIntervalMs);
+        var maxDurationSeconds = Math.Clamp(request.MaxDurationSeconds ?? DefaultMaxDurationSeconds, 5, MaxDurationSecondsHardCap);
 
         var model = modelRegistry.ResolveRuntimeSpec(request.ModelId, clientId, runtimeMode, agentId);
 
@@ -88,6 +103,7 @@ public sealed class AutopilotService
             model.ModelId,
             predictor,
             loopIntervalMs,
+            maxDurationSeconds,
             cts);
 
         lock (gate)
@@ -96,6 +112,7 @@ public sealed class AutopilotService
         }
 
         safetyFilter.Reset();
+        TryStartVideoRecording(clientId, runtimeMode, model.ModelId);
         running.LoopTask = Task.Run(() => LoopAsync(running), CancellationToken.None);
         logger.LogInformation("Autopilot started for {ClientId}/{RuntimeMode} with model {ModelId}", clientId, runtimeMode, model.ModelId);
         return running.ToDto();
@@ -119,15 +136,31 @@ public sealed class AutopilotService
     private async Task LoopAsync(AutopilotState running)
     {
         var token = running.Cancellation!.Token;
+        var eStopTimestamps = new Queue<DateTimeOffset>();
+        long previousEStopCount = 0;
         try
         {
             while (!token.IsCancellationRequested)
             {
+                if (running.MaxDurationSeconds > 0 && running.StartedAtUtc is { } startedAt &&
+                    (DateTimeOffset.UtcNow - startedAt).TotalSeconds >= running.MaxDurationSeconds)
+                {
+                    await AutoStopAsync(running, $"max-duration {running.MaxDurationSeconds}s reached");
+                    return;
+                }
+
                 var telemetry = runtimeSessionManager.GetLatestSensorTelemetry(running.ClientId!, running.RuntimeMode!);
                 if (telemetry is null)
                 {
                     await Task.Delay(running.LoopIntervalMs, token);
                     continue;
+                }
+
+                var telemetryAgeMs = (DateTimeOffset.UtcNow - telemetry.Timestamp).TotalMilliseconds;
+                if (telemetryAgeMs > StaleTelemetryAfterMs)
+                {
+                    await AutoStopAsync(running, $"sensor telemetry stale {telemetryAgeMs:F0}ms");
+                    return;
                 }
 
                 byte[]? frameBytes = null;
@@ -172,6 +205,7 @@ public sealed class AutopilotService
                     token);
 
                 var safetyStatus = safetyFilter.GetStatus();
+                int repeatedCount;
                 lock (gate)
                 {
                     if (!ReferenceEquals(state, running))
@@ -183,9 +217,18 @@ public sealed class AutopilotService
                     running.StepsTotal += 1;
                     running.LastThrottle = throttle;
                     running.LastSteer = steer;
-                    running.LastCommand = command;
+                    if (string.Equals(running.LastCommand, command, StringComparison.Ordinal))
+                    {
+                        running.RepeatedCommandCount += 1;
+                    }
+                    else
+                    {
+                        running.RepeatedCommandCount = 1;
+                        running.LastCommand = command;
+                    }
                     running.EStopActive = decision.EStopActive;
                     running.EStopTriggerCount = safetyStatus.EStopTriggerCount;
+                    repeatedCount = running.RepeatedCommandCount;
 
                     if (response.Sent)
                     {
@@ -196,6 +239,31 @@ public sealed class AutopilotService
                     {
                         running.LastError = response.Error ?? "autopilot command rejected";
                     }
+                }
+
+                if (safetyStatus.EStopTriggerCount > previousEStopCount)
+                {
+                    var now = DateTimeOffset.UtcNow;
+                    eStopTimestamps.Enqueue(now);
+                    var windowStart = now.AddSeconds(-EStopWindowSeconds);
+                    while (eStopTimestamps.Count > 0 && eStopTimestamps.Peek() < windowStart)
+                    {
+                        eStopTimestamps.Dequeue();
+                    }
+                    previousEStopCount = safetyStatus.EStopTriggerCount;
+                    if (eStopTimestamps.Count >= EStopWindowThreshold)
+                    {
+                        await AutoStopAsync(running,
+                            $"safety overload: {eStopTimestamps.Count} E-stops in {EStopWindowSeconds}s");
+                        return;
+                    }
+                }
+
+                if (repeatedCount >= RepeatedCommandThreshold && command != "DirStop")
+                {
+                    await AutoStopAsync(running,
+                        $"stuck-command: {command} repeated {repeatedCount} times");
+                    return;
                 }
 
                 await Task.Delay(running.LoopIntervalMs, token);
@@ -222,6 +290,7 @@ public sealed class AutopilotService
                 logger.LogDebug(stopEx, "Failed to send DirStop after autopilot failure");
             }
 
+            videoRecorder.Stop();
             running.Predictor?.Dispose();
             lock (gate)
             {
@@ -230,6 +299,89 @@ public sealed class AutopilotService
                     state = AutopilotState.StoppedFrom(running, ex.Message);
                 }
             }
+        }
+    }
+
+    private async Task AutoStopAsync(AutopilotState running, string reason)
+    {
+        logger.LogWarning("Autopilot auto-stop: {Reason} (client={Client} model={Model} steps={Steps})",
+            reason, running.ClientId, running.ModelId, running.StepsTotal);
+
+        // Reset DirectDrive state to (0, 0) so any stream consumer no longer sees the
+        // last forward throttle, then send DirStop several times — a single command can
+        // be lost or arrive interleaved with a stale in-flight command.
+        try
+        {
+            runtimeSessionManager.SetDirectDrive(
+                running.ClientId!, running.RuntimeMode!, running.AgentId, 0f, 0f);
+        }
+        catch (Exception ex)
+        {
+            logger.LogDebug(ex, "Failed to reset DirectDrive on auto-stop");
+        }
+
+        await SendDirStopBurstAsync(running, attempts: 4, gapMs: 80);
+
+        videoRecorder.Stop();
+        running.Cancellation?.Cancel();
+        running.Predictor?.Dispose();
+        lock (gate)
+        {
+            running.StopReason = reason;
+            if (ReferenceEquals(state, running))
+            {
+                state = AutopilotState.StoppedFrom(running, reason);
+            }
+        }
+    }
+
+    private async Task SendDirStopBurstAsync(AutopilotState running, int attempts, int gapMs)
+    {
+        for (var i = 0; i < attempts; i++)
+        {
+            try
+            {
+                await runtimeSessionManager.SendCommandAsync(
+                    running.ClientId!,
+                    running.RuntimeMode!,
+                    "DirStop",
+                    running.AgentId,
+                    CancellationToken.None);
+            }
+            catch (Exception stopEx)
+            {
+                logger.LogDebug(stopEx, "DirStop burst attempt {Attempt} failed", i + 1);
+            }
+
+            if (i + 1 < attempts)
+            {
+                await Task.Delay(gapMs);
+            }
+        }
+    }
+
+    private void TryStartVideoRecording(string clientId, string runtimeMode, string modelId)
+    {
+        try
+        {
+            var addresses = server.Features.Get<IServerAddressesFeature>()?.Addresses;
+            var local = addresses?.FirstOrDefault(a => a.StartsWith("http://", StringComparison.OrdinalIgnoreCase));
+            if (string.IsNullOrEmpty(local))
+            {
+                logger.LogWarning("Video recorder skipped: no local HTTP server address");
+                return;
+            }
+
+            // Server addresses can use 0.0.0.0 / [::]; resolve to loopback for the sub-process.
+            var uri = new Uri(local);
+            var hostForLocal = uri.Host is "0.0.0.0" or "+" or "*" or "[::]" ? "127.0.0.1" : uri.Host;
+            var mjpeg = $"{uri.Scheme}://{hostForLocal}:{uri.Port}/api/camera/mjpeg" +
+                $"?clientId={Uri.EscapeDataString(clientId)}&runtimeMode={Uri.EscapeDataString(runtimeMode)}";
+            videoRecorder.TryStart(mjpeg, modelId);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Failed to start autopilot video recorder");
         }
     }
 
@@ -289,6 +441,7 @@ public sealed class AutopilotService
             logger.LogDebug(ex, "Failed to send DirStop during autopilot stop");
         }
 
+        videoRecorder.Stop();
         snapshot.Predictor?.Dispose();
         lock (gate)
         {
@@ -874,6 +1027,9 @@ public sealed class AutopilotService
         public Task? LoopTask { get; set; }
         public bool EStopActive { get; set; }
         public long EStopTriggerCount { get; set; }
+        public int MaxDurationSeconds { get; private set; }
+        public int RepeatedCommandCount { get; set; }
+        public string? StopReason { get; set; }
 
         public static AutopilotState Running(
             string clientId,
@@ -882,6 +1038,7 @@ public sealed class AutopilotService
             string modelId,
             PolicyPredictor predictor,
             int loopIntervalMs,
+            int maxDurationSeconds,
             CancellationTokenSource cancellation) =>
             new()
             {
@@ -892,6 +1049,7 @@ public sealed class AutopilotService
                 ModelId = modelId,
                 StartedAtUtc = DateTimeOffset.UtcNow,
                 LoopIntervalMs = loopIntervalMs,
+                MaxDurationSeconds = maxDurationSeconds,
                 Predictor = predictor,
                 Cancellation = cancellation,
             };
@@ -920,6 +1078,9 @@ public sealed class AutopilotService
                 LastSteer = previous.LastSteer,
                 LastError = lastError,
                 EStopTriggerCount = previous.EStopTriggerCount,
+                MaxDurationSeconds = previous.MaxDurationSeconds,
+                RepeatedCommandCount = previous.RepeatedCommandCount,
+                StopReason = previous.StopReason ?? lastError,
             };
 
         public AutopilotStatusDto ToDto() =>
@@ -939,6 +1100,9 @@ public sealed class AutopilotService
                 LastError,
                 Mode,
                 EStopActive: EStopActive,
-                EStopTriggerCount: EStopTriggerCount);
+                EStopTriggerCount: EStopTriggerCount,
+                MaxDurationSeconds: MaxDurationSeconds,
+                RepeatedCommandCount: RepeatedCommandCount,
+                StopReason: StopReason);
     }
 }

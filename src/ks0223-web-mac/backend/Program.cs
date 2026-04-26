@@ -50,6 +50,7 @@ builder.Services.AddSingleton<AutopilotSafetyFilter>(sp => new AutopilotSafetyFi
     sp.GetRequiredService<IOptions<AutopilotSafetyOptions>>().Value,
     sp.GetRequiredService<TimeProvider>(),
     sp.GetRequiredService<ILogger<AutopilotSafetyFilter>>()));
+builder.Services.AddSingleton<SessionVideoRecorder>();
 builder.Services.AddSingleton<AutopilotService>();
 builder.Services.AddHostedService(serviceProvider => serviceProvider.GetRequiredService<RuntimeSessionManager>());
 
