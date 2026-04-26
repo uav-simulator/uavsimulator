@@ -75,8 +75,13 @@ def record_one(
     print(f"  seed={seed}: ended after {step} steps, reason={term_reason}")
 
     out_mp4.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        import imageio_ffmpeg
+        ffmpeg_bin = imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception:
+        ffmpeg_bin = "ffmpeg"
     cmd = [
-        "ffmpeg", "-y", "-loglevel", "warning",
+        ffmpeg_bin, "-y", "-loglevel", "warning",
         "-framerate", "7",
         "-i", str(work_dir / "frame_%04d.png"),
         "-c:v", "libx264", "-pix_fmt", "yuv420p",
