@@ -322,7 +322,7 @@ def main() -> int:
     print()
 
     if args.multi_agent:
-        from sim_client.scenario_loader import load_scenario_file
+        from sim_client.scenario import load_scenario_file
         sc = load_scenario_file(args.scenario)
         route = (sc.get("route") or {})
         params = route.get("params") or {}
