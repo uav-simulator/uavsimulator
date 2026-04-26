@@ -106,6 +106,10 @@ def parse_args() -> argparse.Namespace:
                    help="rev18: dim+desaturate+JPEG-recompress 84x84 obs to mimic real USB camera characteristics")
     p.add_argument("--multi-agent", action="store_true",
                    help="rev18: 1 Unity process x N agents (avoids SubprocVecEnv pipe crashes on Win)")
+    p.add_argument("--meta-multi-agent", type=int, default=1,
+                   help="rev20: N Unity processes x agents_per_unity threaded parallelism. "
+                        "When N>=2, --num-envs becomes agents_per_unity and total agents = N*num_envs. "
+                        "Ports are base_port..base_port+N-1.")
     p.add_argument("--lateral-penalty-mult", type=float, default=1.0,
                    help="Multiplier for lateral wall-proximity penalty (rev13: 5.0)")
     p.add_argument("--ultrasonic-noise-sigma", type=float, default=0.0,
@@ -321,7 +325,39 @@ def main() -> int:
     print(f"  Discrete actions: {dict(enumerate(ACTION_NAMES))}")
     print()
 
-    if args.multi_agent:
+    meta_n = max(1, int(args.meta_multi_agent))
+    if meta_n >= 2:
+        from sim_client.scenario import load_scenario_file
+        from training.meta_multi_agent_vec_env import MetaMultiAgentVecEnv
+        sc = load_scenario_file(args.scenario)
+        route = (sc.get("route") or {})
+        params = route.get("params") or {}
+        ma_waypoints = [(float(w[0]), float(w[1])) for w in route.get("waypoints", [])]
+        ma_corridor_w = float(params.get("corridor.width_m", 0.60))
+        ma_goal_r = float(params.get("goal.radius_m", 0.25))
+        scheme_host, base_port = _parse_base_port(args.base_url)
+        url_template = f"{scheme_host}:{{port}}"
+        total_agents = meta_n * num_envs
+        print(f"  Meta-multi-agent: {meta_n} Unity x {num_envs} agents = {total_agents} total")
+        print(f"  Ports: {base_port}..{base_port + meta_n - 1}")
+        train_env = MetaMultiAgentVecEnv(
+            n_unity=meta_n,
+            agents_per_unity=num_envs,
+            base_url_template=url_template,
+            scenario_path=args.scenario,
+            max_steps=args.max_ep_steps,
+            time_scale=args.time_scale,
+            img_size=args.img_size,
+            corridor_width_m=ma_corridor_w,
+            goal_radius_m=ma_goal_r,
+            waypoints=ma_waypoints if ma_waypoints else None,
+            real_cam_postprocess=args.real_cam_postprocess,
+            base_port=base_port,
+        )
+        probe_track = "track.cardboard_corridor.v1"
+        probe_corridor_w = ma_corridor_w
+        probe_goal_r = ma_goal_r
+    elif args.multi_agent:
         from sim_client.scenario import load_scenario_file
         sc = load_scenario_file(args.scenario)
         route = (sc.get("route") or {})
