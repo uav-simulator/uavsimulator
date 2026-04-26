@@ -359,25 +359,38 @@ def main() -> int:
     print(f"  goal_radius:     {probe_goal_r:.2f}m")
     print()
 
-    print(f"Creating new PPO model with MultiInputPolicy (device={args.device})...")
-    model = PPO(
-        "MultiInputPolicy",
-        train_env,
-        learning_rate=args.learning_rate,
-        n_steps=args.n_steps,
-        batch_size=args.batch_size,
-        n_epochs=args.n_epochs,
-        gamma=args.gamma,
-        clip_range=args.clip_range,
-        ent_coef=args.ent_coef,
-        verbose=1,
-        seed=args.seed,
-        device=args.device,
-        tensorboard_log=tensorboard_log,
-        policy_kwargs=dict(
-            net_arch=dict(pi=[128, 64], vf=[128, 64]),
-        ),
-    )
+    if args.resume:
+        print(f"Resuming PPO from checkpoint: {args.resume}")
+        model = PPO.load(args.resume, env=train_env, device=args.device)
+        # Refresh hyperparameters that may differ from training run
+        from stable_baselines3.common.utils import get_schedule_fn
+        model.learning_rate = args.learning_rate
+        model.lr_schedule = get_schedule_fn(args.learning_rate)
+        model.clip_range = get_schedule_fn(args.clip_range)
+        model.ent_coef = args.ent_coef
+        # PPO.load preserves num_timesteps automatically; total_timesteps relative
+        print(f"  Resumed at num_timesteps={model.num_timesteps}, "
+              f"will train to reach {args.total_timesteps}")
+    else:
+        print(f"Creating new PPO model with MultiInputPolicy (device={args.device})...")
+        model = PPO(
+            "MultiInputPolicy",
+            train_env,
+            learning_rate=args.learning_rate,
+            n_steps=args.n_steps,
+            batch_size=args.batch_size,
+            n_epochs=args.n_epochs,
+            gamma=args.gamma,
+            clip_range=args.clip_range,
+            ent_coef=args.ent_coef,
+            verbose=1,
+            seed=args.seed,
+            device=args.device,
+            tensorboard_log=tensorboard_log,
+            policy_kwargs=dict(
+                net_arch=dict(pi=[128, 64], vf=[128, 64]),
+            ),
+        )
     print(f"  Action dist: {type(model.policy.action_dist).__name__}")
     assert "Categorical" in type(model.policy.action_dist).__name__, \
         f"Expected Categorical action dist for Discrete action_space, got {type(model.policy.action_dist)}"
