@@ -18,6 +18,7 @@ if str(PYTHON_ROOT) not in sys.path:
 
 from training.ab_corridor_vision_env import ABCorridorVisionEnv
 from training.discrete_action_wrapper import ACTION_NAMES, ACTION_TABLE, DiscreteActionWrapper
+from training.latency_wrapper import DelayedActionWrapper
 from training.model_artifacts import default_artifact_dir, default_onnx_file_name, default_sb3_stem
 
 DEFAULT_SCENARIO = ROOT / "configs/scenarios/cardboard-corridor-v1.yaml"
@@ -37,6 +38,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--max-steps", type=int, default=400)
     p.add_argument("--seed-offset", type=int, default=3000)
     p.add_argument("--img-size", type=int, default=84)
+    p.add_argument("--latency-steps", type=int, default=0,
+                   help="Apply DelayedActionWrapper with N-tick action delay (matches training)")
     p.add_argument("--output-json", default="")
     return p.parse_args()
 
@@ -97,6 +100,9 @@ def evaluate(args):
     )
     # Wrap env in discrete adapter so we can env.step(int)
     env = DiscreteActionWrapper(base_env)
+    if args.latency_steps > 0:
+        env = DelayedActionWrapper(env, delay_steps=args.latency_steps)
+        print(f"  DelayedActionWrapper enabled: delay_steps={args.latency_steps}")
 
     action_counts = {name: 0 for name in ACTION_NAMES}
     episodes: list[dict[str, Any]] = []

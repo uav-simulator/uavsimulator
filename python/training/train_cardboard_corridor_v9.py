@@ -99,6 +99,14 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--maze-regen-every", type=int, default=1)
     p.add_argument("--curriculum", action="store_true",
                    help="Enable staged maze curriculum. Implies --maze-randomize.")
+    p.add_argument("--strong-aug", action="store_true",
+                   help="Aggressive image augmentations (rev13: enabled — wider brightness/contrast/blur/noise)")
+    p.add_argument("--lateral-penalty-mult", type=float, default=1.0,
+                   help="Multiplier for lateral wall-proximity penalty (rev13: 5.0)")
+    p.add_argument("--ultrasonic-noise-sigma", type=float, default=0.0,
+                   help="Gaussian noise stddev (meters) added to front ultrasonic (rev13: 0.05)")
+    p.add_argument("--ultrasonic-dropout-prob", type=float, default=0.0,
+                   help="Per-step probability that ultrasonic returns 0 or 5m (rev13: 0.05)")
     p.add_argument("--aruco-goal", action="store_true",
                    help="Enable ArUco bonus (+20 if detected)")
     p.add_argument("--aruco-distance-m", type=float, default=0.50)
@@ -142,6 +150,7 @@ def _wrap_env(
     latency_steps: int,
     seed: int,
     enable_discrete: bool = True,
+    strong_aug: bool = False,
 ):
     """Apply v9 wrapper stack: Discrete -> Latency -> AntiSpin -> ImageAug."""
     env = base_env
@@ -152,7 +161,23 @@ def _wrap_env(
         if enable_anti_spin:
             env = AntiSpinRewardWrapper(env)
     if enable_aug:
-        env = ImageAugObservationWrapper(env, enable=True, seed=seed)
+        if strong_aug:
+            env = ImageAugObservationWrapper(
+                env,
+                enable=True,
+                seed=seed,
+                noise_sigma=0.05,
+                brightness_range=0.30,
+                contrast_range=0.30,
+                hue_shift_range=10.0,
+                blur_prob=0.5,
+                blur_radius_max=2.0,
+                jpeg_recompress_prob=0.7,
+                jpeg_quality_min=55,
+                jpeg_quality_max=95,
+            )
+        else:
+            env = ImageAugObservationWrapper(env, enable=True, seed=seed)
     return env
 
 
@@ -173,6 +198,10 @@ def _make_env(
     aruco_goal: bool = False,
     aruco_distance_m: float = 0.50,
     enable_discrete: bool = True,
+    lateral_penalty_mult: float = 1.0,
+    ultrasonic_noise_sigma: float = 0.0,
+    ultrasonic_dropout_prob: float = 0.0,
+    strong_aug: bool = False,
 ):
     def _init():
         base_env = ABCorridorVisionEnv(
@@ -186,6 +215,9 @@ def _make_env(
             maze_regen_every=maze_regen_every,
             aruco_goal=aruco_goal,
             aruco_goal_distance_m=aruco_distance_m,
+            lateral_penalty_mult=lateral_penalty_mult,
+            ultrasonic_noise_sigma=ultrasonic_noise_sigma,
+            ultrasonic_dropout_prob=ultrasonic_dropout_prob,
         )
         wrapped = _wrap_env(
             base_env,
@@ -195,6 +227,7 @@ def _make_env(
             latency_steps=latency_steps,
             seed=seed + rank,
             enable_discrete=enable_discrete,
+            strong_aug=strong_aug,
         )
         wrapped.reset(seed=seed + rank)
         return wrapped
@@ -293,6 +326,9 @@ def main() -> int:
             maze_regen_every=args.maze_regen_every,
             aruco_goal=args.aruco_goal,
             aruco_goal_distance_m=args.aruco_distance_m,
+            lateral_penalty_mult=args.lateral_penalty_mult,
+            ultrasonic_noise_sigma=args.ultrasonic_noise_sigma,
+            ultrasonic_dropout_prob=args.ultrasonic_dropout_prob,
         )
         wrapped = _wrap_env(
             base_env,
@@ -302,6 +338,7 @@ def main() -> int:
             latency_steps=args.latency_steps,
             seed=args.seed,
             enable_discrete=not args.disable_discrete,
+            strong_aug=args.strong_aug,
         )
         train_env = Monitor(wrapped, filename=str(log_dir / "train_v9_monitor"))
         probe_track = base_env._reset_config["selectedTrackId"]
@@ -332,6 +369,10 @@ def main() -> int:
                 aruco_goal=args.aruco_goal,
                 aruco_distance_m=args.aruco_distance_m,
                 enable_discrete=not args.disable_discrete,
+                lateral_penalty_mult=args.lateral_penalty_mult,
+                ultrasonic_noise_sigma=args.ultrasonic_noise_sigma,
+                ultrasonic_dropout_prob=args.ultrasonic_dropout_prob,
+                strong_aug=args.strong_aug,
             )
             for i in range(num_envs)
         ])
