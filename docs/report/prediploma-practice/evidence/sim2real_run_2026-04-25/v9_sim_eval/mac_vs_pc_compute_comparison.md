@@ -19,12 +19,15 @@ batch=64, on Nature-DQN-style CNN (3 conv + 2 FC), input 84×84×3 → 5 actions
 
 | Device | Time (100 iters) | iter/s | samples/s | Speedup vs Mac CPU |
 |--------|------------------|--------|-----------|--------------------|
-| **Mac M-series CPU** | (unmeasured directly) | ~21* | ~1340* | 1.0× |
-| **Ryzen 9950X3D CPU** | 4785 ms | 21 | 1337 | ~1.0× |
-| **RTX 5080 CUDA** | **139 ms** | **721** | **46123** | **34×** |
+| **Mac M-series CPU** | 4993 ms | 20 | 1282 | 1.0× |
+| **Ryzen 9950X3D CPU** | 4785 ms | 21 | 1337 | 1.05× |
+| **Mac M-series MPS** | **159 ms** | **630** | **40 310** | **31×** |
+| **RTX 5080 CUDA** | **139 ms** | **721** | **46 123** | **34×** |
 
-\* assumed similar throughput Mac CPU vs Ryzen CPU — both bottleneck-limited
-on small CNN. Will measure directly in next iteration.
+**Ключевое наблюдение:** Mac MPS даёт 91% performance от RTX 5080 на
+маленькой CNN. Apple Metal-backed PyTorch ускорения wins тот же 31×
+boost vs CPU, что и CUDA на 34×. Для нашего PPO model GPU compute —
+**не главный bottleneck**, главное — параллелизм Unity simulation.
 
 ## Sim-and-train end-to-end (from Mac vs from PC)
 
@@ -49,10 +52,14 @@ filled by many envs.
 | Component | Mac bottleneck | PC bottleneck |
 |-----------|----------------|----------------|
 | Unity simulation per env | CPU thread (~30 fps/env) | CPU thread (~30 fps/env, same!) |
-| Parallel envs | 3-4 max (8-core M chip) | 16 (16-core Ryzen) |
-| PPO backprop | MPS slow для small CNN | RTX 5080 → 34× faster |
+| Parallel envs | 3-4 max (8-core M chip) | 16 (16-core Ryzen) ← **главное преимущество** |
+| PPO backprop | **MPS 630 iter/s** (если использовать) | CUDA 721 iter/s |
 | Network (to robot via WiFi) | localhost direct, 0 ms | SSH to Win + WiFi to robot, ~5 ms |
-| ONNX inference (deploy) | MPS ~10 ms | CUDA ~3 ms |
+| ONNX inference (deploy) | CPU/MPS ~5-10 ms | CUDA ~3 ms |
+
+**Update от 2026-04-26 measurements:** Mac MPS работает (91% RTX 5080 perf
+на нашей CNN). Реальное преимущество PC = **CPU parallelism для Unity**
+(16 cores vs Mac M-series ~10 ефф. cores), не GPU compute.
 
 ## Что РЕАЛЬНО важно для нашей задачи
 
