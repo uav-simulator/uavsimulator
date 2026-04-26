@@ -143,7 +143,7 @@ def _wrap_env(
     seed: int,
     enable_discrete: bool = True,
 ):
-    """Apply v9 wrapper stack: Discrete → Latency → AntiSpin → ImageAug."""
+    """Apply v9 wrapper stack: Discrete -> Latency -> AntiSpin -> ImageAug."""
     env = base_env
     if enable_discrete:
         env = DiscreteActionWrapper(env)
@@ -274,7 +274,7 @@ def main() -> int:
     print(f"  device:           {args.device}")
     print()
     print("  Wrappers stack:")
-    print(f"    DiscreteAction:    enabled (Discrete(5) → ks0223 cmds)")
+    print(f"    DiscreteAction:    enabled (Discrete(5) -> ks0223 cmds)")
     print(f"    DelayedAction:     {'enabled' if enable_latency else 'disabled'} (delay={args.latency_steps})")
     print(f"    AntiSpinReward:    {'enabled' if enable_anti_spin else 'disabled'}")
     print(f"    ImageAug:          {'enabled' if enable_aug else 'disabled'}")
@@ -393,7 +393,7 @@ def main() -> int:
     if args.curriculum:
         from training.maze_curriculum import MazeCurriculumCallback
         callbacks.append(MazeCurriculumCallback())
-        print("  Curriculum: staged maze difficulty enabled (A-easy → B → C → D-full)")
+        print("  Curriculum: staged maze difficulty enabled (A-easy -> B -> C -> D-full)")
 
     print(f"\nStarting training for {args.total_timesteps} timesteps...")
     t0 = time.time()
