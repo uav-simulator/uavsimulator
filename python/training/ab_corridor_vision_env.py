@@ -506,7 +506,10 @@ class ABCorridorVisionEnv(gym.Env):
         self._center_quality_sum += max(0.0, 1.0 - wall_proximity)
         self._center_quality_count += 1
         # Per-step wall penalty: -3.0 when touching wall, scales quadratically
-        lateral_penalty = -3.0 * wall_proximity ** 2
+        # v9 reward fix: lateral_penalty multiplier 3.0 -> 1.0.
+        # Wall proximity -3/step dominated reward landscape, blocking
+        # exploration of recovery actions (rotation) when robot is near wall.
+        lateral_penalty = -1.0 * wall_proximity ** 2
 
         # Steer jerk penalty
         jerk_penalty = -0.05 * abs(steer - self._prev_steer)
@@ -770,7 +773,7 @@ class ABCorridorVisionEnv(gym.Env):
         nx, nz = dx / dist, dz / dist
         # Cosine of angle between heading and waypoint direction
         alignment = fx * nx + fz * nz  # ∈ [-1, +1]
-        return 0.5 * alignment
+        return 1.0 * alignment  # v9: was 0.5, doubled to compete with progress_reward
 
     def _collect_waypoint_bonus(self, px: float, pz: float) -> float:
         waypoint_bonus = 0.0
