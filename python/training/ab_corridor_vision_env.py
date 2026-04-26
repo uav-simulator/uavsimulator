@@ -194,6 +194,7 @@ class ABCorridorVisionEnv(gym.Env):
         self._episode_seed = 0
         self._prev_pos = {"x": 0.0, "y": 0.0, "z": 0.0}
         self._computed_speed = 0.0
+        self._computed_angular_speed = 0.0  # |yaw rate| rad/s, used by stall check
         self._reached_waypoints: set[int] = set()
         self._stalled_steps = 0
         self._last_termination_reason = "running"
@@ -469,6 +470,16 @@ class ABCorridorVisionEnv(gym.Env):
         self._computed_speed = math.hypot(dx, dz)
         self._prev_pos = pos
 
+        # angular speed from state.angularVelocity.y (Unity yaw rate, rad/s).
+        # Used by stall detection so in-place rotation isn't mis-classified.
+        ang_y = (
+            ((step.get("state") or {}).get("angularVelocity") or {}).get("y")
+        )
+        try:
+            self._computed_angular_speed = abs(float(ang_y or 0.0))
+        except (TypeError, ValueError):
+            self._computed_angular_speed = 0.0
+
     # ── reward ──
 
     def _compute_reward(self, step: dict[str, Any], steer: float):
@@ -543,10 +554,17 @@ class ABCorridorVisionEnv(gym.Env):
             terminated = True
             termination_reason = "runtime_done"
 
-        # Stalled against wall / no useful movement
+        # Stalled against wall / no useful movement.
+        # In-place rotation (DirLeft/Right on diff-drive ks0223) intentionally
+        # has zero linear speed but high angular speed — must NOT be flagged
+        # as stalled, otherwise PPO learns "never rotate" and collapses to
+        # constant DirForward (observed in v9, v9-rev3, v9-rev4).
         stall_penalty = 0.0
         if not terminated:
-            if self._step_count > 20 and self._computed_speed < 0.0015 and abs(delta_progress) < 1e-4:
+            no_linear = self._computed_speed < 0.0015
+            no_angular = self._computed_angular_speed < 0.05  # ~3 deg/s threshold
+            no_progress = abs(delta_progress) < 1e-4
+            if self._step_count > 20 and no_linear and no_angular and no_progress:
                 self._stalled_steps += 1
             else:
                 self._stalled_steps = 0

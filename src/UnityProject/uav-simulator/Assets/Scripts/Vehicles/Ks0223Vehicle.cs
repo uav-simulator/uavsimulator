@@ -37,10 +37,20 @@ namespace UavSimulator.Vehicles
             new Vector2(4f, -13f),
         };
 
-        [SerializeField] private float maxSpeedMps = 2.2f;
+        // Calibrated against real Keyestudio KS0223 (4x 4.5V 200 RPM motors,
+        // ~65 mm wheels, ~150 mm wheelbase).
+        //
+        // Linear: ruler-measured 0.73 m/s steady state (Apr 25 calibration).
+        // Yaw: 3-point calibration Apr 26
+        //   90deg burst (238ms) -> 50deg actual = 210 deg/s avg (spinup)
+        //   180deg burst (466ms) -> 180deg actual = 386 deg/s avg
+        //   360deg burst (927ms) -> 350deg actual = 378 deg/s avg
+        // Steady state ~380 deg/s. Spinup ~200ms gives angular accel ~1900.
+        [SerializeField] private float maxSpeedMps = 0.73f;
         [SerializeField] private float accelerationMps2 = 4.0f;
         [SerializeField] private float brakeDecelerationMps2 = 6.5f;
-        [SerializeField] private float maxYawRateDegPerSec = 160f;
+        [SerializeField] private float maxYawRateDegPerSec = 380f;
+        [SerializeField] private float yawAccelerationDegPerSec2 = 1900f;
         [SerializeField] private Vector3 spawnPosition = new Vector3(0f, 0.2f, -6f);
         [SerializeField] private Vector3 spawnRotationEuler = Vector3.zero;
         [SerializeField] private float ultrasonicMaxDistanceM = 3.5f;
@@ -69,6 +79,7 @@ namespace UavSimulator.Vehicles
         private float leftPwmCmd;
         private float rightPwmCmd;
         private float currentSpeed;
+        private float currentYawRateDeg;
         private void Awake()
         {
             body = GetComponent<Rigidbody>();
@@ -253,6 +264,7 @@ namespace UavSimulator.Vehicles
             transform.position = spawnPosition;
             transform.rotation = Quaternion.Euler(spawnRotationEuler);
             currentSpeed = 0f;
+            currentYawRateDeg = 0f;
             speedCmd = 0f;
             yawCmd = 0f;
             brakeCmd = 0f;
@@ -366,8 +378,12 @@ namespace UavSimulator.Vehicles
             currentSpeed = Mathf.MoveTowards(currentSpeed, targetSpeed, accelerationMps2 * dt);
             currentSpeed = Mathf.MoveTowards(currentSpeed, 0f, brakeCmd * brakeDecelerationMps2 * dt);
 
-            var yawRateDeg = yawCmd * maxYawRateDegPerSec;
-            var yawDelta = yawRateDeg * dt;
+            // Angular speed has spinup dynamics (real KS0223: ~150-200 ms ramp).
+            // Apply same MoveTowards pattern as linear speed for realism.
+            var targetYawRateDeg = yawCmd * maxYawRateDegPerSec;
+            currentYawRateDeg = Mathf.MoveTowards(
+                currentYawRateDeg, targetYawRateDeg, yawAccelerationDegPerSec2 * dt);
+            var yawDelta = currentYawRateDeg * dt;
             var nextRotation = body.rotation * Quaternion.Euler(0f, yawDelta, 0f);
 
             // Use velocity-based movement so Unity physics detects wall collisions.

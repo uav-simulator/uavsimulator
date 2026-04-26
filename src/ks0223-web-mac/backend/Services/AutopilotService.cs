@@ -484,17 +484,16 @@ public sealed class AutopilotService
 
         // Mirror of python/training/discrete_action_wrapper.py ACTION_TABLE.
         // Order: 0=DirStop, 1=DirForward, 2=DirBack, 3=DirLeft, 4=DirRight.
-        // DirLeft/Right include forward throttle 0.5 so Unity training env
-        // (Ackermann vehicle) can actually move-while-turning. After safety
-        // throttle clip (ThrottleMax=0.5 default) and ResolveCommand routing,
-        // each row maps to its labeled real-robot command.
+        // Pure-steer (0, ±1) for rotation: KS0223 is true diff-drive (Unity
+        // Ks0223Vehicle.cs computes linear and angular independently), so
+        // in-place rotation matches real robot DirLeft/Right physics 1:1.
         private static readonly (float Throttle, float Steer)[] DiscreteActionTable =
         [
             (0.0f,  0.0f),
             (+1.0f, 0.0f),
             (-1.0f, 0.0f),
-            (+0.5f, +1.0f),
-            (+0.5f, -1.0f),
+            (0.0f, +1.0f),
+            (0.0f, -1.0f),
         ];
 
         public (float throttle, float steer) Predict(IReadOnlyDictionary<string, string> telemetry, byte[]? frameBytes)

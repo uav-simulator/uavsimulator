@@ -1,0 +1,86 @@
+{
+  "robot": "Keyestudio KS0223",
+  "specs_from_docs": {
+    "motor_type": "4x 4.5V 200 RPM (no-load)",
+    "drive": "differential 4WD",
+    "wheel_diameter_mm_estimated": 65,
+    "wheelbase_mm_estimated": 150,
+    "source": "https://docs.keyestudio.com/projects/KS0223/en/latest/Kit%20List.html"
+  },
+  "linear_speed_calibration": {
+    "method": "DirForward burst + ruler measurement",
+    "date": "2026-04-25",
+    "bursts": [
+      {
+        "duration_s": 0.5,
+        "ruler_cm": 35,
+        "v_mps": 0.7
+      },
+      {
+        "duration_s": 0.3,
+        "ruler_cm": 23,
+        "v_mps": 0.77
+      }
+    ],
+    "v_real_mps_avg": 0.735,
+    "drive_speed_percent_config": 80,
+    "theoretical_max_no_load_mps": "~0.68 (200 RPM × π × 0.065 m)",
+    "real_matches_theoretical": true
+  },
+  "angular_speed_calibration": {
+    "method": "DirLeft burst + visual angle estimate (Никита)",
+    "date": "2026-04-26",
+    "bursts": [
+      {
+        "duration_s": 1.023,
+        "rotation_deg": 400,
+        "yaw_rate_deg_per_s_avg": 391,
+        "note": "initial estimate"
+      },
+      {
+        "duration_s": 0.238,
+        "rotation_deg": 50,
+        "yaw_rate_deg_per_s_avg": 210,
+        "note": "short burst dominated by motor spinup"
+      },
+      {
+        "duration_s": 0.466,
+        "rotation_deg": 180,
+        "yaw_rate_deg_per_s_avg": 386,
+        "note": "medium — close to steady state"
+      },
+      {
+        "duration_s": 0.927,
+        "rotation_deg": 350,
+        "yaw_rate_deg_per_s_avg": 378,
+        "note": "long — confirms steady state"
+      }
+    ],
+    "yaw_rate_real_deg_per_s": 391,
+    "note": "in-place rotation (left=−v, right=+v wheels), full diff-drive",
+    "steady_state_yaw_rate_deg_per_s": 380,
+    "spinup_dynamics": {
+      "observed": "short burst (238ms) shows half steady-state speed; medium+long bursts (466-927ms) reach steady state",
+      "modeled_in_unity_as": "yawAccelerationDegPerSec2=1900 (~200ms ramp 0->380)",
+      "note": "real motor controller has PWM ramp + inertia overcome static friction"
+    }
+  },
+  "sim_to_real_gaps_identified": {
+    "linear_speed_unity_default_mps": 2.2,
+    "linear_speed_real_mps": 0.73,
+    "linear_ratio_sim_over_real": 3.01,
+    "yaw_rate_unity_default_deg_per_s": 160,
+    "yaw_rate_real_deg_per_s": 391,
+    "yaw_ratio_real_over_sim": 2.44,
+    "fixed_in_unity": "Ks0223Vehicle.cs maxSpeedMps=0.73, maxYawRateDegPerSec=380, yawAccelerationDegPerSec2=1900 (NEW: angular spinup ramp)",
+    "yaw_rate_unity_old_default_deg_per_s": 160,
+    "yaw_rate_real_steady_state_deg_per_s": 380,
+    "yaw_acceleration_unity_new_deg_per_s2": 1900
+  },
+  "training_reward_bug_identified": {
+    "issue": "stall_penalty terminated rotation episodes",
+    "details": "_compute_reward checked only linear speed (_computed_speed<0.0015 + delta_progress<1e-4) → in-place rotation triggered stall after 30 steps → episode terminated → policy never learned rotation → collapse on DirForward",
+    "fix": "added _computed_angular_speed tracking from state.angularVelocity.y; stall now requires no_linear AND no_angular AND no_progress",
+    "expected_impact": "v9-rev6 should learn DirLeft/DirRight strategically without spurious termination"
+  }
+}
