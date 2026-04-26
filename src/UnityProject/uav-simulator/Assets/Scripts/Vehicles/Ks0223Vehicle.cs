@@ -483,6 +483,13 @@ namespace UavSimulator.Vehicles
             frontCamera.transform.localPosition = localPosition;
             frontCamera.transform.localRotation = Quaternion.Euler(localEuler);
             frontCamera.fieldOfView = fieldOfView;
+
+            // rev18 sim2real: solid grey background instead of skybox blue.
+            // Track scene zeroes RenderSettings.skybox in CreateLighting; without
+            // an explicit clear color the camera would fall back to a default
+            // dark-blue clear, undoing the indoor look.
+            frontCamera.clearFlags = CameraClearFlags.SolidColor;
+            frontCamera.backgroundColor = new Color(0.55f, 0.53f, 0.50f);
         }
 
         private void ApplyCameraProfile(string profileRaw)
