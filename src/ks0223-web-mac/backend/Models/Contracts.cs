@@ -191,7 +191,8 @@ public sealed record StartAutopilotRequest(
     string RuntimeMode,
     string? AgentId = null,
     string? ModelId = null,
-    int? LoopIntervalMs = null);
+    int? LoopIntervalMs = null,
+    int? MaxDurationSeconds = null);
 
 public sealed record StopAutopilotRequest(
     string? ClientId = null,
@@ -215,4 +216,7 @@ public sealed record AutopilotStatusDto(
     bool SafetyEnabled = true,
     bool EStopActive = false,
     long EStopTriggerCount = 0,
-    float ThrottleMax = 0.5f);
+    float ThrottleMax = 0.5f,
+    int MaxDurationSeconds = 0,
+    int RepeatedCommandCount = 0,
+    string? StopReason = null);

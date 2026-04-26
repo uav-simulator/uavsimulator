@@ -18,6 +18,7 @@ public sealed class AutopilotSafetyFilter
     private DateTimeOffset lastCallTime;
     private DateTimeOffset rampStartTime;
     private bool initialized;
+    private float lastFrontDistanceM;
 
     public AutopilotSafetyFilter(
         AutopilotSafetyOptions options,
@@ -38,6 +39,7 @@ public sealed class AutopilotSafetyFilter
         lastCallTime = now;
         rampStartTime = now;
         initialized = true;
+        lastFrontDistanceM = 0f;
     }
 
     public SafetyDecision Apply(float modelThrottle, float modelSteer, float frontDistanceM)
@@ -91,6 +93,48 @@ public sealed class AutopilotSafetyFilter
                     options.EStopDistanceM,
                     options.EStopHoldMs);
             }
+        }
+
+        // --- Missing-reading guard: treat 0/null/out-of-range as unsafe.
+        // The sensor returns 0/null when no echo is received (occluded, angled
+        // surface, robot lifted off the ground). Trusting "no echo = open"
+        // lets the policy command forward into invisible obstacles.
+        var frontReadingMissing = frontDistanceM <= 0f || frontDistanceM > 4.0f;
+        if (frontReadingMissing)
+        {
+            if (!eStopActive || eStopHoldUntil is null)
+            {
+                eStopTriggerCount += 1;
+                eStopHoldUntil = now.AddMilliseconds(options.EStopHoldMs);
+                eStopActive = true;
+                logger.LogInformation(
+                    "[autopilot] E-STOP missing-reading (front={Dist}); held {HoldMs}ms",
+                    frontDistanceM,
+                    options.EStopHoldMs);
+            }
+        }
+
+        // --- Suspicious-jump E-stop: a sudden far reading after a close one
+        // most likely means the echo missed the obstacle (occluded sensor,
+        // angled wall, soft surface). Don't trust the "free path" — hold.
+        if (lastFrontDistanceM > 0f && lastFrontDistanceM < options.SuspiciousJumpFromM &&
+            frontDistanceM > options.SuspiciousJumpToM)
+        {
+            if (!eStopActive || eStopHoldUntil is null)
+            {
+                eStopTriggerCount += 1;
+                eStopHoldUntil = now.AddMilliseconds(options.EStopHoldMs);
+                eStopActive = true;
+                logger.LogInformation(
+                    "[autopilot] E-STOP suspicious-jump ({Prev:F2}m -> {Curr:F2}m); held {HoldMs}ms",
+                    lastFrontDistanceM,
+                    frontDistanceM,
+                    options.EStopHoldMs);
+            }
+        }
+        if (frontDistanceM > 0f)
+        {
+            lastFrontDistanceM = frontDistanceM;
         }
 
         // --- Lateral E-stop (auto-scan left/right; only fresh readings) ---
