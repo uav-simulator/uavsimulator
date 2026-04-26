@@ -1,0 +1,142 @@
+{
+  "kind": "cardboard-corridor-v9-eval",
+  "modelName": "cardboard-corridor-ppo-v9",
+  "modelVersion": "1.0.0",
+  "modelKind": "ppo",
+  "modelPath": "C:\\Users\\Droid\\Documents\\Projects\\uav-simulator\\python\\training\\artifacts\\cardboard-corridor-ppo-v9-rev6\\1.0.0\\cardboard-corridor-ppo-v9-rev6_sb3.zip",
+  "episodes": 10,
+  "successCount": 0,
+  "successRate": 0.0,
+  "avgReward": -87.438,
+  "avgProgress": 0.0,
+  "avgSteps": 15.0,
+  "actionCounts": {
+    "DirStop": 0,
+    "DirForward": 0,
+    "DirBack": 150,
+    "DirLeft": 0,
+    "DirRight": 0
+  },
+  "actionDistribution": {
+    "DirStop": 0.0,
+    "DirForward": 0.0,
+    "DirBack": 1.0,
+    "DirLeft": 0.0,
+    "DirRight": 0.0
+  },
+  "terminationCounts": {
+    "out_of_bounds": 10
+  },
+  "episodeData": [
+    {
+      "episode": 0,
+      "seed": 5000,
+      "steps": 15,
+      "reward": -87.874,
+      "progress": 0.0,
+      "termination": "out_of_bounds",
+      "uniqueActions": 1,
+      "mostCommonAction": "DirBack",
+      "mostCommonPct": 1.0
+    },
+    {
+      "episode": 1,
+      "seed": 5001,
+      "steps": 15,
+      "reward": -86.711,
+      "progress": 0.0,
+      "termination": "out_of_bounds",
+      "uniqueActions": 1,
+      "mostCommonAction": "DirBack",
+      "mostCommonPct": 1.0
+    },
+    {
+      "episode": 2,
+      "seed": 5002,
+      "steps": 15,
+      "reward": -88.086,
+      "progress": 0.0,
+      "termination": "out_of_bounds",
+      "uniqueActions": 1,
+      "mostCommonAction": "DirBack",
+      "mostCommonPct": 1.0
+    },
+    {
+      "episode": 3,
+      "seed": 5003,
+      "steps": 15,
+      "reward": -87.368,
+      "progress": 0.0,
+      "termination": "out_of_bounds",
+      "uniqueActions": 1,
+      "mostCommonAction": "DirBack",
+      "mostCommonPct": 1.0
+    },
+    {
+      "episode": 4,
+      "seed": 5004,
+      "steps": 16,
+      "reward": -91.325,
+      "progress": 0.0,
+      "termination": "out_of_bounds",
+      "uniqueActions": 1,
+      "mostCommonAction": "DirBack",
+      "mostCommonPct": 1.0
+    },
+    {
+      "episode": 5,
+      "seed": 5005,
+      "steps": 15,
+      "reward": -87.634,
+      "progress": 0.0,
+      "termination": "out_of_bounds",
+      "uniqueActions": 1,
+      "mostCommonAction": "DirBack",
+      "mostCommonPct": 1.0
+    },
+    {
+      "episode": 6,
+      "seed": 5006,
+      "steps": 14,
+      "reward": -83.432,
+      "progress": 0.0,
+      "termination": "out_of_bounds",
+      "uniqueActions": 1,
+      "mostCommonAction": "DirBack",
+      "mostCommonPct": 1.0
+    },
+    {
+      "episode": 7,
+      "seed": 5007,
+      "steps": 15,
+      "reward": -87.634,
+      "progress": 0.0,
+      "termination": "out_of_bounds",
+      "uniqueActions": 1,
+      "mostCommonAction": "DirBack",
+      "mostCommonPct": 1.0
+    },
+    {
+      "episode": 8,
+      "seed": 5008,
+      "steps": 15,
+      "reward": -86.456,
+      "progress": 0.0,
+      "termination": "out_of_bounds",
+      "uniqueActions": 1,
+      "mostCommonAction": "DirBack",
+      "mostCommonPct": 1.0
+    },
+    {
+      "episode": 9,
+      "seed": 5009,
+      "steps": 15,
+      "reward": -87.864,
+      "progress": 0.0,
+      "termination": "out_of_bounds",
+      "uniqueActions": 1,
+      "mostCommonAction": "DirBack",
+      "mostCommonPct": 1.0
+    }
+  ]
+}
