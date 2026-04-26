@@ -1,16 +1,30 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Optional
 
 import requests
+from requests.adapters import HTTPAdapter
 
 
-@dataclass(frozen=True)
 class SimClient:
-    base_url: str
-    timeout_s: float = 10.0
+    """HTTP client for Unity simulator runtime API.
+
+    Uses a persistent requests.Session() for keep-alive connection pooling.
+    Critical on Windows: per-request connections quickly exhaust the
+    TCP ephemeral port pool (TIME_WAIT) under high training fps,
+    triggering WinError 10055 / EOFError in subprocess workers.
+    """
+
+    def __init__(self, base_url: str, timeout_s: float = 10.0):
+        self.base_url = base_url
+        self.timeout_s = timeout_s
+        self.session = requests.Session()
+        # 1 host (the Unity instance) — keep up to 16 idle connections,
+        # match expected env worker concurrency
+        adapter = HTTPAdapter(pool_connections=4, pool_maxsize=16, max_retries=0)
+        self.session.mount("http://", adapter)
+        self.session.mount("https://", adapter)
 
     def health(self) -> Dict[str, Any]:
         return self._get("/health")
@@ -29,7 +43,7 @@ class SimClient:
 
     def get_active_model(self) -> Optional[Dict[str, Any]]:
         url = f"{self.base_url}/api/models/active"
-        r = requests.get(url, timeout=self.timeout_s)
+        r = self.session.get(url, timeout=self.timeout_s)
         if r.status_code == 404:
             return None
         self._raise_for_status(r)
@@ -55,7 +69,7 @@ class SimClient:
             params["agentId"] = agent_id.strip()
 
         url = f"{self.base_url}/api/model-bindings/current"
-        r = requests.get(url, params=params, timeout=self.timeout_s)
+        r = self.session.get(url, params=params, timeout=self.timeout_s)
         if r.status_code == 404:
             return None
         self._raise_for_status(r)
@@ -107,25 +121,25 @@ class SimClient:
                     "application/octet-stream",
                 )
             }
-            r = requests.post(url, data=data, files=files, timeout=self.timeout_s)
+            r = self.session.post(url, data=data, files=files, timeout=self.timeout_s)
         self._raise_for_status(r)
         return r.json()
 
     def _get(self, path: str) -> Dict[str, Any]:
         url = f"{self.base_url}{path}"
-        r = requests.get(url, timeout=self.timeout_s)
+        r = self.session.get(url, timeout=self.timeout_s)
         self._raise_for_status(r)
         return r.json()
 
     def _get_any(self, path: str) -> Dict[str, Any] | list[Dict[str, Any]]:
         url = f"{self.base_url}{path}"
-        r = requests.get(url, timeout=self.timeout_s)
+        r = self.session.get(url, timeout=self.timeout_s)
         self._raise_for_status(r)
         return r.json()
 
     def _post(self, path: str, payload: Dict[str, Any]) -> Dict[str, Any]:
         url = f"{self.base_url}{path}"
-        r = requests.post(url, json=payload, timeout=self.timeout_s)
+        r = self.session.post(url, json=payload, timeout=self.timeout_s)
         self._raise_for_status(r)
         return r.json()
 
