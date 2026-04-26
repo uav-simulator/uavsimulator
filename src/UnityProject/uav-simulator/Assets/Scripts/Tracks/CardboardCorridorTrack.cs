@@ -24,13 +24,10 @@ namespace UavSimulator.Tracks
         [SerializeField] private float segmentALength = 1.10f;
         [SerializeField] private float segmentBLength = 0.90f;
 
-        // rev18 sim2real: grey dense recycled cardboard palette to match real
-        // apartment test corridor (was bright fresh cardboard). Real walls are
-        // grey matte with slight warm bias.
-        private static readonly Color CardboardBase = new Color(0.55f, 0.53f, 0.50f);
-        private static readonly Color CardboardStripe = new Color(0.48f, 0.46f, 0.43f);
-        private static readonly Color FloorColor = new Color(0.52f, 0.50f, 0.47f);
-        private static readonly Color SurroundFloorColor = new Color(0.62f, 0.60f, 0.58f);
+        private static readonly Color CardboardBase = new Color(0.76f, 0.60f, 0.42f);
+        private static readonly Color CardboardStripe = new Color(0.68f, 0.52f, 0.36f);
+        private static readonly Color FloorColor = new Color(0.72f, 0.58f, 0.40f);
+        private static readonly Color SurroundFloorColor = new Color(0.75f, 0.75f, 0.75f);
         private static readonly Color MarkerWhite = new Color(0.95f, 0.95f, 0.95f);
         private static readonly Color MarkerBlack = new Color(0.05f, 0.05f, 0.05f);
 
@@ -222,24 +219,15 @@ namespace UavSimulator.Tracks
 
         private void CreateLighting()
         {
-            // rev18 sim2real: indoor-style soft warm lighting + grey ambient,
-            // skybox cleared so the camera shows neutral background instead of
-            // bright blue sky.
             var lightGo = new GameObject("TrackLight");
             lightGo.transform.SetParent(transform, false);
             lightGo.transform.localPosition = new Vector3(0.30f, 3f, -0.40f);
-            lightGo.transform.localRotation = Quaternion.Euler(60f, -30f, 0f);
+            lightGo.transform.localRotation = Quaternion.Euler(50f, -30f, 0f);
             var dirLight = lightGo.AddComponent<Light>();
             dirLight.type = LightType.Directional;
-            dirLight.color = new Color(0.95f, 0.86f, 0.74f);
-            dirLight.intensity = 0.55f;
+            dirLight.color = new Color(1f, 0.97f, 0.92f);
+            dirLight.intensity = 1.0f;
             dirLight.shadows = LightShadows.Soft;
-
-            RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
-            RenderSettings.ambientLight = new Color(0.40f, 0.39f, 0.37f);
-            RenderSettings.fogColor = new Color(0.50f, 0.50f, 0.50f);
-            RenderSettings.fogDensity = 0.0f;
-            RenderSettings.skybox = null;
         }
 
         // ── Helpers ─────────────────────────────────────────────────
