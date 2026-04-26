@@ -76,6 +76,7 @@ class ABCorridorVisionEnv(gym.Env):
         lateral_penalty_mult: float = 1.0,
         ultrasonic_noise_sigma: float = 0.0,
         ultrasonic_dropout_prob: float = 0.0,
+        real_cam_postprocess: bool = False,
     ):
         super().__init__()
 
@@ -166,6 +167,7 @@ class ABCorridorVisionEnv(gym.Env):
         self._lateral_penalty_mult = float(lateral_penalty_mult)
         self._ultrasonic_noise_sigma = float(ultrasonic_noise_sigma)
         self._ultrasonic_dropout_prob = float(ultrasonic_dropout_prob)
+        self._real_cam_postprocess = bool(real_cam_postprocess)
         self._noise_rng = np.random.default_rng()
 
         # ArUco goal detection (optional — runs alongside policy)
@@ -444,6 +446,8 @@ class ABCorridorVisionEnv(gym.Env):
             image = np.zeros(
                 (self.img_size, self.img_size, self._channels), dtype=np.uint8
             )
+        if self._real_cam_postprocess:
+            image = self._apply_real_camera_postprocess(image)
 
         # Ultrasonic
         tm = self._telemetry_map(step)
@@ -478,6 +482,31 @@ class ABCorridorVisionEnv(gym.Env):
             arr = arr[:, :, np.newaxis]  # (H, W, 1)
 
         return arr
+
+    def _apply_real_camera_postprocess(self, image: np.ndarray) -> np.ndarray:
+        """Approximate real USB-camera characteristics on the resized 84x84 image.
+
+        Real path: 320x240 → JPEG ~75 → bilinear 84x84 → uint8.
+        Sim path: 1280x720 → JPEG 90+ → bilinear 84x84 → uint8 (cleaner).
+
+        To bridge the gap WITHOUT another Unity rebuild we:
+        1. dim global brightness 15% (indoor light vs sim daylight residual);
+        2. reduce saturation 25% (real cam color is washed out);
+        3. JPEG roundtrip at quality 60 (adds blocky noise like real frame).
+        """
+        if image.ndim != 3 or image.shape[2] != 3:
+            return image
+
+        x = image.astype(np.float32) * 0.85
+        luma = (x * np.array([0.299, 0.587, 0.114], dtype=np.float32)).sum(
+            axis=-1, keepdims=True
+        )
+        x = x * 0.75 + luma * 0.25
+        x = np.clip(x, 0.0, 255.0).astype(np.uint8)
+        buf = io.BytesIO()
+        Image.fromarray(x).save(buf, format="JPEG", quality=60)
+        buf.seek(0)
+        return np.asarray(Image.open(buf).convert("RGB"))
 
     # ── kinematics ──
 
