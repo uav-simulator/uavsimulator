@@ -9,7 +9,19 @@ namespace UavSimulator.EditorTools
     {
         private const string DefaultScenePath = "Assets/Scenes/TrackScence.unity";
 
-        public static void BuildMacOsRuntime()
+        public static void BuildMacOsRuntime() =>
+            BuildRuntime(BuildTarget.StandaloneOSX,
+                Path.Combine("build", "runtime", "macos", "uav-simulator.app"));
+
+        public static void BuildWindowsRuntime() =>
+            BuildRuntime(BuildTarget.StandaloneWindows64,
+                Path.Combine("build", "runtime", "windows", "uav-simulator.exe"));
+
+        public static void BuildLinuxRuntime() =>
+            BuildRuntime(BuildTarget.StandaloneLinux64,
+                Path.Combine("build", "runtime", "linux", "uav-simulator"));
+
+        private static void BuildRuntime(BuildTarget target, string defaultOutput)
         {
             RuntimeShaderAssetSeeder.EnsureRuntimeShaderAssets();
             PluginCatalogSeeder.SyncBuiltinPluginCatalog();
@@ -17,7 +29,7 @@ namespace UavSimulator.EditorTools
             var outputPath = Environment.GetEnvironmentVariable("RUSIM_BUILD_OUTPUT");
             if (string.IsNullOrWhiteSpace(outputPath))
             {
-                outputPath = Path.Combine("build", "runtime", "macos", "uav-simulator.app");
+                outputPath = defaultOutput;
             }
 
             var scenePath = Environment.GetEnvironmentVariable("RUSIM_BUILD_SCENE");
@@ -37,7 +49,7 @@ namespace UavSimulator.EditorTools
             {
                 scenes = new[] { scenePath },
                 locationPathName = absoluteOutput,
-                target = BuildTarget.StandaloneOSX,
+                target = target,
                 options = BuildOptions.None,
             };
 
@@ -46,11 +58,13 @@ namespace UavSimulator.EditorTools
             if (summary.result != BuildResult.Succeeded)
             {
                 throw new InvalidOperationException(
-                    $"Runtime build failed: {summary.result}, errors={summary.totalErrors}, warnings={summary.totalWarnings}.");
+                    $"Runtime build failed for {target}: {summary.result}, " +
+                    $"errors={summary.totalErrors}, warnings={summary.totalWarnings}.");
             }
 
             UnityEngine.Debug.Log(
-                $"[RuntimeBuildPipeline] Build completed: {absoluteOutput}, size={summary.totalSize} bytes, time={summary.totalTime}.");
+                $"[RuntimeBuildPipeline] {target} build completed: {absoluteOutput}, " +
+                $"size={summary.totalSize} bytes, time={summary.totalTime}.");
         }
     }
 }
