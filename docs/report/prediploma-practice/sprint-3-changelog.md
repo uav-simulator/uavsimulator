@@ -568,3 +568,71 @@ rev16 удивительно robust в новой сцене — даёт 75% д
 - Saliency rev24: [`real_corridor/saliency_rev24/`](sprint-3-reeval-2026-04-27/real_corridor/saliency_rev24/)
 - **BEFORE/AFTER сводка**: [`real_corridor/sim_vs_real_BEFORE_AFTER.png`](sprint-3-reeval-2026-04-27/real_corridor/sim_vs_real_BEFORE_AFTER.png)
 
+
+### Phase 5 — Live-deploy rev24 → rev25 на реальной L-трассе
+
+После того как rev24 на shadow-mode правильно flip'нула prior (DirForward 36% top vs rev16 5%), сделаны живые прогоны автопилота на физической KS0223. Конфиг safety пришлось ослабить (`appsettings.json`):
+
+- `EStopDistanceM`: 0.35 → **0.10** м (35см → 10см от стены) — корридор всего 1.10м, на 35см E-stop срабатывает почти сразу как робот двинулся
+- `EStopWindowThreshold`: 5 → **10** strikes ([`AutopilotService.cs`](../../src/ks0223-web-mac/backend/Services/AutopilotService.cs#L22-L28)) — auto-stop не ловит легитимные пробросы у углов
+- `EStopHoldMs`: 800 → 400 мс
+- `ThrottleMax`: 0.15 → **0.18**
+- `LateralEStopDistanceM`: 0.10 → 0.05 м
+
+#### rev24 run3 (E-stop 10cm, loop 150ms)
+
+| t  | sonar | last cmd | policy chose |
+|---:|---:|---|---|
+| 0s | 99 cm | DirStop | DirForward (57%) |
+| 3s | **52 cm** | DirForward | DirForward (41%) |
+| 7s | **3 cm** | DirStop | DirStop (98%) ← ATM up against wall |
+| 13s | 0 cm | (10 E-stops, auto-stop) | DirLeft 29% / DirRight 24% (uncertain corner) |
+
+Сонар 99→52→3 см — робот **проехал segment A прямо** (~95 см вперёд за 7 с). Достиг угла L, упёрся в дальнюю стенку, на углу policy не определился (DirLeft и DirRight почти равны), 10 E-stops подряд сработали. Видео: [`autopilot_rev24_run3.mp4`](sprint-3-reeval-2026-04-27/real_corridor/autopilot_rev24_run3.mp4).
+
+#### rev25 transfer-train (rev24 + lateral_penalty x2.0)
+
+200k шагов transfer'ом от rev24, `--lateral-penalty-mult 2.0` чтобы штрафовать боковые движения и зигзаги. 32 мин на Win, ONNX-export через standalone-скрипт ([`python/training/export_v9_rev25_onnx.py`](../../python/training/export_v9_rev25_onnx.py), `dynamo=False` + uint8→float cast в wrapper). Артефакт: 11.8 МБ sb3 + 3.5 МБ ONNX.
+
+Real shadow-mode rev25 на старте: **DirForward 59%** (vs rev24 36%, vs rev16 5%) — увеличившаяся уверенность.
+
+#### rev25 run4 (loop 100ms — пользователь подметил что 360°/сек слишком быстро для 6 решений/сек)
+
+| t  | sonar | last cmd | policy chose |
+|---:|---:|---|---|
+| 0s | 125 cm | DirStop | DirForward |
+| 2s | **38 cm** | DirRight | **DirLeft** ← распознала угол! |
+| 4s | 38 cm | DirLeft | DirLeft |
+| 8s | 38 cm | DirLeft | DirLeft → STOPPED (sensor telemetry stale 1526ms) |
+
+Sonar 125→38 см за 2 с (~87 см вперёд) — даже быстрее чем rev24. На 38 см policy переключилась на **DirLeft** (правильное направление поворота в L). Через 6 с непрерывного DirLeft телеметрия зависла на 1.5 с (вероятно при повороте сонар не видит стен, или WiFi-pause), сработал stale-stop.
+
+#### Анализ user-наблюдения «робот вращается слишком быстро»
+
+KS0223 yaw rate (из калибровки) = 380 deg/s. При loop=150ms одна команда DirLeft = **57° поворота за шаг**. При loop=100ms = **38°/шаг**. Policy-loop = ~6-10 решений/сек, robot полный оборот за ~1с. В sim'е тренировалось с `time_scale=3.0` (1 step = 0.33с симового времени = 127°/step). Real имеет другую частоту decisions vs физической dynamics — overshoot на повороте.
+
+**Применённый фикс**: `loopIntervalMs: 150 → 100` (run4 уже с этим). Дальнейшие варианты: cooldown after turn (force DirStop after each DirLeft/DirRight), или train с time_scale=1.0.
+
+### Verdict (после Phase 5)
+
+| Критерий | rev16 | rev24 | rev25 |
+|---|---:|---:|---:|
+| Sim SR (rev21 mild-DR) | 100% | — | — |
+| Sim SR (rev24 heavy-DR) | 75% | 35% | tbd |
+| Real prior at start | DirRight 66% ❌ | DirForward 36% ✅ | **DirForward 59%** ✅ |
+| Real forward progress | 0 (spun) | ~95 cm | **~87 cm in 2s** |
+| Real turn at corner | n/a | failed (DirL≈DirR) | started DirLeft ✅, telemetry stale |
+
+### Артефакты Phase 5
+
+- Backend safety patch: [`appsettings.json`](../../src/ks0223-web-mac/backend/appsettings.json), [`AutopilotService.cs`](../../src/ks0223-web-mac/backend/Services/AutopilotService.cs)
+- Saliency-server fix: [`policy_saliency_server.py`](../../python/training/policy_saliency_server.py) — fetches sonar live из backend (был hardcoded 50см)
+- rev25 export: [`python/training/export_v9_rev25_onnx.py`](../../python/training/export_v9_rev25_onnx.py)
+- Live-run JSONLs: [`autopilot_rev24_run{1,3}.jsonl`](sprint-3-reeval-2026-04-27/real_corridor/), [`autopilot_rev25_run4.jsonl`](sprint-3-reeval-2026-04-27/real_corridor/)
+- Видео реальных проездов: [`autopilot_rev24_run3.mp4`](sprint-3-reeval-2026-04-27/real_corridor/autopilot_rev24_run3.mp4)
+
+### Открытые вопросы
+
+1. **Stale-telemetry на повороте** — почему сонар замолкает на 1.5 с когда робот вращается? Может быть HC-SR04 ECHO timeout при отсутствии отражения (поворот в открытое пространство). Возможный фикс: backend stale-threshold с 1500ms → 3000ms.
+2. **Decision rate vs rotation rate** — при loop=100ms всё ещё 38°/шаг. Может потребоваться cooldown или sub-action throttling.
+3. **rev25 sim eval не сделан** — узнать SR в sim для калибровки ожиданий (rev24 был 35%).

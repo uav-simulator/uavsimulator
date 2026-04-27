@@ -42,6 +42,30 @@ _BACKEND = "http://127.0.0.1:5287"
 _IMG_SIZE = 84
 
 
+def _fetch_sonar_cm(client_id: str, runtime_mode: str, default: float = 50.0) -> float:
+    """Read the live front sonar from backend telemetry (cm).
+
+    Falls back to `default` on any error or missing field. Used so the
+    saliency overlay reflects the same sonar value the live policy is
+    actually seeing — otherwise the probabilities printed on the heatmap
+    diverge from shadow-mode and from what the autopilot is doing.
+    """
+    try:
+        r = requests.get(
+            f"{_BACKEND}/api/autopilot/preview"
+            f"?clientId={client_id}&runtimeMode={runtime_mode}",
+            timeout=2,
+        )
+        if r.ok:
+            j = r.json()
+            v = j.get("frontUltrasonicM")
+            if v is not None and v > 0:
+                return float(v) * 100.0
+    except Exception:
+        pass
+    return default
+
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         pass  # silence default logging
@@ -74,7 +98,17 @@ class Handler(BaseHTTPRequestHandler):
         params = parse_qs(url.query)
         client_id = (params.get("clientId") or ["web"])[0]
         runtime_mode = (params.get("runtimeMode") or ["real-robot"])[0]
-        ultra_cm = float((params.get("ultrasonic_cm") or ["50"])[0])
+
+        # Sonar source priority: explicit URL param > live backend telemetry.
+        # Without this fallback the saliency overlay was running with a
+        # hardcoded 50 cm (the URL default) regardless of the real sonar,
+        # so the heatmap/probabilities disagreed with shadow-mode and the
+        # actual policy decision (user-reported 2026-04-27).
+        ultra_param = params.get("ultrasonic_cm")
+        if ultra_param and ultra_param[0].strip():
+            ultra_cm = float(ultra_param[0])
+        else:
+            ultra_cm = _fetch_sonar_cm(client_id, runtime_mode, default=50.0)
         ultra_norm = float(np.clip(ultra_cm / 100.0 / 5.0, 0.0, 1.0))
 
         try:
