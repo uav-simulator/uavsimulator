@@ -297,31 +297,85 @@ namespace UavSimulator.Tracks
 
         private void CreateLighting()
         {
-            var lightGo = new GameObject("TrackLight");
-            lightGo.transform.SetParent(transform, false);
-            lightGo.transform.localPosition = new Vector3(0.30f, 3f, -0.40f);
-            lightGo.transform.localRotation = Quaternion.Euler(50f, -30f, 0f);
-            var dirLight = lightGo.AddComponent<Light>();
+            // rev22: layered indoor-style lighting — 1 directional (sun-like), warm
+            // ambient fill, 2 point lights at corridor mid-segments (warm tungsten),
+            // 1 spot light above the L-corner. Soft shadows on directional + spot
+            // give actual depth cues at the corner that the policy can use to
+            // estimate distance to wall.
+
+            // 1. Directional (sun) — softer angle, less harsh than before
+            var dirGo = new GameObject("TrackDirLight");
+            dirGo.transform.SetParent(transform, false);
+            dirGo.transform.localPosition = new Vector3(0.30f, 3f, -0.40f);
+            dirGo.transform.localRotation = Quaternion.Euler(60f, -25f, 0f);
+            var dirLight = dirGo.AddComponent<Light>();
             dirLight.type = LightType.Directional;
+            float dirIntensity = 0.85f;
+            Color dirColor = new Color(1f, 0.97f, 0.92f);
             if (randomizeVisuals)
             {
-                var baseColor = new Color(1f, 0.97f, 0.92f);
-                dirLight.color = JitterColor(baseColor, lightHueJitterDegrees, 0.10f, 0.10f);
-                dirLight.intensity = lightIntensityMin + (float)rng.NextDouble() * (lightIntensityMax - lightIntensityMin);
-                if ((float)rng.NextDouble() < skyboxNullProbability)
-                {
-                    RenderSettings.skybox = null;
-                    RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
-                    var ambient = JitterColor(new Color(0.45f, 0.45f, 0.45f), 20f, 0.10f, 0.10f);
-                    RenderSettings.ambientLight = ambient;
-                }
+                dirColor = JitterColor(new Color(1f, 0.97f, 0.92f), lightHueJitterDegrees, 0.10f, 0.10f);
+                dirIntensity = lightIntensityMin + (float)rng.NextDouble() * (lightIntensityMax - lightIntensityMin);
             }
-            else
-            {
-                dirLight.color = new Color(1f, 0.97f, 0.92f);
-                dirLight.intensity = 1.0f;
-            }
+            dirLight.color = dirColor;
+            dirLight.intensity = dirIntensity;
             dirLight.shadows = LightShadows.Soft;
+            dirLight.shadowStrength = 0.85f;
+
+            // 2. Warm point light over segment A start
+            CreatePointLight("PointLightA",
+                new Vector3(0f, 0.55f, -0.85f),
+                new Color(1f, 0.85f, 0.65f),  // warm tungsten
+                intensity: 1.4f,
+                range: 1.8f);
+
+            // 3. Warm point light over segment B end
+            CreatePointLight("PointLightB",
+                new Vector3(0.55f, 0.55f, 0f),
+                new Color(1f, 0.82f, 0.60f),  // slightly warmer tungsten
+                intensity: 1.3f,
+                range: 1.5f);
+
+            // 4. Spot light above the L-corner — emphasizes the turn shadow
+            var spotGo = new GameObject("CornerSpot");
+            spotGo.transform.SetParent(transform, false);
+            spotGo.transform.localPosition = new Vector3(0f, 1.2f, 0.10f);
+            spotGo.transform.localRotation = Quaternion.Euler(75f, 15f, 0f);
+            var spotLight = spotGo.AddComponent<Light>();
+            spotLight.type = LightType.Spot;
+            spotLight.color = new Color(1f, 0.93f, 0.78f);
+            spotLight.intensity = 2.0f;
+            spotLight.range = 2.2f;
+            spotLight.spotAngle = 95f;
+            spotLight.innerSpotAngle = 60f;
+            spotLight.shadows = LightShadows.Soft;
+            spotLight.shadowStrength = 0.8f;
+
+            // 5. Ambient: warm grey fill (always — provides global illumination
+            //    so corridor isn't pitch-black even where direct lights miss).
+            RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
+            Color ambient = new Color(0.40f, 0.39f, 0.36f);
+            if (randomizeVisuals && (float)rng.NextDouble() < skyboxNullProbability)
+            {
+                RenderSettings.skybox = null;
+                ambient = JitterColor(ambient, 20f, 0.08f, 0.08f);
+            }
+            RenderSettings.ambientLight = ambient;
+        }
+
+        private void CreatePointLight(string name, Vector3 localPos, Color color,
+                                       float intensity, float range)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(transform, false);
+            go.transform.localPosition = localPos;
+            var light = go.AddComponent<Light>();
+            light.type = LightType.Point;
+            light.color = color;
+            light.intensity = intensity;
+            light.range = range;
+            light.shadows = LightShadows.Soft;
+            light.shadowStrength = 0.6f;
         }
 
         // ── Helpers ─────────────────────────────────────────────────
