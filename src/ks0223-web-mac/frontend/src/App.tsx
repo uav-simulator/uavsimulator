@@ -1064,6 +1064,7 @@ function App() {
         busy={busy}
         runtimeMode={activeRuntimeMode}
         onRuntimeModeChange={handleRuntimeModeChange}
+        clientInstanceId={clientInstanceId}
         targetHost={targetHost}
         onTargetHostChange={setTargetHost}
         targetPort={targetPort}

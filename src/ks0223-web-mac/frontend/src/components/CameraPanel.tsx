@@ -65,7 +65,28 @@ type Props = {
   estimatedCameraPanDeg: number
   estimatedCameraTiltDeg: number
   onCommand: (command: string) => Promise<void>
+  policyPreview?: {
+    ok: boolean
+    modelId: string
+    reason: string | null
+    probabilities: number[] | null
+    chosenAction: string | null
+    chosenIndex: number | null
+    frontUltrasonicM: number | null
+    imageFeatures?: {
+      brightnessMean: number
+      brightnessStdDev: number
+      edgeScoreTop: number
+      edgeScoreBottom: number
+    } | null
+    guardReason?: string | null
+  } | null
+  saliencyEnabled?: boolean
+  saliencyClientId?: string
+  saliencyRuntimeMode?: string
 }
+
+const POLICY_ACTION_NAMES = ['DirStop', 'DirForward', 'DirBack', 'DirLeft', 'DirRight']
 
 const OVERLAY_STORAGE_KEY = 'ks0223_camera_overlay_settings_v2'
 
@@ -193,11 +214,26 @@ export function CameraPanel({
   estimatedCameraPanDeg,
   estimatedCameraTiltDeg,
   onCommand,
+  policyPreview,
+  saliencyEnabled = false,
+  saliencyClientId = 'web',
+  saliencyRuntimeMode = 'real-robot',
 }: Props) {
   const hasFrame = camera?.hasFrame ?? false
   const [overlay, setOverlay] = useState<OverlaySettings>(() => loadOverlaySettings())
   const [isFullscreen, setIsFullscreen] = useState(false)
   const viewportRef = useRef<HTMLDivElement | null>(null)
+
+  // Saliency overlay tick — counter that increments at 2 Hz to bust img cache
+  const [saliencyTick, setSaliencyTick] = useState(0)
+  useEffect(() => {
+    if (!saliencyEnabled) return
+    const id = window.setInterval(() => setSaliencyTick((n) => n + 1), 500)
+    return () => window.clearInterval(id)
+  }, [saliencyEnabled])
+  const saliencyUrl = saliencyEnabled
+    ? `http://127.0.0.1:5288/saliency?clientId=${encodeURIComponent(saliencyClientId)}&runtimeMode=${encodeURIComponent(saliencyRuntimeMode)}&ultrasonic_cm=${policyPreview?.frontUltrasonicM != null ? Math.round(policyPreview.frontUltrasonicM * 100) : 50}&t=${saliencyTick}`
+    : ''
 
   const driveIntervalRef = useRef<number | null>(null)
   const cameraIntervalRef = useRef<number | null>(null)
@@ -507,6 +543,98 @@ export function CameraPanel({
                       <Box key={`${line}-${index}`}>{line}</Box>
                     ))}
                   </Box>
+                </Box>
+              ) : null}
+
+              {saliencyEnabled ? (
+                <Box
+                  sx={{
+                    position: 'absolute',
+                    bottom: 12,
+                    left: 12,
+                    pointerEvents: 'none',
+                    border: '1px solid rgba(255, 184, 108, 0.55)',
+                    borderRadius: 1,
+                    overflow: 'hidden',
+                    background: 'rgba(0,0,0,0.7)',
+                    boxShadow: '0 4px 18px rgba(0,0,0,0.4)',
+                  }}
+                >
+                  <Box sx={{ px: 0.8, py: 0.3, color: '#ffb86c', fontSize: 11, fontFamily: 'monospace' }}>
+                    🔥 saliency (CNN attention)
+                  </Box>
+                  <img
+                    src={saliencyUrl}
+                    alt="saliency"
+                    style={{ display: 'block', width: 360, height: 180, imageRendering: 'pixelated', background: '#000' }}
+                  />
+                </Box>
+              ) : null}
+
+              {policyPreview ? (
+                <Box
+                  sx={{
+                    position: 'absolute',
+                    pointerEvents: 'none',
+                    top: 12,
+                    right: 12,
+                    width: 220,
+                    px: 1.2,
+                    py: 0.9,
+                    borderRadius: 1.5,
+                    border: '1px solid rgba(33, 150, 243, 0.45)',
+                    backgroundColor: 'rgba(6, 15, 25, 0.78)',
+                    color: '#cfe6ff',
+                    fontFamily: '"JetBrains Mono", "SF Mono", Menlo, monospace',
+                    fontSize: '11px',
+                    lineHeight: 1.35,
+                    backdropFilter: 'blur(2px)',
+                  }}
+                >
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+                    <Box sx={{ color: '#7ecbff', fontWeight: 'bold' }}>👁 Shadow</Box>
+                    <Box sx={{ color: policyPreview.ok ? '#7fff7f' : '#ff8e8e' }}>
+                      {policyPreview.ok ? '✓' : (policyPreview.reason ?? 'fail')}
+                    </Box>
+                  </Box>
+                  {policyPreview.ok && policyPreview.probabilities ? (
+                    <>
+                      {POLICY_ACTION_NAMES.map((name, i) => {
+                        const p = policyPreview.probabilities?.[i] ?? 0
+                        const chosen = policyPreview.chosenIndex === i
+                        return (
+                          <Box key={name} sx={{ display: 'flex', alignItems: 'center', gap: 0.5, my: 0.2 }}>
+                            <Box sx={{ width: 64, color: chosen ? '#7fff7f' : '#aac8e0', fontWeight: chosen ? 'bold' : 'normal' }}>
+                              {chosen ? '★' : ' '} {name}
+                            </Box>
+                            <Box sx={{ flex: 1, height: 8, bgcolor: 'rgba(255,255,255,0.08)', borderRadius: 0.5, overflow: 'hidden' }}>
+                              <Box sx={{ height: '100%', width: `${(p * 100).toFixed(1)}%`, bgcolor: chosen ? '#7fff7f' : '#4a9eff', transition: 'width 0.15s' }} />
+                            </Box>
+                            <Box sx={{ width: 36, textAlign: 'right', color: chosen ? '#7fff7f' : '#cfe6ff' }}>
+                              {(p * 100).toFixed(0)}%
+                            </Box>
+                          </Box>
+                        )
+                      })}
+                      {policyPreview.frontUltrasonicM != null ? (
+                        <Box sx={{ mt: 0.5, color: '#7ec8ff' }}>
+                          sonar: {(policyPreview.frontUltrasonicM * 100).toFixed(0)} cm
+                        </Box>
+                      ) : null}
+                      {policyPreview.imageFeatures ? (
+                        <Box sx={{ mt: 0.5, pt: 0.5, borderTop: '1px dashed rgba(126, 200, 255, 0.3)', color: '#cbd5e0', fontSize: '10px', lineHeight: 1.3 }}>
+                          <Box sx={{ color: '#7ec8ff', fontWeight: 'bold', mb: 0.2 }}>image CV</Box>
+                          <Box>brightness: {policyPreview.imageFeatures.brightnessMean.toFixed(2)} (mean) / {policyPreview.imageFeatures.brightnessStdDev.toFixed(2)} (std)</Box>
+                          <Box>edges: {policyPreview.imageFeatures.edgeScoreTop.toFixed(2)} top / {policyPreview.imageFeatures.edgeScoreBottom.toFixed(2)} bot</Box>
+                        </Box>
+                      ) : null}
+                      {policyPreview.guardReason ? (
+                        <Box sx={{ mt: 0.5, color: '#ffb86c', fontSize: '10px' }}>
+                          ⚠ guard: {policyPreview.guardReason}
+                        </Box>
+                      ) : null}
+                    </>
+                  ) : null}
                 </Box>
               ) : null}
 

@@ -221,6 +221,21 @@ app.MapPost("/api/autopilot/stop", async (StopAutopilotRequest request, Autopilo
     return Results.Ok(status);
 });
 
+app.MapGet("/api/autopilot/preview", (HttpRequest http, AutopilotService autopilotService) =>
+{
+    try
+    {
+        var clientId = ReadClientIdQuery(http);
+        var runtimeMode = ReadRuntimeModeQuery(http);
+        var agentId = ReadStringQuery(http, "agentId", "agent_id");
+        return Results.Ok(autopilotService.SamplePreview(clientId, runtimeMode, agentId));
+    }
+    catch (Exception ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+});
+
 app.MapGet("/api/autopilot/status", (HttpRequest http, AutopilotService autopilotService) =>
 {
     var clientId = ReadOptionalClientIdQuery(http);

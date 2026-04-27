@@ -302,6 +302,169 @@ public sealed class AutopilotService
         }
     }
 
+    private static readonly string[] ActionNames =
+    {
+        "DirStop", "DirForward", "DirBack", "DirLeft", "DirRight",
+    };
+
+    private PolicyPredictor? previewPredictor;
+    private string? previewModelId;
+    private readonly object previewGate = new();
+
+    private const float ImageBlindStdDevThreshold = 0.05f;  // if image stddev below this — treat as blackout, force DirStop
+
+    private static ImageFeaturesDto? ComputeImageFeatures(byte[]? frameBytes)
+    {
+        if (frameBytes is null || frameBytes.Length == 0) return null;
+        try
+        {
+            using var image = SixLabors.ImageSharp.Image.Load<Rgb24>(frameBytes);
+            image.Mutate(c => c.Resize(64, 64));
+            int w = image.Width, h = image.Height;
+            int half = h / 2;
+            var grey = new float[h, w];
+            double sum = 0, sumSq = 0;
+            int n = w * h;
+            for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++)
+            {
+                var p = image[x, y];
+                float v = 0.299f * p.R + 0.587f * p.G + 0.114f * p.B;
+                grey[y, x] = v;
+                sum += v;
+                sumSq += v * v;
+            }
+            float mean = (float)(sum / n);
+            float variance = (float)Math.Max(0, sumSq / n - mean * mean);
+            float std = MathF.Sqrt(variance);
+
+            float edgeTop = 0, edgeBottom = 0;
+            int topCount = 0, botCount = 0;
+            for (int y = 1; y < h - 1; y++)
+            for (int x = 1; x < w - 1; x++)
+            {
+                float gx = grey[y, x + 1] - grey[y, x - 1];
+                float gy = grey[y + 1, x] - grey[y - 1, x];
+                float mag = MathF.Abs(gx) + MathF.Abs(gy);
+                if (y < half) { edgeTop += mag; topCount++; }
+                else { edgeBottom += mag; botCount++; }
+            }
+            if (topCount > 0) edgeTop /= topCount;
+            if (botCount > 0) edgeBottom /= botCount;
+
+            return new ImageFeaturesDto(
+                BrightnessMean: mean / 255f,
+                BrightnessStdDev: std / 128f,
+                EdgeScoreTop: edgeTop / 100f,
+                EdgeScoreBottom: edgeBottom / 100f);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    public PreviewSampleDto SamplePreview(string clientId, string runtimeMode, string? agentId)
+    {
+        var normalizedClientId = NormalizeRequired(clientId, nameof(clientId));
+        var normalizedMode = RuntimeModes.Normalize(runtimeMode);
+        var normalizedAgent = string.IsNullOrWhiteSpace(agentId) ? null : agentId.Trim();
+
+        var model = modelRegistry.ResolveRuntimeSpec(null, normalizedClientId, normalizedMode, normalizedAgent);
+
+        PolicyPredictor predictor;
+        lock (previewGate)
+        {
+            if (previewPredictor is null || previewModelId != model.ModelId)
+            {
+                previewPredictor?.Dispose();
+                previewPredictor = new PolicyPredictor(model, logger);
+                previewModelId = model.ModelId;
+            }
+            predictor = previewPredictor;
+        }
+
+        var telemetry = runtimeSessionManager.GetLatestSensorTelemetry(normalizedClientId, normalizedMode);
+        if (telemetry is null)
+        {
+            return new PreviewSampleDto(false, model.ModelId, "no telemetry yet", null, null, null, null, null);
+        }
+
+        byte[]? frameBytes = null;
+        if (predictor.RequiresFrame)
+        {
+            if (!runtimeSessionManager.TryGetLatestFrame(
+                    normalizedClientId, normalizedMode, normalizedAgent,
+                    out var latestFrame, out _, out _, out _))
+            {
+                return new PreviewSampleDto(false, model.ModelId, "no camera frame yet", null, null, null, null, null);
+            }
+            frameBytes = latestFrame;
+        }
+
+        float[] logits;
+        try
+        {
+            logits = predictor.PredictRaw(telemetry.Flat, frameBytes);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Preview inference failed");
+            return new PreviewSampleDto(false, model.ModelId, ex.Message, null, null, null, null, null);
+        }
+
+        // softmax over logits for action probabilities (only for discrete-categorical models)
+        float[]? probs = null;
+        string? chosenAction = null;
+        int? chosenIndex = null;
+        if (predictor.IsDiscreteAction && logits.Length == ActionNames.Length)
+        {
+            probs = new float[logits.Length];
+            float maxLogit = logits[0];
+            for (int i = 1; i < logits.Length; i++) if (logits[i] > maxLogit) maxLogit = logits[i];
+            float sum = 0f;
+            for (int i = 0; i < logits.Length; i++)
+            {
+                probs[i] = (float)Math.Exp(logits[i] - maxLogit);
+                sum += probs[i];
+            }
+            int bestIdx = 0;
+            for (int i = 0; i < probs.Length; i++)
+            {
+                probs[i] /= sum;
+                if (probs[i] > probs[bestIdx]) bestIdx = i;
+            }
+            chosenIndex = bestIdx;
+            chosenAction = ActionNames[bestIdx];
+        }
+
+        var frontM = ExtractFrontMeters(telemetry.Flat);
+        var features = ComputeImageFeatures(frameBytes);
+
+        // CV-feature guard: image too uniform = blind = force DirStop.
+        string? guardReason = null;
+        if (features != null && features.BrightnessStdDev < ImageBlindStdDevThreshold && probs != null)
+        {
+            for (int i = 0; i < probs.Length; i++) probs[i] = 0f;
+            probs[0] = 1f;
+            chosenIndex = 0;
+            chosenAction = ActionNames[0];
+            guardReason = $"image-blind (stddev={features.BrightnessStdDev:F3} < {ImageBlindStdDevThreshold:F2})";
+        }
+
+        return new PreviewSampleDto(
+            true,
+            model.ModelId,
+            null,
+            logits,
+            probs,
+            chosenAction,
+            chosenIndex,
+            frontM,
+            features,
+            guardReason);
+    }
+
     private async Task AutoStopAsync(AutopilotState running, string reason)
     {
         logger.LogWarning("Autopilot auto-stop: {Reason} (client={Client} model={Model} steps={Steps})",
@@ -649,6 +812,52 @@ public sealed class AutopilotService
             (0.0f, -1.0f),
         ];
 
+        public bool IsDiscreteAction => isDiscreteAction;
+
+        // Hardware/safety guards at action-selection level. Applied to raw logits before
+        // argmax so both real-autopilot and shadow-preview see consistent behavior.
+        // 1. DirBack is masked because real KS0223 has no rear sensors.
+        // 2. DirStop is forced (logit dominates) when front sonar < ForceStopBelowM,
+        //    complementing the throttle/E-stop safety filter at the action layer.
+        private const int DirBackIndex = 2;
+        private const int DirStopIndex = 0;
+        private const float ForceStopBelowM = 0.10f;
+
+        private void ApplyPolicyGuards(float[] logits, IReadOnlyDictionary<string, string> telemetry)
+        {
+            if (!isDiscreteAction || logits.Length != DiscreteActionTable.Length) return;
+            logits[DirBackIndex] = float.MinValue;
+            var frontM = ExtractNormalizedUltrasonic(telemetry) * 5.0f;
+            if (frontM > 0f && frontM < ForceStopBelowM)
+            {
+                float maxOther = float.MinValue;
+                for (int i = 0; i < logits.Length; i++)
+                    if (i != DirStopIndex && logits[i] > maxOther) maxOther = logits[i];
+                logits[DirStopIndex] = maxOther + 5.0f;
+            }
+        }
+
+        public float[] PredictRaw(IReadOnlyDictionary<string, string> telemetry, byte[]? frameBytes)
+        {
+            var inputs = BuildInputs(telemetry, frameBytes);
+            try
+            {
+                using var results = onnxSession!.Run(inputs);
+                var first = results.FirstOrDefault();
+                if (first is null)
+                {
+                    throw new InvalidOperationException("ONNX model produced no outputs");
+                }
+                var output = first.AsEnumerable<float>().ToArray();
+                ApplyPolicyGuards(output, telemetry);
+                return output;
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException("ONNX inference failed", ex);
+            }
+        }
+
         public (float throttle, float steer) Predict(IReadOnlyDictionary<string, string> telemetry, byte[]? frameBytes)
         {
             var inputs = BuildInputs(telemetry, frameBytes);
@@ -666,6 +875,9 @@ public sealed class AutopilotService
                 {
                     throw new InvalidOperationException("ONNX model produced an empty action tensor");
                 }
+
+                // Apply same guards as PredictRaw so autopilot and shadow agree.
+                ApplyPolicyGuards(output, telemetry);
 
                 // Discrete-categorical policy: output is (batch, 5) action logits.
                 // Argmax selects the discrete action; map through DiscreteActionTable
