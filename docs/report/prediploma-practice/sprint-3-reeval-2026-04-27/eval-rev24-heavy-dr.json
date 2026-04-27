@@ -1,0 +1,254 @@
+{
+  "kind": "cardboard-corridor-v9-eval",
+  "modelName": "cardboard-corridor-ppo-v9",
+  "modelVersion": "1.0.0",
+  "modelKind": "ppo",
+  "modelPath": "C:\\Users\\Droid\\Documents\\Projects\\uav-simulator\\python\\training\\artifacts\\cardboard-corridor-ppo-v9-rev24\\1.0.0\\cardboard-corridor-ppo-v9-rev24_sb3.zip",
+  "episodes": 20,
+  "successCount": 7,
+  "successRate": 0.35,
+  "avgReward": -12.765,
+  "avgProgress": 0.4583,
+  "avgSteps": 303.7,
+  "actionCounts": {
+    "DirStop": 0,
+    "DirForward": 3877,
+    "DirBack": 1321,
+    "DirLeft": 2,
+    "DirRight": 874
+  },
+  "actionDistribution": {
+    "DirStop": 0.0,
+    "DirForward": 0.638,
+    "DirBack": 0.217,
+    "DirLeft": 0.0,
+    "DirRight": 0.144
+  },
+  "terminationCounts": {
+    "goal_reached": 7,
+    "stalled": 3,
+    "timeout": 10
+  },
+  "episodeData": [
+    {
+      "episode": 0,
+      "seed": 3000,
+      "steps": 400,
+      "reward": -238.887,
+      "progress": 0.0815,
+      "termination": "timeout",
+      "uniqueActions": 3,
+      "mostCommonAction": "DirForward",
+      "mostCommonPct": 0.605
+    },
+    {
+      "episode": 1,
+      "seed": 3001,
+      "steps": 236,
+      "reward": 144.755,
+      "progress": 0.8034,
+      "termination": "goal_reached",
+      "uniqueActions": 4,
+      "mostCommonAction": "DirForward",
+      "mostCommonPct": 0.712
+    },
+    {
+      "episode": 2,
+      "seed": 3002,
+      "steps": 400,
+      "reward": -358.566,
+      "progress": 0.0,
+      "termination": "timeout",
+      "uniqueActions": 2,
+      "mostCommonAction": "DirForward",
+      "mostCommonPct": 0.843
+    },
+    {
+      "episode": 3,
+      "seed": 3003,
+      "steps": 198,
+      "reward": 234.315,
+      "progress": 0.786,
+      "termination": "goal_reached",
+      "uniqueActions": 3,
+      "mostCommonAction": "DirForward",
+      "mostCommonPct": 0.636
+    },
+    {
+      "episode": 4,
+      "seed": 3004,
+      "steps": 174,
+      "reward": -134.3,
+      "progress": 0.3957,
+      "termination": "stalled",
+      "uniqueActions": 2,
+      "mostCommonAction": "DirForward",
+      "mostCommonPct": 0.937
+    },
+    {
+      "episode": 5,
+      "seed": 3005,
+      "steps": 400,
+      "reward": -280.755,
+      "progress": 0.2506,
+      "termination": "timeout",
+      "uniqueActions": 3,
+      "mostCommonAction": "DirForward",
+      "mostCommonPct": 0.517
+    },
+    {
+      "episode": 6,
+      "seed": 3006,
+      "steps": 211,
+      "reward": 133.02,
+      "progress": 0.7739,
+      "termination": "goal_reached",
+      "uniqueActions": 2,
+      "mostCommonAction": "DirForward",
+      "mostCommonPct": 0.725
+    },
+    {
+      "episode": 7,
+      "seed": 3007,
+      "steps": 400,
+      "reward": -234.427,
+      "progress": 0.2501,
+      "termination": "timeout",
+      "uniqueActions": 3,
+      "mostCommonAction": "DirForward",
+      "mostCommonPct": 0.525
+    },
+    {
+      "episode": 8,
+      "seed": 3008,
+      "steps": 187,
+      "reward": 30.001,
+      "progress": 0.2423,
+      "termination": "stalled",
+      "uniqueActions": 3,
+      "mostCommonAction": "DirForward",
+      "mostCommonPct": 0.69
+    },
+    {
+      "episode": 9,
+      "seed": 3009,
+      "steps": 400,
+      "reward": 63.037,
+      "progress": 0.1807,
+      "termination": "timeout",
+      "uniqueActions": 3,
+      "mostCommonAction": "DirForward",
+      "mostCommonPct": 0.53
+    },
+    {
+      "episode": 10,
+      "seed": 3010,
+      "steps": 400,
+      "reward": -99.86,
+      "progress": 0.1166,
+      "termination": "timeout",
+      "uniqueActions": 3,
+      "mostCommonAction": "DirForward",
+      "mostCommonPct": 0.603
+    },
+    {
+      "episode": 11,
+      "seed": 3011,
+      "steps": 229,
+      "reward": 76.327,
+      "progress": 0.8227,
+      "termination": "goal_reached",
+      "uniqueActions": 2,
+      "mostCommonAction": "DirForward",
+      "mostCommonPct": 0.76
+    },
+    {
+      "episode": 12,
+      "seed": 3012,
+      "steps": 225,
+      "reward": 244.191,
+      "progress": 0.7651,
+      "termination": "goal_reached",
+      "uniqueActions": 3,
+      "mostCommonAction": "DirForward",
+      "mostCommonPct": 0.693
+    },
+    {
+      "episode": 13,
+      "seed": 3013,
+      "steps": 400,
+      "reward": -277.333,
+      "progress": 0.2594,
+      "termination": "timeout",
+      "uniqueActions": 3,
+      "mostCommonAction": "DirForward",
+      "mostCommonPct": 0.52
+    },
+    {
+      "episode": 14,
+      "seed": 3014,
+      "steps": 140,
+      "reward": 150.793,
+      "progress": 0.8344,
+      "termination": "goal_reached",
+      "uniqueActions": 2,
+      "mostCommonAction": "DirForward",
+      "mostCommonPct": 0.829
+    },
+    {
+      "episode": 15,
+      "seed": 3015,
+      "steps": 224,
+      "reward": 222.812,
+      "progress": 0.805,
+      "termination": "goal_reached",
+      "uniqueActions": 3,
+      "mostCommonAction": "DirForward",
+      "mostCommonPct": 0.616
+    },
+    {
+      "episode": 16,
+      "seed": 3016,
+      "steps": 400,
+      "reward": -223.058,
+      "progress": 0.229,
+      "termination": "timeout",
+      "uniqueActions": 3,
+      "mostCommonAction": "DirForward",
+      "mostCommonPct": 0.527
+    },
+    {
+      "episode": 17,
+      "seed": 3017,
+      "steps": 400,
+      "reward": 183.264,
+      "progress": 0.1837,
+      "termination": "timeout",
+      "uniqueActions": 3,
+      "mostCommonAction": "DirForward",
+      "mostCommonPct": 0.532
+    },
+    {
+      "episode": 18,
+      "seed": 3018,
+      "steps": 400,
+      "reward": 74.278,
+      "progress": 0.7338,
+      "termination": "timeout",
+      "uniqueActions": 3,
+      "mostCommonAction": "DirForward",
+      "mostCommonPct": 0.69
+    },
+    {
+      "episode": 19,
+      "seed": 3019,
+      "steps": 250,
+      "reward": 35.094,
+      "progress": 0.6516,
+      "termination": "stalled",
+      "uniqueActions": 2,
+      "mostCommonAction": "DirForward",
+      "mostCommonPct": 0.788
+    }
+  ]
+}

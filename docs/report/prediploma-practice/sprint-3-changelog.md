@@ -484,3 +484,87 @@ Path A — реалистично закрыть к концу Sprint 3. Path B 
 - Saliency на симовом кадре: [`real_corridor/sal_sim_start.png`](sprint-3-reeval-2026-04-27/real_corridor/sal_sim_start.png)
 - **Сводный sim vs real (главный артефакт)**: [`real_corridor/sim_vs_real_saliency_big.png`](sprint-3-reeval-2026-04-27/real_corridor/sim_vs_real_saliency_big.png)
 
+### Phase 4 evening — rev24 heavy-DR scene + transfer-train ИСПРАВЛЯЕТ prior на реале
+
+После эмпирически зафиксированного prior flip rev16 на реале — реализован **Path A** из раздела «Решение пути вперёд»: heavy domain randomization в Unity-сцене + transfer learning от rev16.
+
+**Изменения сцены ([`CardboardCorridorTrack.cs`](../../src/UnityProject/uav-simulator/Assets/Scripts/Tracks/CardboardCorridorTrack.cs), commit `caf44a7`):**
+
+1. **Procedural wood-plank texture** — Texture2D 128×128 регенерируется на каждом ResetTrack(seed). 3–6 досок по горизонтали, каждая со своим оттенком дуба (HSV: hue 22–46°, sat 0.30–0.55, val 0.45–0.65) + Perlin grain внутри + затемнённый seam между досками. Tile-scale ~0.30 м под планки реального паркета. Заменяет плоский тан-цвет, на котором CNN раньше якорилась для heading.
+
+2. **Per-wall style mix** — каждая из 6 стен на каждом reset получает один из {Cardboard, White-plaster, Mixed} по дефолту 50/30/20. White-plaster соответствует левой стене реального коридора; Mixed создаёт вертикальный шов посередине стены, имитируя стену из двух материалов.
+
+3. **Per-wall albedo value jitter** (0.70–1.25) — фейковая «неравномерная подсветка» через albedo. Это необходимо потому, что walls/floor используют URP/Unlit shader path: реальные Unity Lights на них **не действуют**, поэтому единственный способ внести lighting variance — через albedo напрямую. Декоративные point lights из rev22 ничего не давали policy CNN observation.
+
+DR ranges подняты с rev21-mild обратно к rev20-уровню: hue ±25°, sat ±0.15, val ±0.20, intensity 0.55–1.15, light hue ±30°. Сознательно overshooting реальный диапазон — тренировка transfer-learning от rev16 компенсирует «harder problem» удержанием базовой навигации.
+
+**6 sample-кадров новой сцены ([`rev24_sim_samples/mosaic_3x2.png`](sprint-3-reeval-2026-04-27/rev24_sim_samples/mosaic_3x2.png))** — episode-to-episode визуально сильно отличаются: один с белыми стенами, другой с оранжевым картоном, третий с pink-mixed; пол везде с видимыми планками и перепадами цвета. Stats на 6 seed'ах: mean 128–141, std 45–54.
+
+#### rev24 transfer-train
+
+**Команда** (Win, multi-agent VecEnv):
+```bash
+.venv\Scripts\python.exe python\training\train_cardboard_corridor_v9.py \
+  --model-name cardboard-corridor-ppo-v9-rev24 \
+  --total-timesteps 200000 --num-envs 4 --multi-agent \
+  --latency-steps 1 --time-scale 3.0 --strong-aug \
+  --resume <rev16_sb3.zip>
+```
+
+**Результат тренировки**: 200000 шагов за **32.2 мин** (104 fps × 4 envs × 1 Unity), `ent_coef 0.10` (default), `lr 0.0003`, `value_loss` стабилизировалась на ~0.85, `entropy_loss ≈ -1.42` (policy остаётся explorative). Артефакт: [`python/training/artifacts/cardboard-corridor-ppo-v9-rev24/1.0.0/`](../../python/training/artifacts/cardboard-corridor-ppo-v9-rev24/1.0.0/) — 11.8 МБ sb3.zip + 3.5 МБ ONNX.
+
+**ONNX-export** падал в trainer'е (`'charmap' codec can't encode '❌'` — emoji в console output) — экспортнул standalone-скриптом `python/training/export_v9_rev*_onnx.py` с `PYTHONIOENCODING=utf-8` + `dynamo=False` + явным uint8→float cast в forward.
+
+#### Eval rev24 в sim — sanity + сравнение с rev16
+
+| Variant | sim SR | progress | действия |
+|---|---:|---:|---|
+| rev16 в rev21 mild-DR | **100%** (20/20) | 0.81 | DirForward 90% / DirLeft 8% |
+| rev16 в rev24 heavy-DR | **75%** (15/20) | 0.64 | DirForward 68% / DirLeft 14% / DirBack 11% |
+| **rev24 в rev24 heavy-DR** | **35%** (7/20) | 0.46 | DirForward 64% / DirBack 22% / DirRight 14% |
+
+rev16 удивительно robust в новой сцене — даёт 75% даже на heavy-DR без специальной тренировки. **rev24 же упал до 35%** — heavy DR оказался слишком жёстким, transfer-learning не сохранил всю навигацию rev16. Sim eval не финальный критерий, главное — реальный prior на real KS0223.
+
+#### Real shadow-mode test rev24 vs rev16
+
+Робот включён, в той же стартовой позиции что в Phase 1 evening. rev24 ONNX залит в backend (`/api/models/upload`) и привязан (`/api/model-bindings`). 5 shadow-preview snapshots с интервалом 0.5 с:
+
+| | DirStop | **DirForward** | DirBack | DirLeft | **DirRight** | chosen |
+|---|---:|---:|---:|---:|---:|---|
+| **rev16** (BEFORE — mild-DR train) | 8% | **5%** | 0% | 20% | **66%** | DirRight ❌ |
+| **rev24** (AFTER — heavy-DR train) | 11% | **36%** | 12% | 15% | 26% | **DirForward ✅** |
+
+Та же модель-архитектура, тот же стартовый кадр реального коридора, тот же rev16-прогрев — **prior flipped в правильную сторону**: DirForward стал топ-действием вместо DirRight. Confidence не очень высокая (36% vs 66% у rev16-DirRight), но направление выбора **корректное**.
+
+Главный артефакт визуально: [`real_corridor/sim_vs_real_BEFORE_AFTER.png`](sprint-3-reeval-2026-04-27/real_corridor/sim_vs_real_BEFORE_AFTER.png).
+
+### Verdict (после Phase 4)
+
+| Критерий | Статус |
+|---|---|
+| ✅ rev16 работает в sim | 100% rev21-DR, 75% rev24-DR |
+| ✅ Sim2real visual gap эмпирически измерен | Phase 1 evening: rev16 prior flip 87%→5% DirForward |
+| ✅ Heavy DR уменьшает visual gap | Phase 4: rev24 prior на real → DirForward 36% (top), не DirRight |
+| 🟡 Real-deploy полный проход L | НЕ протестирован живым autopilot — только shadow-mode |
+| 🟡 Confidence rev24 на реале | низкая (36%) — policy всё ещё неуверенно |
+
+### Следующие шаги
+
+**1. [приоритет] Live-test rev24 на роботе**: запустить autopilot на реальной L-трассе с safety throttle 0.15 (текущий) и записать видео. **Что ожидаем**: робот двинется вперёд (а не закрутится на месте как rev16). Может зигзаг'ить из-за низкой confidence, может стопнуться на углу. Это базовый «first frame» успеха.
+
+**2. Если live-test показывает прогресс по straight но провал на углу**: добавить в DR-сцену **визуальные маркеры угла** (вертикальные линии где сходятся стены) — у policy будет более чёткий turn-trigger.
+
+**3. Если live-test даёт zigzag**: дотренировать ещё 200k шагов на heavy-DR, возможно с увеличенным `--lateral-penalty-mult 2.0` чтобы штрафовать боковые движения. Confidence должна вырасти.
+
+**4. Если real-prior снова flips на углу** (DirForward → DirRight в неправильный момент): значит DR в углу слабее чем в straight. Добавить ещё агрессивных DR-режимов специально для угла.
+
+### Артефакты
+
+- Код: [`CardboardCorridorTrack.cs`](../../src/UnityProject/uav-simulator/Assets/Scripts/Tracks/CardboardCorridorTrack.cs) (heavy DR, +242 строки), commit `caf44a7`
+- Артефакт rev24: [`python/training/artifacts/cardboard-corridor-ppo-v9-rev24/1.0.0/`](../../python/training/artifacts/cardboard-corridor-ppo-v9-rev24/1.0.0/) (sb3.zip + ONNX + metadata)
+- 6 sim-фреймов rev24-сцены: [`rev24_sim_samples/`](sprint-3-reeval-2026-04-27/rev24_sim_samples/)
+- Eval JSONs: [`eval-rev24-heavy-dr.json`](sprint-3-reeval-2026-04-27/eval-rev24-heavy-dr.json), [`eval-rev16-in-heavy-dr.json`](sprint-3-reeval-2026-04-27/eval-rev16-in-heavy-dr.json)
+- Real-frames rev24: [`real_corridor/real_frame_rev24_{1..5}.jpg`](sprint-3-reeval-2026-04-27/real_corridor/)
+- Saliency rev24: [`real_corridor/saliency_rev24/`](sprint-3-reeval-2026-04-27/real_corridor/saliency_rev24/)
+- **BEFORE/AFTER сводка**: [`real_corridor/sim_vs_real_BEFORE_AFTER.png`](sprint-3-reeval-2026-04-27/real_corridor/sim_vs_real_BEFORE_AFTER.png)
+
