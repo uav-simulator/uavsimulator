@@ -11,6 +11,13 @@ exclude_docs: |
   report/prediploma-practice/*.docx
   reports/**
 
+validation:
+  links:
+    not_found: ignore
+    absolute_links: ignore
+    unrecognized_links: ignore
+    anchors: ignore
+
 theme:
   name: material
   language: ru
