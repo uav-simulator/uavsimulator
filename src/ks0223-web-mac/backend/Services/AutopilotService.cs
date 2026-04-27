@@ -17,8 +17,18 @@ public sealed class AutopilotService
     private const int MaxLoopIntervalMs = 1000;
     private const int DefaultMaxDurationSeconds = 60;
     private const int MaxDurationSecondsHardCap = 600;
-    private const int RepeatedCommandThreshold = 15;
-    private const int StaleTelemetryAfterMs = 1500;
+    // Bumped 2026-04-27 evening: rev25 with --lateral-penalty-mult 2.0 chose
+    // DirLeft 15 times in 1.5 s while completing a rotation at the L-corner;
+    // 15-strike fired safety auto-stop before the rotation finished. At
+    // 380 deg/s yaw and 100 ms loop, 30 strikes = 3 s = ~one full
+    // rotation, which is the realistic ceiling for any single corner action.
+    private const int RepeatedCommandThreshold = 30;
+    // Bumped 2026-04-27: HC-SR04 echoes can drop out for 1–2 s when the
+    // robot rotates in place — the sonar pulse goes off into open space
+    // (or a far surface beyond ~4 m max range) and no echo returns. The
+    // backend then treats the sensor as stale and auto-stops mid-rotation,
+    // killing legitimate corner runs (rev24/run6, rev25/run4).
+    private const int StaleTelemetryAfterMs = 3000;
     // Loosened 2026-04-27 evening: with E-stop distance dropped to 0.10 m
     // (from 0.35 m) the robot routinely passes within ~10–15 cm of walls
     // in the narrow 0.6 m L-corridor and triggers a few E-stops in rapid

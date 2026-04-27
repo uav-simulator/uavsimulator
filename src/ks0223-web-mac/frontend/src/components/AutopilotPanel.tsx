@@ -14,8 +14,14 @@ import {
   TextField,
   Typography,
 } from '@mui/material'
+import FiberManualRecordIcon from '@mui/icons-material/FiberManualRecord'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { fetchAutopilotPreview, type AutopilotPreviewDto } from '../api'
+import {
+  fetchAutopilotPreview,
+  startDemoRecording,
+  stopDemoRecording,
+  type AutopilotPreviewDto,
+} from '../api'
 import type { AutopilotStatusDto, ModelBindingDto, ModelCatalogEntryDto } from '../types'
 
 type Props = {
@@ -54,6 +60,9 @@ export function AutopilotPanel({
   const [selectedModelId, setSelectedModelId] = useState('')
   const [loopIntervalMs, setLoopIntervalMs] = useState('140')
   const [shadowOn, setShadowOn] = useState(false)
+  const [demoRecording, setDemoRecording] = useState(false)
+  const [demoBusy, setDemoBusy] = useState(false)
+  const [demoPaths, setDemoPaths] = useState<{ log?: string | null; video?: string | null } | null>(null)
   const previewTimer = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const selectedGroup = useMemo(
@@ -267,7 +276,42 @@ export function AutopilotPanel({
                 {saliencyOn ? 'Stop saliency' : 'Saliency'}
               </Button>
             ) : null}
+            <Button
+              size="small"
+              startIcon={<FiberManualRecordIcon sx={{ color: demoRecording ? '#ff3030' : undefined }} />}
+              variant={demoRecording ? 'contained' : 'outlined'}
+              color="error"
+              disabled={demoBusy}
+              onClick={async () => {
+                setDemoBusy(true)
+                try {
+                  if (demoRecording) {
+                    const r = await stopDemoRecording()
+                    setDemoRecording(false)
+                    setDemoPaths({ log: r.sessionLogPath, video: r.videoPath })
+                  } else {
+                    setDemoPaths(null)
+                    const tag = `human-demo-${new Date().toISOString().slice(0, 19).replace(/[:T-]/g, '')}`
+                    const r = await startDemoRecording({ tag, clientId, runtimeMode })
+                    setDemoRecording(r.isRecording)
+                  }
+                } catch (e) {
+                  console.error('demo record toggle failed', e)
+                  setDemoRecording(false)
+                } finally {
+                  setDemoBusy(false)
+                }
+              }}
+            >
+              {demoRecording ? 'Stop demo' : 'Record demo'}
+            </Button>
           </Stack>
+
+          {demoPaths ? (
+            <Typography variant="caption" color="text.secondary" sx={{ wordBreak: 'break-all' }}>
+              demo saved · log: {demoPaths.log ?? '?'} · video: {demoPaths.video ?? '?'}
+            </Typography>
+          ) : null}
 
           {autopilot && isRunning ? (
             <Typography variant="caption" color="text.secondary">

@@ -536,6 +536,42 @@ app.MapPost("/api/logs/open-folder", async (SessionLogger logger) =>
     return Results.Ok(new { opened = true, path = logger.LogsDirectory });
 });
 
+// Demo recording — orchestrates session-log + MJPEG video for human
+// expert-demonstration runs (manual driving). Replaces the old workflow
+// where the operator had to start log + click record + drive + stop both.
+app.MapPost("/api/demo/start", async (DemoStartRequest request, SessionLogger logger, SessionVideoRecorder videoRecorder, CancellationToken cancellationToken) =>
+{
+    var tag = string.IsNullOrWhiteSpace(request.Tag) ? "human-demo" : request.Tag.Trim();
+    var clientId = request.ClientId ?? "web";
+    var runtimeMode = request.RuntimeMode ?? "real-robot";
+    var logState = await logger.StartAsync(tag, cancellationToken);
+    var mjpegUrl = $"http://127.0.0.1:5287/api/camera/mjpeg?clientId={clientId}&runtimeMode={runtimeMode}";
+    var videoStarted = videoRecorder.TryStart(mjpegUrl, tag);
+    await logger.WriteAsync("demo.started", new { tag, clientId, runtimeMode, mjpegUrl, videoStarted }, cancellationToken);
+    return Results.Ok(new
+    {
+        isRecording = true,
+        tag,
+        sessionLogPath = logState.CurrentFile,
+        videoPath = videoRecorder.CurrentFile,
+        videoStarted,
+    });
+});
+
+app.MapPost("/api/demo/stop", async (SessionLogger logger, SessionVideoRecorder videoRecorder, CancellationToken cancellationToken) =>
+{
+    var videoFile = videoRecorder.CurrentFile;
+    videoRecorder.Stop();
+    await logger.WriteAsync("demo.stopped", new { videoFile }, cancellationToken);
+    var logState = await logger.StopAsync(cancellationToken);
+    return Results.Ok(new
+    {
+        isRecording = false,
+        sessionLogPath = logState.CurrentFile,
+        videoPath = videoFile,
+    });
+});
+
 app.MapGet("/api/protocol", (HttpRequest http, RuntimeSessionManager runtimeSessionManager) =>
 {
     var clientId = ReadClientIdQuery(http);

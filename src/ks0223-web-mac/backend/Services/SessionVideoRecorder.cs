@@ -52,8 +52,17 @@ public sealed class SessionVideoRecorder : IDisposable
         psi.ArgumentList.Add("ultrafast");
         psi.ArgumentList.Add("-pix_fmt");
         psi.ArgumentList.Add("yuv420p");
+        // 2026-04-27: switched from `+faststart` (writes moov atom only after
+        // input ends, so a SIGTERM in mid-recording leaves a 48-byte stub)
+        // to `+frag_keyframe+empty_moov+default_base_moof` which produces
+        // a fragmented MP4. Each ~1 s segment is self-contained and the
+        // file is valid even if ffmpeg is killed before the input EOF.
+        // Required for short demo-recordings (1–10 s) where the autopilot
+        // or the user's `Stop demo` button cuts the stream early.
         psi.ArgumentList.Add("-movflags");
-        psi.ArgumentList.Add("+faststart");
+        psi.ArgumentList.Add("+frag_keyframe+empty_moov+default_base_moof");
+        psi.ArgumentList.Add("-frag_duration");
+        psi.ArgumentList.Add("1000000");
         psi.ArgumentList.Add(path);
 
         try
