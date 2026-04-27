@@ -62,6 +62,8 @@ public sealed record ConnectionTargetDto(string Host, int Port, string RuntimeMo
 
 public sealed record StartLoggingRequest(string? Tag);
 
+public sealed record DemoStartRequest(string? Tag, string? ClientId, string? RuntimeMode);
+
 public sealed record LogState(bool IsLogging, string? CurrentFile);
 
 public sealed record LogFileInfo(string Name, string AbsolutePath, long SizeBytes, DateTimeOffset LastWriteTimeUtc);

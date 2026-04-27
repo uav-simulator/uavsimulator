@@ -147,6 +147,28 @@ export async function openLogsFolder(): Promise<void> {
   await handleJson<{ opened: boolean }>(response)
 }
 
+export type DemoState = {
+  isRecording: boolean
+  tag?: string
+  sessionLogPath?: string | null
+  videoPath?: string | null
+  videoStarted?: boolean
+}
+
+export async function startDemoRecording(payload: { tag?: string; clientId?: string; runtimeMode?: string }): Promise<DemoState> {
+  const response = await fetch(withBase('/api/demo/start'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  return handleJson<DemoState>(response)
+}
+
+export async function stopDemoRecording(): Promise<DemoState> {
+  const response = await fetch(withBase('/api/demo/stop'), { method: 'POST' })
+  return handleJson<DemoState>(response)
+}
+
 export async function fetchCameraStatus(clientId: string, runtimeMode: string): Promise<CameraStatusDto> {
   const response = await fetch(withClientRuntime('/api/camera/status', clientId, runtimeMode))
   return handleJson<CameraStatusDto>(response)
