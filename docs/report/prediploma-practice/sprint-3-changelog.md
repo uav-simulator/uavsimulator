@@ -421,3 +421,66 @@ Action distribution rev18: DirLeft 79%, DirStop 21%, **DirForward 0%**, all 20 e
 
 5. **[infrastructure]** ✅ Win SSH workflow зафиксирован: `-batchmode -force-d3d12`, без `-nographics`, sim+eval в одной session. Закоммитить как `scripts/win/run_eval_batch.ps1` для воспроизводимости.
 
+### Phase 1 evening — реальный robot, sim2real prior flip ЗАФИКСИРОВАН
+
+Робот KS0223 включён, поставлен в начало L-коридора (фото реальной трассы — деревянный пол + белая стена + картонные стены, все в [`docs/report/.../real_corridor/`](sprint-3-reeval-2026-04-27/real_corridor/)). Backend Mac → robot TCP подключён (`192.168.1.121:5051`), модель — **rev16** (тот же ONNX что в sim eval даёт 100% SR). Без запуска autopilot, через **shadow-mode preview** (новый endpoint `/api/autopilot/preview` из утреннего Phase 0) — снято 5 кадров с интервалом 0.5 с.
+
+**Action probabilities (rev16, реальный робот, старт L-коридора, sonar=0.94 m, brightness mean=0.44):**
+
+| sample | DirStop | DirForward | DirBack | DirLeft | **DirRight** | chosen |
+|---|---:|---:|---:|---:|---:|---|
+| 1 | 9% | 6% | 0% | 27% | **58%** | DirRight |
+| 2 | 9% | 5% | 0% | 20% | **66%** | DirRight |
+| 3 | 8% | 5% | 0% | 19% | **68%** | DirRight |
+| 4 | 8% | 5% | 0% | 19% | **67%** | DirRight |
+| 5 | 9% | 5% | 0% | 20% | **66%** | DirRight |
+
+**Сравнение с sim (тот же rev16, старт того же L-коридора):**
+
+| | DirStop | DirForward | DirBack | DirLeft | DirRight | chosen |
+|---|---:|---:|---:|---:|---:|---|
+| **SIM** | 10% | **87%** | 2% | 0% | 0% | DirForward |
+| **REAL** | 8% | 5% | 0% | 20% | **66%** | DirRight |
+
+Это **полный prior flip**: в симе policy уверенно идёт вперёд (87% DirForward), в реале — уверенно поворачивает направо (66% DirRight) на той же стартовой позиции. **Sim2real visual gap сейчас доминирует — это объясняет все проваленные real-deploy прогоны Day 3 без необходимости винить speed mismatch или E-stop thresholds.**
+
+Saliency-карты на симовом и реальном кадре сохранены ([`real_corridor/sal_sim_start.png`](sprint-3-reeval-2026-04-27/real_corridor/sal_sim_start.png), [`real_corridor/saliency/sal_real_frame_*.png`](sprint-3-reeval-2026-04-27/real_corridor/saliency/), сводный side-by-side [`sim_vs_real_saliency_big.png`](sprint-3-reeval-2026-04-27/real_corridor/sim_vs_real_saliency_big.png)). Зрительно подтверждается: на симовом кадре gradient концентрируется на vanishing-point коридора (центр-низ), на реальном — расползается широко по всему фрейму, что для CNN означает «нет согласованной forward-feature» → policy ищет любую ассоциацию и находит «правый край картонной стены» → DirRight.
+
+**Конкретные visual гэпы видны в фото:**
+1. **Пол: деревянный паркет (дуб)** в реале vs **плоский тан-цвет без текстуры** в симе. Это сильнейший feature, на котором в симе CNN якорится: floor-line дает heading information, в реале её нет.
+2. **Левая стена: белая шпатлёвка** в реале vs **тан картон** в симе. CNN видит резкий контраст «светло-белое слева / темно-коричневое справа» — фича отсутствующая в тренировочном distribution.
+3. **Освещение неравномерное** — в кадре есть тёмные углы и светлые пятна (свет потолочной лампы), сим-DR (rev21) использует равномерный intensity 0.75–1.10 на всю сцену.
+4. **Cardboard вертикальные швы** в правой стене реального корридора — линии контраста вертикальные, в симе все стены одного цвета без швов.
+
+### Verdict против критериев плана
+
+- ✅ **rev16 работает 100% в текущем симе** — Phase 2 не нужен.
+- ✅ **rev18/19d поломаны экспериментально** — rev17–22 серия отброшена.
+- ❌ **rev16 НЕ работает на реальном KS0223** — prior flip из-за visual gap.
+- 🟢 **Главный sim2real блокер идентифицирован эмпирически** — visual gap доминирует над всеми другими (speed, FOV, latency).
+
+### Решение пути вперёд
+
+Минимум 2 пути дают честный диплом-результат:
+
+**Path A (быстрый, 1–2 итерации тренировки): heavy domain randomization + текстуры пола.** Добавить в `CardboardCorridorTrack.cs`:
+- Wood-plank floor texture (свободные PBR текстуры дуба) с per-reset rotation/hue jitter ±20°.
+- Mixed wall palette: 50% картонный тан, 30% белый, 20% мix per-wall — рандомно на каждом reset.
+- Per-corner lighting variability — добавить 2 точечных light с randomized intensity 0–0.6 для имитации потолочной лампы.
+- Train rev24 с transfer learning от rev16 + 200k шагов на этой расширенной DR-сцене. ~12 мин на Win.
+
+**Path B (правильный, инженерно более долгий): photo-grounded sim2real.** Использовать реальные фотки коридора (5 штук от пользователя) для:
+- Procedural texturing (texture projection from reference photos).
+- Per-wall PBR materials с реалистичным рельефом картона/штукатурки.
+- Match HDR lighting (replicate ambient + 1 directional + 1 point из реального скриншота).
+
+Path A — реалистично закрыть к концу Sprint 3. Path B — research direction для master thesis.
+
+### Артефакты в этой итерации
+
+- 5 кадров реальной камеры: [`real_corridor/real_frame_{1..5}.jpg`](sprint-3-reeval-2026-04-27/real_corridor/) (320×240 JPEG, JFIF, density 1×1)
+- Стартовая позиция: [`real_corridor/real_camera_start_position.jpg`](sprint-3-reeval-2026-04-27/real_corridor/real_camera_start_position.jpg)
+- Saliency на реальных кадрах: [`real_corridor/saliency/sal_real_frame_{1..5}.png`](sprint-3-reeval-2026-04-27/real_corridor/saliency/)
+- Saliency на симовом кадре: [`real_corridor/sal_sim_start.png`](sprint-3-reeval-2026-04-27/real_corridor/sal_sim_start.png)
+- **Сводный sim vs real (главный артефакт)**: [`real_corridor/sim_vs_real_saliency_big.png`](sprint-3-reeval-2026-04-27/real_corridor/sim_vs_real_saliency_big.png)
+
