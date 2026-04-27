@@ -19,8 +19,13 @@ public sealed class AutopilotService
     private const int MaxDurationSecondsHardCap = 600;
     private const int RepeatedCommandThreshold = 15;
     private const int StaleTelemetryAfterMs = 1500;
+    // Loosened 2026-04-27 evening: with E-stop distance dropped to 0.10 m
+    // (from 0.35 m) the robot routinely passes within ~10–15 cm of walls
+    // in the narrow 0.6 m L-corridor and triggers a few E-stops in rapid
+    // succession. 5-strike auto-stop was killing legitimate runs at ~6 s;
+    // 10-strike still catches a runaway policy but tolerates corner work.
     private const int EStopWindowSeconds = 10;
-    private const int EStopWindowThreshold = 5;
+    private const int EStopWindowThreshold = 10;
 
     private readonly object gate = new();
     private readonly RuntimeSessionManager runtimeSessionManager;
