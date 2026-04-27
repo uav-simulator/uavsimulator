@@ -186,6 +186,24 @@ public sealed record ModelBindingDto(
 
 public sealed record ActivateModelRequest(string ModelId);
 
+public sealed record ImageFeaturesDto(
+    float BrightnessMean,
+    float BrightnessStdDev,
+    float EdgeScoreTop,
+    float EdgeScoreBottom);
+
+public sealed record PreviewSampleDto(
+    bool Ok,
+    string ModelId,
+    string? Reason,
+    float[]? Logits,
+    float[]? Probabilities,
+    string? ChosenAction,
+    int? ChosenIndex,
+    float? FrontUltrasonicM,
+    ImageFeaturesDto? ImageFeatures = null,
+    string? GuardReason = null);
+
 public sealed record StartAutopilotRequest(
     string ClientId,
     string RuntimeMode,

@@ -1,4 +1,6 @@
 import { Grid, Stack } from '@mui/material'
+import { useState } from 'react'
+import type { AutopilotPreviewDto } from '../api'
 import { AutopilotPanel } from '../components/AutopilotPanel'
 import { CameraPanel } from '../components/CameraPanel'
 import { ConnectionCard } from '../components/ConnectionCard'
@@ -27,6 +29,7 @@ type Props = {
   busy: boolean
   runtimeMode: string
   onRuntimeModeChange: (value: string) => void
+  clientInstanceId: string
   targetHost: string
   onTargetHostChange: (value: string) => void
   targetPort: string
@@ -88,6 +91,7 @@ export function ControlPage({
   busy,
   runtimeMode,
   onRuntimeModeChange,
+  clientInstanceId,
   targetHost,
   onTargetHostChange,
   targetPort,
@@ -131,6 +135,8 @@ export function ControlPage({
   onAutopilotStart,
   onAutopilotStop,
 }: Props) {
+  const [policyPreview, setPolicyPreview] = useState<AutopilotPreviewDto | null>(null)
+  const [saliencyOn, setSaliencyOn] = useState(false)
   return (
     <Grid container spacing={2.5}>
       <Grid size={{ xs: 12, md: 4 }}>
@@ -184,11 +190,15 @@ export function ControlPage({
             binding={modelBinding}
             autopilot={autopilot}
             runtimeMode={runtimeMode}
+            clientId={clientInstanceId}
             unityControlAgentId={unityControlAgentId}
             busy={busy}
             onBind={onModelBind}
             onStartAutopilot={onAutopilotStart}
             onStopAutopilot={onAutopilotStop}
+            onShadowPreviewUpdate={setPolicyPreview}
+            saliencyOn={saliencyOn}
+            onSaliencyToggle={setSaliencyOn}
           />
         </Stack>
       </Grid>
@@ -205,6 +215,10 @@ export function ControlPage({
           estimatedCameraPanDeg={estimatedCameraPanDeg}
           estimatedCameraTiltDeg={estimatedCameraTiltDeg}
           onCommand={onCommand}
+          policyPreview={policyPreview}
+          saliencyEnabled={saliencyOn}
+          saliencyClientId={clientInstanceId}
+          saliencyRuntimeMode={runtimeMode}
         />
       </Grid>
 

@@ -305,6 +305,32 @@ export async function stopAutopilot(payload?: { clientId?: string; runtimeMode?:
   return handleJson<AutopilotStatusDto>(response)
 }
 
+export type ImageFeaturesDto = {
+  brightnessMean: number
+  brightnessStdDev: number
+  edgeScoreTop: number
+  edgeScoreBottom: number
+}
+
+export type AutopilotPreviewDto = {
+  ok: boolean
+  modelId: string
+  reason: string | null
+  logits: number[] | null
+  probabilities: number[] | null
+  chosenAction: string | null
+  chosenIndex: number | null
+  frontUltrasonicM: number | null
+  imageFeatures: ImageFeaturesDto | null
+  guardReason: string | null
+}
+
+export async function fetchAutopilotPreview(clientId: string, runtimeMode: string): Promise<AutopilotPreviewDto> {
+  const params = new URLSearchParams({ clientId, runtimeMode })
+  const response = await fetch(withBase(`/api/autopilot/preview?${params.toString()}`))
+  return handleJson<AutopilotPreviewDto>(response)
+}
+
 export async function fetchAutopilotStatus(clientId?: string, runtimeMode?: string): Promise<AutopilotStatusDto> {
   const params = new URLSearchParams()
   if (clientId?.trim()) {

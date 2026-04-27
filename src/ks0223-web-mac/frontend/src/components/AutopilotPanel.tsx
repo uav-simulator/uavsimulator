@@ -1,6 +1,8 @@
 import ModelTrainingIcon from '@mui/icons-material/ModelTraining'
 import PlayCircleFilledWhiteIcon from '@mui/icons-material/PlayCircleFilledWhite'
 import StopCircleIcon from '@mui/icons-material/StopCircle'
+import VisibilityIcon from '@mui/icons-material/Visibility'
+import VisibilityOffIcon from '@mui/icons-material/VisibilityOff'
 import {
   Box,
   Button,
@@ -12,7 +14,8 @@ import {
   TextField,
   Typography,
 } from '@mui/material'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { fetchAutopilotPreview, type AutopilotPreviewDto } from '../api'
 import type { AutopilotStatusDto, ModelBindingDto, ModelCatalogEntryDto } from '../types'
 
 type Props = {
@@ -20,27 +23,38 @@ type Props = {
   binding: ModelBindingDto | null
   autopilot: AutopilotStatusDto | null
   runtimeMode: string
+  clientId: string
   unityControlAgentId: string
   busy: boolean
   onBind: (modelId: string) => Promise<void>
   onStartAutopilot: (payload: { agentId?: string; loopIntervalMs?: number }) => Promise<void>
   onStopAutopilot: () => Promise<void>
+  onShadowPreviewUpdate?: (preview: AutopilotPreviewDto | null) => void
+  saliencyOn?: boolean
+  onSaliencyToggle?: (on: boolean) => void
 }
+
 
 export function AutopilotPanel({
   catalog,
   binding,
   autopilot,
   runtimeMode,
+  clientId,
   unityControlAgentId,
   busy,
   onBind,
   onStartAutopilot,
   onStopAutopilot,
+  onShadowPreviewUpdate,
+  saliencyOn = false,
+  onSaliencyToggle,
 }: Props) {
   const [selectedName, setSelectedName] = useState('')
   const [selectedModelId, setSelectedModelId] = useState('')
   const [loopIntervalMs, setLoopIntervalMs] = useState('140')
+  const [shadowOn, setShadowOn] = useState(false)
+  const previewTimer = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const selectedGroup = useMemo(
     () => catalog.find((item) => item.name === selectedName) ?? null,
@@ -95,6 +109,56 @@ export function AutopilotPanel({
   const canBind = !busy && Boolean(selectedVersion) && (runtimeMode !== 'unity-sim' || Boolean(unityControlAgentId))
   const canStart = !busy && Boolean(binding) && !isRunning && (runtimeMode !== 'unity-sim' || Boolean(unityControlAgentId))
   const canStop = !busy && isRunning
+  const canShadow = Boolean(binding) && !isRunning
+
+  useEffect(() => {
+    if (previewTimer.current) {
+      clearInterval(previewTimer.current)
+      previewTimer.current = null
+    }
+    if (!shadowOn || !canShadow) {
+      return
+    }
+    let cancelled = false
+    const tick = async () => {
+      try {
+        const data = await fetchAutopilotPreview(clientId, runtimeMode)
+        if (!cancelled) onShadowPreviewUpdate?.(data)
+      } catch (err) {
+        if (!cancelled) {
+          onShadowPreviewUpdate?.({
+            ok: false,
+            modelId: '',
+            reason: err instanceof Error ? err.message : 'fetch failed',
+            logits: null,
+            probabilities: null,
+            chosenAction: null,
+            chosenIndex: null,
+            frontUltrasonicM: null,
+            imageFeatures: null,
+            guardReason: null,
+          })
+        }
+      }
+    }
+    void tick()
+    previewTimer.current = setInterval(() => void tick(), 200)
+    return () => {
+      cancelled = true
+      if (previewTimer.current) clearInterval(previewTimer.current)
+      previewTimer.current = null
+    }
+  }, [shadowOn, canShadow, clientId, runtimeMode, onShadowPreviewUpdate])
+
+  // Auto-disable shadow if autopilot starts running (real autopilot uses inference loop, no need for preview)
+  useEffect(() => {
+    if (isRunning && shadowOn) setShadowOn(false)
+  }, [isRunning, shadowOn])
+
+  // Clear external preview when shadow stops
+  useEffect(() => {
+    if (!shadowOn) onShadowPreviewUpdate?.(null)
+  }, [shadowOn, onShadowPreviewUpdate])
 
   return (
     <Card>
@@ -183,11 +247,37 @@ export function AutopilotPanel({
             >
               Stop
             </Button>
+            <Button
+              size="small"
+              startIcon={shadowOn ? <VisibilityOffIcon /> : <VisibilityIcon />}
+              variant={shadowOn ? 'contained' : 'outlined'}
+              color="info"
+              disabled={!canShadow && !shadowOn}
+              onClick={() => setShadowOn((v) => !v)}
+            >
+              {shadowOn ? 'Stop shadow' : 'Shadow mode'}
+            </Button>
+            {onSaliencyToggle ? (
+              <Button
+                size="small"
+                variant={saliencyOn ? 'contained' : 'outlined'}
+                color="warning"
+                onClick={() => onSaliencyToggle(!saliencyOn)}
+              >
+                {saliencyOn ? 'Stop saliency' : 'Saliency'}
+              </Button>
+            ) : null}
           </Stack>
 
           {autopilot && isRunning ? (
             <Typography variant="caption" color="text.secondary">
               steps={autopilot.stepsTotal} | cmds={autopilot.commandsSent} | throttle={autopilot.lastThrottle.toFixed(2)} steer={autopilot.lastSteer.toFixed(2)}
+            </Typography>
+          ) : null}
+
+          {shadowOn ? (
+            <Typography variant="caption" color="info.main">
+              👁 Shadow mode active — see decision overlay on camera
             </Typography>
           ) : null}
         </Stack>
