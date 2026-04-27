@@ -342,3 +342,82 @@ Action distribution rev18: DirLeft 79%, DirStop 21%, **DirForward 0%**, all 20 e
 4. **[infrastructure]** На будущее: WSL2 на Win + Linux Genesis (BatchRenderer) для GPU-параллельного render N=512+ envs — обещает 100–500× speedup vs текущая Unity тренировка. Не критично для diploma но интересно как research-direction.
 5. **[reporting]** Финальный отчёт диплома: Sprint 3 закроется с rev16/rev18/rev19 как best-effort, честный sim-to-real результат и инфраструктурные достижения (Win-кластер, multi-agent VecEnv, расширенный safety stack, video recording).
 
+## Результаты (День 5, 27.04.2026) — Re-eval rev16/18/19d, диагностика regressions, debug-инфраструктура
+
+### Что сделано
+
+#### Phase 0 — Debug-инструменты в `develop`
+
+Закоммичены два debug-инструмента, которые ранее лежали uncommitted в рабочей копии:
+
+1. **Shadow-mode preview (`/api/autopilot/preview`)** ([commit `9fd18c1`](#)) — endpoint и UI-overlay в WebUI: при включении «Shadow mode» backend каждые 200 мс прогоняет привязанную ONNX-policy на последнем камера-кадре + сонаре, не управляя моторами, и возвращает: action probabilities (5 баров), chosen action, sonar в см, image CV stats (brightness mean/std, edge score top/bottom для blind-detection), guard-reason для случаев когда `ApplyPolicyGuards` форсит DirStop. Backend изменения в [`AutopilotService.SamplePreview`](../../../src/ks0223-web-mac/backend/Services/AutopilotService.cs), [`Models/Contracts.cs`](../../../src/ks0223-web-mac/backend/Models/Contracts.cs), Frontend overlay в [`CameraPanel.tsx`](../../../src/ks0223-web-mac/frontend/src/components/CameraPanel.tsx). Используется на реальном роботе перед включением autopilot — даёт увидеть, что policy будет делать, БЕЗ риска удара о стену.
+
+2. **Grad-CAM saliency tool** ([commit `658a2fb`](#)) — `python/training/policy_saliency.py` (CLI: single image / glob / live MJPEG) + `policy_saliency_server.py` (HTTP-sidecar на :5288 для embed в WebUI). Грузит SB3 PPO `_sb3.zip`, бэкпропит chosen-logit обратно к input-картинке, рендерит side-by-side image+heatmap с annotation action-probabilities. Цель — увидеть, на что CNN смотрит для принятия решения: если на угол стены/vanishing point — ОК; если на потолок/skybox/случайные пиксели — policy выучила spurious feature и она поломается на real-robot frames (где этих фоновых элементов нет).
+
+После коммитов — fast-forward `rev18` → `develop`, push `develop` (от `65db535` до `658a2fb`, +17 коммитов включая всю серию rev17–22 и debug-инструменты). Ветка `rev18` сохраняется но фактически слита.
+
+#### Phase 1 — Re-eval rev16/18/19d в текущем калиброванном симе
+
+**Цель**: проверить гипотезу плана `2026-04-27-sim2real-recovery-plan.md` — действительно ли rev16 регрессировала после калибровочного коммита `26a44d0` (maxSpeedMps 2.2→0.73, yaw 160→380, pure-steer ACTION_TABLE), или регрессия — это исключительно rev17→22 эксперименты.
+
+**Тест-конфиг**: текущий develop HEAD на Win, headless Unity (`-batchmode -force-d3d12`), 20 episodes на каждую policy, seed-offset=3000, latency-steps=1, scenario `cardboard-corridor-v1.yaml` (рев21 mild DR — ±12° hue, intensity 0.75–1.10, skybox always present).
+
+| rev | sim SR | progress | termination | action distribution |
+|---|---:|---:|---|---|
+| **rev16** | **100%** (20/20) | **0.81** | goal_reached × 20 | **DirForward 90% / DirLeft 8% / DirStop 1%** |
+| rev18 | 0% (0/20) | 0.00 | stalled × 20 (на step 50) | DirLeft **100%** (mode collapse) |
+| rev19d | 0% (0/20) | 0.47 | stalled × 20 (на step 106) | DirForward **100%** (no turns) |
+
+**Главное открытие**: **rev16 ВСЁ ЕЩЁ работает 100% в текущем калиброванном симе** с DR-сценой rev21. Гипотеза «rev16 трен. до калибровки → не работает в новом симе» опровергнута. Это полностью меняет приоритеты:
+
+- **Не нужно** переобучать rev23 baseline (Phase 2 плана). Уже есть `rev16` ONNX, который проходит L-коридор.
+- **Регрессия — исключительно rev18+ эксперименты** (визуальный overhaul + DR). Их можно списать.
+- **Реальная задача** — закрыть sim2real gap для уже работающего rev16, а не искать «новую модель».
+
+**rev19d дополняющий вывод**: ent_coef boost (0.10→0.15) восстановил DirForward-bias, но потерял способность поворачивать. 47% progress = он доезжает ровно до угла L и стоит. Это указывает что **визуальные изменения rev18 (grey walls + warm light + null skybox) убивают конкретно turn-trigger feature** — CNN перестаёт «видеть» угол поворота. Эту гипотезу можно проверить запуском `policy_saliency.py` на rev19d на frame перед углом.
+
+**Артефакты**:
+- Eval JSONs: [`docs/report/prediploma-practice/sprint-3-reeval-2026-04-27/eval-rendered-rev{16,18,19d}.json`](sprint-3-reeval-2026-04-27/)
+- Preview видео (3 seeds × 2 rev = 6 mp4, 84×84 → 336×336 nearest-upscale 7fps): [`docs/.../sprint-3-reeval-2026-04-27/videos/rev{16,19d}_preview_{101,202,303}.mp4`](sprint-3-reeval-2026-04-27/videos/)
+  - rev16: все 3 seeds → goal_reached в 76–82 шагов (плавный проход L)
+  - rev19d: все 3 seeds → stalled в 103–106 шагов (упёрся в угол)
+
+#### Технические находки про Win Unity-runtime через SSH
+
+При попытке запустить sim напрямую через `ssh win` обнаружено:
+- **`-batchmode -nographics` (headless)**: HTTP API поднимается, но render to texture для камеры даёт чёрные кадры или ломается на shaders ("not supported on this GPU" для всех URP-шейдеров). Eval с такими кадрами **бесполезен** — все policy выдают свой default action (rev16 → 100% DirLeft, rev19d → 100% DirForward), независимо от реального navigation skill. Это объясняет первый прогон сегодня где rev16 дал 0% — был запущен через `-nographics`.
+- **`-batchmode` (без `-nographics`)**: HTTP поднимается за 60–90 сек, render идёт через AMD Radeon iGPU (NVIDIA dGPU не выбирается из SSH session 0 даже с `HKCU\...\UserGpuPreferences` registry-hint), кадры **рендерятся корректно** (mean=144, std=40, нормальный dynamic range). На iGPU производительность ниже чем на dGPU, но для 20-эпизодного eval достаточно.
+- **Unity убивается при закрытии SSH session**. Решение: запускать стартер sim'а и eval-скрипт **в одной SSH-session** через единый `.ps1`.
+
+### Verdict против плана `2026-04-27-sim2real-recovery-plan.md`
+
+| Phase | Статус | Заметка |
+|---|---|---|
+| 0. Commit debug features | ✅ DONE | shadow mode + saliency, develop merged |
+| 1.1. Re-eval rev16/18/21/22 | ✅ DONE (rev16/18/19d) | rev21/22 артефакты пустые на Win (training aborted, нет .onnx) |
+| 1.2. Saliency на sim+real frames | ⏳ PENDING | sim-фреймы можно прогнать прямо сейчас, real-фреймы — нужен KS0223 включённый |
+| 1.3. Замер реального FOV Pi-камеры | ⏳ BLOCKED on user | A4-лист на 1м, скриншот через WebUI |
+| 1.4. Shadow-log на real KS0223 60с | ⏳ BLOCKED on user | требует робота |
+| 2. Train rev23 baseline | ❌ **CANCELLED** | rev16 уже 100% в текущем симе — переобучать незачем |
+| 3.1. Match camera FOV | ⏳ зависит от 1.3 | если real FOV ≈ 68° — пропускаем |
+| 3.2. Match wall/floor palette | ⏳ нужно фото реального коридора | |
+| 4. Train rev24 (mild DR + transfer) | ⏳ откладывается до 1.2/1.3/3.2 | |
+| 5. Speed match | 🟡 READY TO DO | поднять `AutopilotSafetyFilter.ThrottleMax` 0.15→0.40, ужать E-stop 0.35→0.30 м |
+| 6. Real validation | ⏳ BLOCKED on user | |
+
+### Следующие шаги (приоритет)
+
+1. **[user-action]** Включить KS0223 робота. Я сделаю:
+   - 60-сек shadow-mode log при ручной езде по L-коридору с rev16 — посмотрим, какие probabilities выдаёт policy в реале (vs. в симе).
+   - Saliency на 30 реальных кадрах через `policy_saliency.py --mjpeg http://127.0.0.1:5287/api/camera/mjpeg?...` — увидеть, на что CNN смотрит на реальной камере.
+   - Замер FOV: A4-лист (21 см) на 1 м перед камерой → пиксельная ширина → HFOV.
+   - Reference photo пустого реального L-коридора для палитры (Phase 3.2).
+
+2. **[mac-only, мне]** Saliency rev16 на sim-фреймах — посмотреть, какие визуальные feature привлекают forward/turn decisions. Подсветит на чём policy уязвима.
+
+3. **[mac-only, мне]** Phase 5 backend-changes: повысить `ThrottleMax` 0.15→0.40, E-stop 0.35→0.30, добавить «soft DirStop» при scrub-detection. Без real-теста — только статические правки + dotnet build.
+
+4. **[после real-shadow-log]** Выбрать ОДНУ интервенцию (FOV-fix, palette-match, или throttle-lift) и тренировать rev24 транс-лернингом от rev16. Не больше одной переменной.
+
+5. **[infrastructure]** ✅ Win SSH workflow зафиксирован: `-batchmode -force-d3d12`, без `-nographics`, sim+eval в одной session. Закоммитить как `scripts/win/run_eval_batch.ps1` для воспроизводимости.
+

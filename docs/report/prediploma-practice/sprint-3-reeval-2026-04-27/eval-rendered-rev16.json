@@ -1,0 +1,252 @@
+{
+  "kind": "cardboard-corridor-v9-eval",
+  "modelName": "cardboard-corridor-ppo-v9",
+  "modelVersion": "1.0.0",
+  "modelKind": "onnx",
+  "modelPath": "C:\\Users\\Droid\\Documents\\Projects\\uav-simulator\\python\\training\\artifacts\\cardboard-corridor-ppo-v9-rev16\\1.0.0\\cardboard-corridor-ppo-v9-rev16.onnx",
+  "episodes": 20,
+  "successCount": 20,
+  "successRate": 1.0,
+  "avgReward": 277.749,
+  "avgProgress": 0.8107,
+  "avgSteps": 86.85,
+  "actionCounts": {
+    "DirStop": 23,
+    "DirForward": 1562,
+    "DirBack": 0,
+    "DirLeft": 145,
+    "DirRight": 7
+  },
+  "actionDistribution": {
+    "DirStop": 0.013,
+    "DirForward": 0.899,
+    "DirBack": 0.0,
+    "DirLeft": 0.083,
+    "DirRight": 0.004
+  },
+  "terminationCounts": {
+    "goal_reached": 20
+  },
+  "episodeData": [
+    {
+      "episode": 0,
+      "seed": 3000,
+      "steps": 94,
+      "reward": 282.473,
+      "progress": 0.7697,
+      "termination": "goal_reached",
+      "uniqueActions": 4,
+      "mostCommonAction": "DirForward",
+      "mostCommonPct": 0.83
+    },
+    {
+      "episode": 1,
+      "seed": 3001,
+      "steps": 91,
+      "reward": 280.688,
+      "progress": 0.8198,
+      "termination": "goal_reached",
+      "uniqueActions": 4,
+      "mostCommonAction": "DirForward",
+      "mostCommonPct": 0.89
+    },
+    {
+      "episode": 2,
+      "seed": 3002,
+      "steps": 82,
+      "reward": 269.286,
+      "progress": 0.8435,
+      "termination": "goal_reached",
+      "uniqueActions": 3,
+      "mostCommonAction": "DirForward",
+      "mostCommonPct": 0.902
+    },
+    {
+      "episode": 3,
+      "seed": 3003,
+      "steps": 80,
+      "reward": 269.435,
+      "progress": 0.834,
+      "termination": "goal_reached",
+      "uniqueActions": 2,
+      "mostCommonAction": "DirForward",
+      "mostCommonPct": 0.912
+    },
+    {
+      "episode": 4,
+      "seed": 3004,
+      "steps": 94,
+      "reward": 284.641,
+      "progress": 0.8172,
+      "termination": "goal_reached",
+      "uniqueActions": 2,
+      "mostCommonAction": "DirForward",
+      "mostCommonPct": 0.936
+    },
+    {
+      "episode": 5,
+      "seed": 3005,
+      "steps": 95,
+      "reward": 286.265,
+      "progress": 0.8267,
+      "termination": "goal_reached",
+      "uniqueActions": 2,
+      "mostCommonAction": "DirForward",
+      "mostCommonPct": 0.937
+    },
+    {
+      "episode": 6,
+      "seed": 3006,
+      "steps": 79,
+      "reward": 272.573,
+      "progress": 0.792,
+      "termination": "goal_reached",
+      "uniqueActions": 3,
+      "mostCommonAction": "DirForward",
+      "mostCommonPct": 0.911
+    },
+    {
+      "episode": 7,
+      "seed": 3007,
+      "steps": 93,
+      "reward": 285.513,
+      "progress": 0.8172,
+      "termination": "goal_reached",
+      "uniqueActions": 2,
+      "mostCommonAction": "DirForward",
+      "mostCommonPct": 0.935
+    },
+    {
+      "episode": 8,
+      "seed": 3008,
+      "steps": 97,
+      "reward": 287.149,
+      "progress": 0.7779,
+      "termination": "goal_reached",
+      "uniqueActions": 4,
+      "mostCommonAction": "DirForward",
+      "mostCommonPct": 0.814
+    },
+    {
+      "episode": 9,
+      "seed": 3009,
+      "steps": 84,
+      "reward": 271.771,
+      "progress": 0.8383,
+      "termination": "goal_reached",
+      "uniqueActions": 2,
+      "mostCommonAction": "DirForward",
+      "mostCommonPct": 0.917
+    },
+    {
+      "episode": 10,
+      "seed": 3010,
+      "steps": 81,
+      "reward": 271.156,
+      "progress": 0.8118,
+      "termination": "goal_reached",
+      "uniqueActions": 3,
+      "mostCommonAction": "DirForward",
+      "mostCommonPct": 0.889
+    },
+    {
+      "episode": 11,
+      "seed": 3011,
+      "steps": 81,
+      "reward": 268.706,
+      "progress": 0.84,
+      "termination": "goal_reached",
+      "uniqueActions": 3,
+      "mostCommonAction": "DirForward",
+      "mostCommonPct": 0.901
+    },
+    {
+      "episode": 12,
+      "seed": 3012,
+      "steps": 104,
+      "reward": 299.428,
+      "progress": 0.7611,
+      "termination": "goal_reached",
+      "uniqueActions": 3,
+      "mostCommonAction": "DirForward",
+      "mostCommonPct": 0.865
+    },
+    {
+      "episode": 13,
+      "seed": 3013,
+      "steps": 79,
+      "reward": 272.372,
+      "progress": 0.8102,
+      "termination": "goal_reached",
+      "uniqueActions": 3,
+      "mostCommonAction": "DirForward",
+      "mostCommonPct": 0.911
+    },
+    {
+      "episode": 14,
+      "seed": 3014,
+      "steps": 81,
+      "reward": 269.459,
+      "progress": 0.8298,
+      "termination": "goal_reached",
+      "uniqueActions": 4,
+      "mostCommonAction": "DirForward",
+      "mostCommonPct": 0.877
+    },
+    {
+      "episode": 15,
+      "seed": 3015,
+      "steps": 79,
+      "reward": 274.389,
+      "progress": 0.7767,
+      "termination": "goal_reached",
+      "uniqueActions": 3,
+      "mostCommonAction": "DirForward",
+      "mostCommonPct": 0.899
+    },
+    {
+      "episode": 16,
+      "seed": 3016,
+      "steps": 77,
+      "reward": 270.035,
+      "progress": 0.7898,
+      "termination": "goal_reached",
+      "uniqueActions": 2,
+      "mostCommonAction": "DirForward",
+      "mostCommonPct": 0.922
+    },
+    {
+      "episode": 17,
+      "seed": 3017,
+      "steps": 79,
+      "reward": 272.435,
+      "progress": 0.8102,
+      "termination": "goal_reached",
+      "uniqueActions": 3,
+      "mostCommonAction": "DirForward",
+      "mostCommonPct": 0.911
+    },
+    {
+      "episode": 18,
+      "seed": 3018,
+      "steps": 92,
+      "reward": 281.527,
+      "progress": 0.821,
+      "termination": "goal_reached",
+      "uniqueActions": 3,
+      "mostCommonAction": "DirForward",
+      "mostCommonPct": 0.902
+    },
+    {
+      "episode": 19,
+      "seed": 3019,
+      "steps": 95,
+      "reward": 285.677,
+      "progress": 0.8267,
+      "termination": "goal_reached",
+      "uniqueActions": 2,
+      "mostCommonAction": "DirForward",
+      "mostCommonPct": 0.937
+    }
+  ]
+}
