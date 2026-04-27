@@ -31,13 +31,18 @@ namespace UavSimulator.Tracks
 
         // rev20 domain randomization knobs
         [SerializeField] private bool randomizeVisuals = true;
-        [SerializeField] private float wallHueJitterDegrees = 25f;        // ±degrees in HSV hue
-        [SerializeField] private float wallValueJitterRange = 0.15f;       // ±value in HSV
-        [SerializeField] private float wallSaturationJitterRange = 0.15f;  // ±saturation
-        [SerializeField] private float lightIntensityMin = 0.45f;
+        // rev21 softer DR: halved ranges from rev20 since aggressive DR
+        // produced 0% SR after 1.2M steps (mode collapse). Goal: keep mostly
+        // the rev16-like bright-tan look with gentle perturbation so transfer
+        // learning from rev16 baseline can preserve navigation while gaining
+        // robustness to slight scene variance.
+        [SerializeField] private float wallHueJitterDegrees = 12f;
+        [SerializeField] private float wallValueJitterRange = 0.07f;
+        [SerializeField] private float wallSaturationJitterRange = 0.07f;
+        [SerializeField] private float lightIntensityMin = 0.75f;
         [SerializeField] private float lightIntensityMax = 1.10f;
-        [SerializeField] private float lightHueJitterDegrees = 30f;
-        [SerializeField] private float skyboxNullProbability = 0.50f;
+        [SerializeField] private float lightHueJitterDegrees = 12f;
+        [SerializeField] private float skyboxNullProbability = 0.0f;
         [SerializeField] private float cameraPitchJitterDegrees = 4f;
 
         // Base palette — randomization perturbs around these.
