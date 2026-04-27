@@ -20,6 +20,18 @@ namespace UavSimulator.Tracks
     /// intensity/hue jitter, optional skybox-null with random ambient.
     /// Each ResetTrack(seed) destroys existing children and rebuilds with new
     /// visuals so each episode trains the policy on a different scene.
+    ///
+    /// rev24 (heavy DR for sim2real): empirically rev16 prior-flips on the
+    /// real KS0223 (sim DirForward 87% → real DirRight 66% at the same start
+    /// position) because the visual distribution shift is too large. To
+    /// close it:
+    ///   1. Procedural wood-plank floor texture per-reset (replaces flat tan)
+    ///   2. Per-wall style mix: cardboard / white-plaster / mixed (real corridor
+    ///      has white plaster wall on one side, cardboard on the other)
+    ///   3. Per-segment albedo value jitter to fake uneven indoor lighting
+    ///      (the floor/walls use Unlit shaders so real Unity Lights do nothing
+    ///      to them — the only way to inject lighting variance is through
+    ///      albedo)
     /// </summary>
     public sealed class CardboardCorridorTrack : TrackBase
     {
@@ -31,25 +43,34 @@ namespace UavSimulator.Tracks
 
         // rev20 domain randomization knobs
         [SerializeField] private bool randomizeVisuals = true;
-        // rev21 softer DR: halved ranges from rev20 since aggressive DR
-        // produced 0% SR after 1.2M steps (mode collapse). Goal: keep mostly
-        // the rev16-like bright-tan look with gentle perturbation so transfer
-        // learning from rev16 baseline can preserve navigation while gaining
-        // robustness to slight scene variance.
-        [SerializeField] private float wallHueJitterDegrees = 12f;
-        [SerializeField] private float wallValueJitterRange = 0.07f;
-        [SerializeField] private float wallSaturationJitterRange = 0.07f;
-        [SerializeField] private float lightIntensityMin = 0.75f;
-        [SerializeField] private float lightIntensityMax = 1.10f;
-        [SerializeField] private float lightHueJitterDegrees = 12f;
+        // rev24 heavy DR — bumped from rev21 mild DR. Rationale: rev21 ranges
+        // (±12° hue, ±0.07 sat/val) produce visually-similar episodes, which
+        // is fine for training stability but useless against a real scene that
+        // looks completely different (white plaster wall, oak floor, uneven
+        // indoor light pools). We deliberately overshoot real-world variance.
+        [SerializeField] private float wallHueJitterDegrees = 25f;
+        [SerializeField] private float wallValueJitterRange = 0.20f;
+        [SerializeField] private float wallSaturationJitterRange = 0.15f;
+        [SerializeField] private float lightIntensityMin = 0.55f;
+        [SerializeField] private float lightIntensityMax = 1.15f;
+        [SerializeField] private float lightHueJitterDegrees = 30f;
         [SerializeField] private float skyboxNullProbability = 0.0f;
         [SerializeField] private float cameraPitchJitterDegrees = 4f;
+
+        // rev24: per-wall style probabilities. Cardboard 50% (matches training
+        // history), White plaster 30% (matches real corridor's left wall),
+        // Mixed 20% (a 50/50 albedo blend — approximates dirty / partly-painted
+        // walls and forces the policy to not rely on a single colour).
+        [SerializeField, Range(0f, 1f)] private float pCardboardWall = 0.50f;
+        [SerializeField, Range(0f, 1f)] private float pWhiteWall = 0.30f;
+        // (Mixed style takes whatever probability is left.)
 
         // Base palette — randomization perturbs around these.
         private static readonly Color CardboardBase = new Color(0.76f, 0.60f, 0.42f);
         private static readonly Color CardboardStripe = new Color(0.68f, 0.52f, 0.36f);
         private static readonly Color FloorColor = new Color(0.72f, 0.58f, 0.40f);
         private static readonly Color SurroundFloorColor = new Color(0.75f, 0.75f, 0.75f);
+        private static readonly Color WhitePlasterBase = new Color(0.86f, 0.85f, 0.83f);
         private static readonly Color MarkerWhite = new Color(0.95f, 0.95f, 0.95f);
         private static readonly Color MarkerBlack = new Color(0.05f, 0.05f, 0.05f);
 
@@ -61,6 +82,10 @@ namespace UavSimulator.Tracks
         private Color randomizedCardboardStripe;
         private Color randomizedFloorColor;
         private Color randomizedSurroundFloorColor;
+        // rev24 randomization state
+        private Texture2D woodPlankTexture;
+        private int wallSeedCounter;
+        private enum WallStyle { Cardboard, White, Mixed }
 
         private void Awake()
         {
@@ -99,6 +124,93 @@ namespace UavSimulator.Tracks
             randomizedCardboardStripe = JitterColor(CardboardStripe, wallHueJitterDegrees, wallSaturationJitterRange, wallValueJitterRange);
             randomizedFloorColor = JitterColor(FloorColor, wallHueJitterDegrees, wallSaturationJitterRange, wallValueJitterRange);
             randomizedSurroundFloorColor = JitterColor(SurroundFloorColor, wallHueJitterDegrees, wallSaturationJitterRange, wallValueJitterRange);
+
+            // rev24: regenerate the wood-plank texture per-reset using a fresh
+            // sub-seed off rng (so the texture varies independently of the
+            // colour palette but is still reproducible from the episode seed).
+            int texSeed = rng.Next();
+            if (woodPlankTexture != null) UnityEngine.Object.Destroy(woodPlankTexture);
+            woodPlankTexture = GenerateWoodPlankTexture(texSeed);
+
+            wallSeedCounter = 0;  // each wall pulls a fresh style id during build
+        }
+
+        // rev24: procedural oak-plank texture. Returns a 128×128 Texture2D
+        // with horizontal stripes (3–6 planks) plus Perlin grain inside each
+        // plank. The colour shifts plank-to-plank to imitate boards cut from
+        // different parts of the trunk; a darker seam between planks gives
+        // the policy a strong vertical edge feature on the corridor floor.
+        private Texture2D GenerateWoodPlankTexture(int seed)
+        {
+            var rand = new System.Random(seed);
+            const int W = 128, H = 128;
+            var tex = new Texture2D(W, H, TextureFormat.RGB24, mipChain: false);
+            tex.filterMode = FilterMode.Bilinear;
+            tex.wrapMode = TextureWrapMode.Repeat;
+
+            // Oak base in HSV: hue 25–43°, mid sat, mid value.
+            float hueDeg = 22f + (float)rand.NextDouble() * 24f;
+            float baseSat = 0.30f + (float)rand.NextDouble() * 0.25f;
+            float baseVal = 0.45f + (float)rand.NextDouble() * 0.20f;
+
+            int plankCount = 3 + rand.Next(4);  // 3–6 planks
+            int plankH = H / plankCount;
+            int seamOffset = rand.Next(plankH);
+
+            // Per-plank shade modulation (some planks darker / lighter).
+            float[] plankShades = new float[plankCount];
+            float[] plankHueOffsets = new float[plankCount];
+            for (int p = 0; p < plankCount; p++)
+            {
+                plankShades[p] = 0.78f + 0.40f * (float)rand.NextDouble();
+                plankHueOffsets[p] = ((float)rand.NextDouble() - 0.5f) * 8f;  // ±4°
+            }
+
+            float perlinScaleX = 0.04f + (float)rand.NextDouble() * 0.03f;
+            float perlinScaleY = 0.5f + (float)rand.NextDouble() * 0.5f;
+            float perlinOffsetX = (float)rand.NextDouble() * 100f;
+            float perlinOffsetY = (float)rand.NextDouble() * 100f;
+
+            var pixels = new Color[W * H];
+            for (int y = 0; y < H; y++)
+            {
+                int yShift = (y + seamOffset) % H;
+                int plankIdx = (yShift / plankH) % plankCount;
+                int yWithinPlank = yShift % plankH;
+                bool isSeam = yWithinPlank == 0 || yWithinPlank == plankH - 1;
+
+                float plankShade = plankShades[plankIdx];
+                float plankHue = (hueDeg + plankHueOffsets[plankIdx]) / 360f;
+
+                for (int x = 0; x < W; x++)
+                {
+                    float grain = Mathf.PerlinNoise(
+                        x * perlinScaleX + perlinOffsetX,
+                        y * perlinScaleY + perlinOffsetY);
+                    float grainModulate = 0.85f + grain * 0.30f;
+
+                    Color c = Color.HSVToRGB(
+                        Mathf.Repeat(plankHue, 1f),
+                        Mathf.Clamp01(baseSat + (grain - 0.5f) * 0.15f),
+                        Mathf.Clamp01(baseVal * plankShade * grainModulate));
+
+                    if (isSeam) c *= 0.55f;  // dark plank-to-plank seam
+                    c.a = 1f;
+                    pixels[y * W + x] = c;
+                }
+            }
+            tex.SetPixels(pixels);
+            tex.Apply();
+            return tex;
+        }
+
+        private WallStyle PickWallStyle()
+        {
+            wallSeedCounter++;
+            double r = rng.NextDouble();
+            if (r < pCardboardWall) return WallStyle.Cardboard;
+            if (r < pCardboardWall + pWhiteWall) return WallStyle.White;
+            return WallStyle.Mixed;
         }
 
         private Color JitterColor(Color baseColor, float hueDeg, float satRange, float valRange)
@@ -149,12 +261,25 @@ namespace UavSimulator.Tracks
             float hw = corridorWidth * 0.5f;
             float floorY = 0.005f;
 
+            // rev24: wood-plank textured floor. Use the procedurally generated
+            // texture with a faint per-segment value tint so the two floor
+            // pieces are visibly distinct and per-reset varied.
+            float aTintShade = 0.85f + (float)rng.NextDouble() * 0.30f;
+            float bTintShade = 0.85f + (float)rng.NextDouble() * 0.30f;
+            Color aTint = Color.white * aTintShade; aTint.a = 1f;
+            Color bTint = Color.white * bTintShade; bTint.a = 1f;
+
+            // Tile the texture so planks are at a realistic ~0.30m scale
+            // (corridor is 0.6m wide → 2 plank widths visible).
+            Vector2 tileA = new Vector2(2f, Mathf.Max(2f, (segmentALength + hw) / 0.30f));
+            Vector2 tileB = new Vector2(Mathf.Max(2f, (segmentBLength - hw) / 0.30f), 2f);
+
             // Segment A floor: from z=−segA to z=+hw (extends into turn)
             float aLen = segmentALength + hw;
             var floorA = CreateBox("CorridorFloorA",
                 new Vector3(corridorWidth, 0.01f, aLen),
                 new Vector3(0f, floorY, -segmentALength * 0.5f + hw * 0.5f));
-            SetMaterial(floorA, FloorColorActive(), 0.2f);
+            SetTexturedMaterial(floorA, aTint, woodPlankTexture, tileA, 0.2f);
 
             // Segment B floor: from x=+hw to x=+segB (no overlap with turn)
             float bLen = segmentBLength - hw;
@@ -163,7 +288,7 @@ namespace UavSimulator.Tracks
                 var floorB = CreateBox("CorridorFloorB",
                     new Vector3(bLen, 0.01f, corridorWidth),
                     new Vector3(hw + bLen * 0.5f, floorY, 0f));
-                SetMaterial(floorB, FloorColorActive(), 0.2f);
+                SetTexturedMaterial(floorB, bTint, woodPlankTexture, tileB, 0.2f);
             }
         }
 
@@ -213,7 +338,24 @@ namespace UavSimulator.Tracks
         private void CreateCardboardWall(string name, Vector3 scale, Vector3 position)
         {
             var wall = CreateBox(name, scale, position);
-            SetMaterial(wall, WallColor(), 0.05f);
+
+            // rev24: choose a per-wall style so the policy can't memorise
+            // "all walls are tan cardboard". White-plaster walls match the
+            // real corridor's left side; mixed walls force averaged features.
+            WallStyle style = randomizeVisuals ? PickWallStyle() : WallStyle.Cardboard;
+
+            // Per-wall albedo value jitter — fakes uneven indoor lighting on
+            // an Unlit shader. Without this, every wall has identical RGB
+            // regardless of where Unity's lights are.
+            float lightingShade = 1f;
+            if (randomizeVisuals)
+            {
+                lightingShade = 0.70f + (float)rng.NextDouble() * 0.55f;  // 0.70–1.25
+            }
+
+            Color wallColor = ResolveWallStyleColor(style) * lightingShade;
+            wallColor.a = 1f;
+            SetMaterial(wall, wallColor, 0.05f);
 
             // High-friction physics material — prevents wall-sliding
             var collider = wall.GetComponent<Collider>();
@@ -230,30 +372,82 @@ namespace UavSimulator.Tracks
                 collider.material = wallPhysMat;
             }
 
-            // Corrugation stripes (darker vertical bands)
-            bool isZWall = scale.x < scale.z;
-            float wallLen = isZWall ? scale.z : scale.x;
-            float stripeWidth = 0.01f;
-            int stripeCount = Mathf.FloorToInt(wallLen / (stripeWidth * 2f));
-
-            for (int i = 0; i < stripeCount; i++)
+            // Corrugation stripes only on cardboard-style walls. White and
+            // mixed walls stay flat (white plaster has no seams; mixed walls
+            // get a single mid-line seam below).
+            if (style == WallStyle.Cardboard)
             {
-                float offset = -wallLen * 0.5f + stripeWidth + i * stripeWidth * 2f;
-                Vector3 stripeScale, stripePos;
+                bool isZWall = scale.x < scale.z;
+                float wallLen = isZWall ? scale.z : scale.x;
+                float stripeWidth = 0.01f;
+                int stripeCount = Mathf.FloorToInt(wallLen / (stripeWidth * 2f));
+                Color stripeColor = StripeColor() * lightingShade;
+                stripeColor.a = 1f;
+
+                for (int i = 0; i < stripeCount; i++)
+                {
+                    float offset = -wallLen * 0.5f + stripeWidth + i * stripeWidth * 2f;
+                    Vector3 stripeScale, stripePos;
+                    if (isZWall)
+                    {
+                        stripeScale = new Vector3(wallThickness + 0.001f, wallHeight * 0.95f, stripeWidth);
+                        stripePos = position + new Vector3(0f, 0f, offset);
+                    }
+                    else
+                    {
+                        stripeScale = new Vector3(stripeWidth, wallHeight * 0.95f, wallThickness + 0.001f);
+                        stripePos = position + new Vector3(offset, 0f, 0f);
+                    }
+
+                    var stripe = CreateBox($"{name}_s{i}", stripeScale, stripePos);
+                    SetMaterial(stripe, stripeColor, 0.03f);
+                    DisableCollider(stripe);
+                }
+            }
+            else if (style == WallStyle.Mixed)
+            {
+                // One vertical seam slightly off-centre to imitate a wall built
+                // from two materials (cardboard+white panel union).
+                bool isZWall = scale.x < scale.z;
+                float wallLen = isZWall ? scale.z : scale.x;
+                float seamPos = -wallLen * 0.5f + wallLen * (0.35f + (float)rng.NextDouble() * 0.30f);
+                float seamW = 0.008f;
+
+                Vector3 seamScale, seamPosV;
                 if (isZWall)
                 {
-                    stripeScale = new Vector3(wallThickness + 0.001f, wallHeight * 0.95f, stripeWidth);
-                    stripePos = position + new Vector3(0f, 0f, offset);
+                    seamScale = new Vector3(wallThickness + 0.001f, wallHeight * 0.95f, seamW);
+                    seamPosV = position + new Vector3(0f, 0f, seamPos);
                 }
                 else
                 {
-                    stripeScale = new Vector3(stripeWidth, wallHeight * 0.95f, wallThickness + 0.001f);
-                    stripePos = position + new Vector3(offset, 0f, 0f);
+                    seamScale = new Vector3(seamW, wallHeight * 0.95f, wallThickness + 0.001f);
+                    seamPosV = position + new Vector3(seamPos, 0f, 0f);
                 }
+                var seam = CreateBox($"{name}_seam", seamScale, seamPosV);
+                Color seamColor = wallColor * 0.55f; seamColor.a = 1f;
+                SetMaterial(seam, seamColor, 0.05f);
+                DisableCollider(seam);
+            }
+        }
 
-                var stripe = CreateBox($"{name}_s{i}", stripeScale, stripePos);
-                SetMaterial(stripe, StripeColor(), 0.03f);
-                DisableCollider(stripe);
+        private Color ResolveWallStyleColor(WallStyle style)
+        {
+            switch (style)
+            {
+                case WallStyle.White:
+                    // Per-wall white-plaster jitter — small hue/sat range,
+                    // bigger value range so some walls look "dirty".
+                    return JitterColor(WhitePlasterBase, 8f, 0.05f, 0.12f);
+                case WallStyle.Mixed:
+                    // 50/50 blend between current cardboard and white.
+                    Color avg = (randomizedCardboardBase + WhitePlasterBase) * 0.5f;
+                    return JitterColor(avg, wallHueJitterDegrees * 0.5f,
+                                       wallSaturationJitterRange * 0.5f,
+                                       wallValueJitterRange);
+                case WallStyle.Cardboard:
+                default:
+                    return randomizeVisuals ? randomizedCardboardBase : CardboardBase;
             }
         }
 
@@ -395,6 +589,25 @@ namespace UavSimulator.Tracks
             var renderer = go.GetComponent<Renderer>();
             if (renderer == null) return;
             renderer.sharedMaterial = CreateMaterial(color, smoothness);
+        }
+
+        // rev24: textured-material variant for the wood-plank floor. Falls back
+        // to plain colour if the runtime shader doesn't expose a texture slot.
+        private void SetTexturedMaterial(GameObject go, Color tint, Texture2D tex,
+                                          Vector2 tile, float smoothness)
+        {
+            var renderer = go.GetComponent<Renderer>();
+            if (renderer == null) return;
+            var material = CreateMaterial(tint, smoothness);
+            if (tex != null)
+            {
+                if (material.HasProperty("_BaseMap")) material.SetTexture("_BaseMap", tex);
+                if (material.HasProperty("_MainTex")) material.SetTexture("_MainTex", tex);
+                Vector4 st = new Vector4(tile.x, tile.y, 0f, 0f);
+                if (material.HasProperty("_BaseMap_ST")) material.SetVector("_BaseMap_ST", st);
+                if (material.HasProperty("_MainTex_ST")) material.SetVector("_MainTex_ST", st);
+            }
+            renderer.sharedMaterial = material;
         }
 
         private static Material CreateMaterial(Color color, float smoothness)
