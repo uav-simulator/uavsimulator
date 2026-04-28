@@ -36,9 +36,13 @@ if str(PYTHON_ROOT) not in sys.path:
     sys.path.insert(0, str(PYTHON_ROOT))
 
 from stable_baselines3 import PPO
-from stable_baselines3.common.callbacks import BaseCallback, CheckpointCallback
+from stable_baselines3.common.callbacks import (
+    BaseCallback,
+    CheckpointCallback,
+    EvalCallback,
+)
 from stable_baselines3.common.monitor import Monitor
-from stable_baselines3.common.vec_env import SubprocVecEnv, VecMonitor
+from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecMonitor
 
 from training.ab_corridor_vision_env import ABCorridorVisionEnv
 from training.anti_spin_reward import AntiSpinRewardWrapper
@@ -119,6 +123,17 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--aruco-goal", action="store_true",
                    help="Enable ArUco bonus (+20 if detected)")
     p.add_argument("--aruco-distance-m", type=float, default=0.50)
+    p.add_argument("--eval-base-url", default="",
+                   help="If set, run periodic EvalCallback against a separate Unity instance "
+                        "on this URL (clean-DR: aug + anti-spin disabled). Best model saved "
+                        "to <output_dir>/best_model/.")
+    p.add_argument("--eval-freq", type=int, default=20000,
+                   help="EvalCallback frequency in policy steps (only used if --eval-base-url set)")
+    p.add_argument("--eval-episodes", type=int, default=5)
+    p.add_argument("--action-stats-freq", type=int, default=5000,
+                   help="ActionStatsCallback flush frequency in policy steps")
+    p.add_argument("--reward-log-freq", type=int, default=1000,
+                   help="RewardBreakdownCallback flush frequency in policy steps")
     return p.parse_args()
 
 
@@ -140,6 +155,88 @@ class ProgressCallback(BaseCallback):
                 flush=True,
             )
             self._last = self.num_timesteps
+        return True
+
+
+class ActionStatsCallback(BaseCallback):
+    """rev29 monitoring: action distribution over rolling window.
+
+    Catches degenerate collapse (DirForward-only / DirRight-only) within the
+    first ~50k steps instead of after a 200k+ run finishes. Logs per-action
+    fractions to TensorBoard as scalars; with 5 keys they form an implicit
+    histogram view in TB.
+    """
+
+    def __init__(self, log_freq: int = 5000, n_actions: int = 5,
+                 action_names: list[str] | None = None):
+        super().__init__()
+        self.log_freq = max(1, int(log_freq))
+        self.n_actions = n_actions
+        self.action_names = action_names or [f"a{i}" for i in range(n_actions)]
+        self._buffer: list[int] = []
+        self._last_log_step = 0
+
+    def _on_step(self) -> bool:
+        actions = self.locals.get("actions")
+        if actions is not None:
+            try:
+                flat = np.asarray(actions).reshape(-1).astype(np.int64, copy=False)
+                self._buffer.extend(int(a) for a in flat)
+            except (TypeError, ValueError):
+                pass
+
+        if self.num_timesteps - self._last_log_step >= self.log_freq and self._buffer:
+            arr = np.asarray(self._buffer, dtype=np.int64)
+            counts = np.bincount(arr, minlength=self.n_actions)[: self.n_actions]
+            total = max(int(counts.sum()), 1)
+            fracs = counts.astype(np.float64) / total
+            for i, name in enumerate(self.action_names):
+                self.logger.record(f"actions/frac_{name}", float(fracs[i]))
+            top_idx = int(np.argmax(counts))
+            self.logger.record("actions/top_idx", float(top_idx))
+            self.logger.record("actions/top_frac", float(fracs[top_idx]))
+            self.logger.record("actions/window_samples", float(total))
+            self._buffer.clear()
+            self._last_log_step = self.num_timesteps
+        return True
+
+
+class RewardBreakdownCallback(BaseCallback):
+    """rev29 monitoring: per-component reward means in TB.
+
+    Reads `info["reward_breakdown"]` populated by ABCorridorVisionEnv and
+    MultiAgentVisionVecEnv, accumulates running means over `log_freq`
+    policy steps, then flushes to TB and clears.
+    """
+
+    def __init__(self, log_freq: int = 1000):
+        super().__init__()
+        self.log_freq = max(1, int(log_freq))
+        self._sums: dict[str, float] = {}
+        self._counts = 0
+        self._last_log_step = 0
+
+    def _on_step(self) -> bool:
+        infos = self.locals.get("infos") or []
+        for info in infos:
+            if not isinstance(info, dict):
+                continue
+            br = info.get("reward_breakdown")
+            if not isinstance(br, dict):
+                continue
+            for k, v in br.items():
+                try:
+                    self._sums[k] = self._sums.get(k, 0.0) + float(v)
+                except (TypeError, ValueError):
+                    continue
+            self._counts += 1
+
+        if self.num_timesteps - self._last_log_step >= self.log_freq and self._counts > 0:
+            for k, total in self._sums.items():
+                self.logger.record(f"reward/{k}_mean", total / self._counts)
+            self._sums.clear()
+            self._counts = 0
+            self._last_log_step = self.num_timesteps
         return True
 
 
@@ -243,6 +340,46 @@ def _make_env(
         wrapped.reset(seed=seed + rank)
         return wrapped
     return _init
+
+
+def _build_eval_env(args):
+    """Build a clean-DR single-env eval env on a separate Unity URL.
+
+    Used by EvalCallback: image augmentation OFF, anti-spin OFF, latency ON
+    (so eval matches the latency the deployed policy will face). The Unity
+    instance at `args.eval_base_url` should be launched separately by the
+    caller (typically a 2nd `rusim server up` on a different port).
+    """
+    base_env = ABCorridorVisionEnv(
+        base_url=args.eval_base_url,
+        scenario_path=args.scenario,
+        max_steps=args.max_ep_steps,
+        oob_margin_m=0.10,
+        time_scale=args.time_scale,
+        img_size=args.img_size,
+        maze_randomize=False,
+        maze_regen_every=1,
+        aruco_goal=args.aruco_goal,
+        aruco_goal_distance_m=args.aruco_distance_m,
+        lateral_penalty_mult=args.lateral_penalty_mult,
+        ultrasonic_noise_sigma=0.0,
+        ultrasonic_dropout_prob=0.0,
+        real_cam_postprocess=False,
+    )
+    wrapped = _wrap_env(
+        base_env,
+        enable_aug=False,
+        enable_anti_spin=False,
+        enable_latency=not args.disable_latency,
+        latency_steps=args.latency_steps,
+        seed=args.seed + 9999,
+        enable_discrete=not args.disable_discrete,
+        strong_aug=False,
+    )
+    eval_seed = args.seed + 9999
+    wrapped.reset(seed=eval_seed)
+    monitored = Monitor(wrapped)
+    return DummyVecEnv([lambda: monitored])
 
 
 def export_to_onnx_discrete(model: PPO, output_path: Path, img_size: int = 84) -> None:
@@ -505,6 +642,8 @@ def main() -> int:
     assert "Categorical" in type(model.policy.action_dist).__name__, \
         f"Expected Categorical action dist for Discrete action_space, got {type(model.policy.action_dist)}"
 
+    train_total_agents = int(getattr(model.env, "num_envs", 1) or 1)
+
     callbacks = [
         ProgressCallback(args.total_timesteps),
         CheckpointCallback(
@@ -512,11 +651,38 @@ def main() -> int:
             save_path=str(output_dir / "checkpoints"),
             name_prefix="cardboard_v9_ppo",
         ),
+        ActionStatsCallback(
+            log_freq=args.action_stats_freq,
+            n_actions=len(ACTION_NAMES),
+            action_names=ACTION_NAMES,
+        ),
+        RewardBreakdownCallback(log_freq=args.reward_log_freq),
     ]
     if args.curriculum:
         from training.maze_curriculum import MazeCurriculumCallback
         callbacks.append(MazeCurriculumCallback())
         print("  Curriculum: staged maze difficulty enabled (A-easy -> B -> C -> D-full)")
+
+    if args.eval_base_url:
+        eval_env = _build_eval_env(args)
+        eval_freq_calls = max(1, args.eval_freq // train_total_agents)
+        best_model_dir = output_dir / "best_model"
+        best_model_dir.mkdir(parents=True, exist_ok=True)
+        callbacks.append(EvalCallback(
+            eval_env,
+            best_model_save_path=str(best_model_dir),
+            log_path=str(log_dir / f"eval_{args.model_name}"),
+            eval_freq=eval_freq_calls,
+            n_eval_episodes=args.eval_episodes,
+            deterministic=True,
+            render=False,
+        ))
+        print(f"  EvalCallback: every {args.eval_freq} steps "
+              f"(={eval_freq_calls} calls), {args.eval_episodes} eps, "
+              f"clean-DR @ {args.eval_base_url}")
+        print(f"  best_model_save_path: {best_model_dir}")
+    else:
+        print("  EvalCallback: DISABLED (no --eval-base-url) — no best-model snapshot will be saved")
 
     print(f"\nStarting training for {args.total_timesteps} timesteps...")
     t0 = time.time()
@@ -586,6 +752,21 @@ def main() -> int:
                 "gamma": args.gamma,
                 "clipRange": args.clip_range,
                 "entCoef": args.ent_coef,
+                "seed": args.seed,
+                "lateralPenaltyMult": args.lateral_penalty_mult,
+                "ultrasonicNoiseSigma": args.ultrasonic_noise_sigma,
+                "ultrasonicDropoutProb": args.ultrasonic_dropout_prob,
+                "strongAug": bool(args.strong_aug),
+                "realCamPostprocess": bool(args.real_cam_postprocess),
+                "resumeFrom": args.resume or None,
+            },
+            "monitoring": {
+                "evalBaseUrl": args.eval_base_url or None,
+                "evalFreq": args.eval_freq if args.eval_base_url else None,
+                "evalEpisodes": args.eval_episodes if args.eval_base_url else None,
+                "actionStatsFreq": args.action_stats_freq,
+                "rewardLogFreq": args.reward_log_freq,
+                "bestModelDir": str(output_dir / "best_model") if args.eval_base_url else None,
             },
         },
     )

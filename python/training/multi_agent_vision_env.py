@@ -289,9 +289,13 @@ class MultiAgentVisionVecEnv(VecEnv):
 
             px, _, pz = _extract_position(resp)
             yaw = _extract_yaw(resp)
-            reward, terminated, term_reason = self._compute_reward(i, px, pz, yaw, action_idx)
+            reward, terminated, term_reason, breakdown = self._compute_reward(
+                i, px, pz, yaw, action_idx
+            )
             rewards[i] = reward
             self._states[i].step_count += 1
+            infos[i]["reward_breakdown"] = breakdown
+            infos[i]["action_idx"] = int(action_idx)
 
             if terminated or self._states[i].step_count >= self.max_steps:
                 self._states[i].done = True
@@ -312,7 +316,7 @@ class MultiAgentVisionVecEnv(VecEnv):
 
     def _compute_reward(
         self, agent_idx: int, px: float, pz: float, yaw: float, action_idx: int
-    ) -> tuple[float, bool, str]:
+    ) -> tuple[float, bool, str, dict[str, float]]:
         state = self._states[agent_idx]
         progress = _route_progress(px, pz, self.waypoints, self.total_route_length)
         delta = progress - state.prev_progress
@@ -327,7 +331,6 @@ class MultiAgentVisionVecEnv(VecEnv):
         time_penalty = -0.02
         backward_penalty = -0.5 if action_idx == 2 else 0.0  # DirBack
 
-        # Waypoint bonuses — track which we've passed for heading bonus
         waypoint_bonus = 0.0
         for wi in range(len(self.waypoints) - 1):  # last is goal, handled separately
             if wi in state.reached_waypoints:
@@ -337,8 +340,6 @@ class MultiAgentVisionVecEnv(VecEnv):
                 state.reached_waypoints.add(wi)
                 waypoint_bonus += 5.0
 
-        # Heading alignment bonus toward next unreached waypoint —
-        # critical for L-corridor turns; without it policy stalls at corner.
         heading_bonus = 0.0
         next_wp = None
         for wi in range(len(self.waypoints)):
@@ -352,24 +353,54 @@ class MultiAgentVisionVecEnv(VecEnv):
                 fx, fz = math.sin(yaw), math.cos(yaw)
                 heading_bonus = (fx * dx + fz * dz) / d  # cos(angle), [-1, +1]
 
-        # Goal
+        goal_bonus = 0.0
+        oob_penalty = 0.0
+        stall_penalty = 0.0
+        terminated = False
+        term_reason = "running"
+
         gx, gz = self.waypoints[-1]
         if math.hypot(px - gx, pz - gz) < self.goal_radius_m:
-            return float(progress_reward + 100.0 + survival_bonus + heading_bonus), True, "goal_reached"
-        # OOB
-        if lateral_dist > self.oob_threshold_m:
-            return float(progress_reward + lateral_penalty - 30.0), True, "out_of_bounds"
-        # Stall
-        if abs(delta) < 1e-4 and state.step_count > 20:
-            state.stalled_steps += 1
+            goal_bonus = 100.0
+            terminated = True
+            term_reason = "goal_reached"
+        elif lateral_dist > self.oob_threshold_m:
+            oob_penalty = -30.0
+            terminated = True
+            term_reason = "out_of_bounds"
         else:
-            state.stalled_steps = 0
-        if state.stalled_steps >= 30:
-            return float(progress_reward + lateral_penalty - 10.0), True, "stalled"
+            if abs(delta) < 1e-4 and state.step_count > 20:
+                state.stalled_steps += 1
+            else:
+                state.stalled_steps = 0
+            if state.stalled_steps >= 30:
+                stall_penalty = -10.0
+                terminated = True
+                term_reason = "stalled"
 
-        reward = (progress_reward + waypoint_bonus + lateral_penalty +
-                  survival_bonus + time_penalty + backward_penalty + heading_bonus)
-        return float(reward), False, "running"
+        if terminated and term_reason == "goal_reached":
+            reward = progress_reward + goal_bonus + survival_bonus + heading_bonus
+        elif terminated and term_reason == "out_of_bounds":
+            reward = progress_reward + lateral_penalty + oob_penalty
+        elif terminated and term_reason == "stalled":
+            reward = progress_reward + lateral_penalty + stall_penalty
+        else:
+            reward = (progress_reward + waypoint_bonus + lateral_penalty +
+                      survival_bonus + time_penalty + backward_penalty + heading_bonus)
+
+        breakdown = {
+            "progress": float(progress_reward),
+            "waypoint_bonus": float(waypoint_bonus),
+            "lateral_penalty": float(lateral_penalty),
+            "survival_bonus": float(survival_bonus),
+            "time": float(time_penalty),
+            "backward_penalty": float(backward_penalty),
+            "heading_bonus": float(heading_bonus),
+            "goal_bonus": float(goal_bonus),
+            "oob_penalty": float(oob_penalty),
+            "stall_penalty": float(stall_penalty),
+        }
+        return float(reward), terminated, term_reason, breakdown
 
     def _extract_obs(self, step: dict[str, Any]) -> dict[str, np.ndarray]:
         frame = step.get("frame") or {}
