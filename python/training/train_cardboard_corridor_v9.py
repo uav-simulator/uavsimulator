@@ -83,7 +83,11 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--n-epochs", type=int, default=4)
     p.add_argument("--gamma", type=float, default=0.99)
     p.add_argument("--clip-range", type=float, default=0.2)
-    p.add_argument("--ent-coef", type=float, default=0.02)
+    # rev29 fix: default raised 0.02 -> 0.1 to match rev10-rev18 (working baselines).
+    # rev24/26/27 silently inherited 0.02 (5x weaker entropy) on heavy-DR scene
+    # and collapsed into degenerate basins. Always pass --ent-coef explicitly
+    # for transfer runs; this default protects against future drift.
+    p.add_argument("--ent-coef", type=float, default=0.1)
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--img-size", type=int, default=84)
     p.add_argument("--num-envs", type=int, default=1)
