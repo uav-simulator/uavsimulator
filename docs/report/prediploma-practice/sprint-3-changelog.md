@@ -27,7 +27,7 @@
 | Что | Результат |
 |---|---|
 | Лучшая модель в симуляторе на простой DR-сцене | `rev16` — **100% SR** (20/20 эпизодов goal_reached) |
-| Лучшая модель в симуляторе на жёсткой DR-сцене | `rev16` 75% / `rev24` 35% / `rev25` ⏳ |
+| Лучшая модель в симуляторе на жёсткой DR-сцене | `rev16` 75% / `rev24` 35% / `rev26-28` 0% / **`rev29` 75%** ✅ |
 | Поведение лучшей модели на реальном роботе | До фикса: **DirRight 66%** (врезается в стену) |
 | Поведение после heavy-DR тренировки | После: **DirForward 36–59%** (едет вперёд) |
 | Реальный проезд по прямой части L-коридора | ✅ rev24/25 проезжают ~85–95 см (вся прямая) |
@@ -173,6 +173,48 @@ DR-диапазоны я поднял с rev21-mild обратно до rev20-у
 ![rev24 procedural sim — 6 разных seeds, видны white plaster + oak floor + mixed walls + per-episode tint](sprint-3-reeval-2026-04-27/rev24_sim_samples/mosaic_3x2.png)
 
 Каждый эпизод визуально сильно разный — white plaster слева, оранжевый картон, pink-mixed, разные оттенки досок пола. CNN больше не может зацепиться за «всегда тан-цвет, всегда плоский пол» как делала rev16.
+
+---
+
+## Sprint A финал — почему rev24/26/27/28 ломались на heavy-DR (smoking gun)
+
+После трёх подряд провалов transfer-обучения на heavy-DR (`rev26` 0% / `rev27` 0% / `rev28` 0%) я провёл структурированный 3-аудитный анализ ([план](../../superpowers/plans/2026-04-28-path-to-100-percent.md)) и обнаружил систематическую ошибку: **launcher-default `--ent-coef` = 0.02, а rev16 (рабочая baseline-модель) тренировалась с 0.1**. Все transfer-runs молча наследовали 0.02 — в **5 раз меньше** entropy regularization чем у источника. На простой DR-сцене это сходило с рук, но на heavy-DR это вызывало entropy starvation → жадный greedy local optimum → degenerate basin (DirForward locked, либо DirRight spin).
+
+Аудит metadata.json по всем v9-revs:
+
+| Ревизии | `ent_coef` | Результат |
+|---|---|---|
+| rev10, rev12, rev14, rev15, rev16, rev18 | **0.1** | работали (rev16 = 100% baseline) |
+| rev19d | 0.15 | работала |
+| rev24, rev25, rev27, rev28 | **0.02** | коллапс (35% → 0% → 0% → 0%) |
+
+**Фикс одной строкой** (commit [`4c46ef8`](https://github.com/NMGorovenko/uav-simulator/commit/4c46ef8)): default в `train_cardboard_corridor_v9.py` поднят 0.02 → 0.1 с явным комментарием. Теперь дефолт совпадает с конфигурацией работающих базовых моделей.
+
+**rev29 = transfer rev16 → heavy-DR с `--ent-coef 0.1`**, 200k шагов, multi-agent×8, 18.3 минуты wall-clock. Sim eval (20 эпизодов, seed-offset 3000):
+
+| Метрика | rev28 (ent_coef=0.02) | rev29 (ent_coef=0.1) |
+|---|---|---|
+| Sim SR | 0/20 (0%) | **15/20 (75%)** ✅ |
+| Goal-reached | 0 | 15 |
+| Stalled | (degenerate) | 5 |
+| Out-of-bounds | (часто) | **0** |
+| avg progress | (низкий) | 70.1% |
+| avg reward | (отрицательный) | +241.1 |
+| Action distribution на eval | DirForward 100% lock | 81.9% Forward / 8.8% Left / 6.0% Stop / 1.7% Back / 1.6% Right |
+| Action distribution в training (5k window) | one-action lock | 22.6% Forward / 22.6% Left / 19.4% Back / 17.9% Right / 17.5% Stop |
+
+rev29 **полностью восстановил heavy-DR baseline rev16 (75%)** — не лучше, но и не хуже. То что мы наблюдали как «rev24+ хуже rev16» было **не bug в reward shaping и не недостаток BC**, а просто 5x утечка entropy между source-моделью и transfer-конфигурацией.
+
+### Дополнительная инфраструктура (commit [`d077940`](https://github.com/NMGorovenko/uav-simulator/commit/d077940))
+
+Чтобы такая ошибка не повторилась, в trainer добавлены три callback'а:
+- **`ActionStatsCallback`** — записывает в TB фракции по 5 действиям каждые 5000 шагов (отлавливает degenerate collapse за 50k вместо 200k).
+- **`RewardBreakdownCallback`** — агрегирует `info["reward_breakdown"]` (per-component reward) каждые 1000 шагов (видны reward-hacking ловушки live).
+- **`EvalCallback`** — opt-in через `--eval-base-url`, сохраняет best policy by mean reward в `<output_dir>/best_model/`.
+- `multi_agent_vision_env._compute_reward` теперь возвращает breakdown dict (раньше rev24+ multi-agent runs его не логировали вообще).
+- `metadata.json` пишет `entCoef`, `seed`, `lateralPenaltyMult`, `resumeFrom`, monitoring config — будущие ревы self-документированы.
+
+Подробный план следующих спринтов (B: reward-function фиксы, C: dynamic+geometry DR, D: BC bootstrap + ADR + R3M backbone) — в [`2026-04-28-path-to-100-percent.md`](../../superpowers/plans/2026-04-28-path-to-100-percent.md).
 
 ---
 
@@ -353,6 +395,10 @@ Side-fix параллельно: SessionVideoRecorder перешёл с `+fastst
 | rev22 | rev21 + лампы | layered indoor lighting | (incomplete) | Точечные лампы не действуют на Unlit shader |
 | **rev24** | 200k transfer от rev16 | **heavy DR + wood-floor + mixed walls** | 35% | Real prior на DirForward ✅ |
 | rev25 | 200k transfer от rev24 | + `lateral_penalty x2.0` | tbd | На реале залип в DirLeft |
+| rev26 | 2.4M transfer от rev24 | heavy-DR + lateral=1.5 | 0% | DirForward 100% lock — degenerate basin |
+| rev27 | 1M transfer от rev24 | heavy-DR + lateral=1.0 | 0% | DirRight 60% / DirStop 39% — opposite basin |
+| rev28 | 200k transfer от **rev16** (не rev24) | проверка transfer-source | 0% | Forward-locked — source не был причиной |
+| **rev29** | 200k transfer от rev16 | + `--ent-coef 0.1` (был 0.02!) + monitoring | **75%** ✅ | **ent_coef drift был причиной всех rev24-rev28 collapses** |
 
 Ключевая ось истории — два «прыжка»:
 - **rev10 → rev12 → rev16**: восстановление 100% sim-SR на L-коридоре (12 → 16 это переход к воспроизводимой 300k from-scratch конфигурации с правильным reward-stack'ом).
@@ -366,8 +412,9 @@ Side-fix параллельно: SessionVideoRecorder перешёл с `+fastst
 
 | Что | Путь |
 |---|---|
-| Лучшая модель в симе | [`python/training/artifacts/cardboard-corridor-ppo-v9-rev16/1.0.0/`](../../../python/training/artifacts/cardboard-corridor-ppo-v9-rev16/1.0.0/) |
-| Лучшая для sim2real | [`python/training/artifacts/cardboard-corridor-ppo-v9-rev24/1.0.0/`](../../../python/training/artifacts/cardboard-corridor-ppo-v9-rev24/1.0.0/) |
+| Лучшая модель в симе на простой DR | [`python/training/artifacts/cardboard-corridor-ppo-v9-rev16/1.0.0/`](../../../python/training/artifacts/cardboard-corridor-ppo-v9-rev16/1.0.0/) |
+| Лучшая для sim2real (heavy-DR transfer) | [`python/training/artifacts/cardboard-corridor-ppo-v9-rev29/1.0.0/`](../../../python/training/artifacts/cardboard-corridor-ppo-v9-rev29/1.0.0/) — 75% SR, ent_coef=0.1 |
+| Старый sim2real-кандидат | [`python/training/artifacts/cardboard-corridor-ppo-v9-rev24/1.0.0/`](../../../python/training/artifacts/cardboard-corridor-ppo-v9-rev24/1.0.0/) |
 | Heavy-DR сцена (Unity C#) | [`CardboardCorridorTrack.cs`](../../../src/UnityProject/uav-simulator/Assets/Scripts/Tracks/CardboardCorridorTrack.cs) |
 | Калибровка физики | [`Ks0223Vehicle.cs`](../../../src/UnityProject/uav-simulator/Assets/Scripts/Vehicles/Ks0223Vehicle.cs) |
 | Backend (autopilot + safety + shadow + demo recording) | [`src/ks0223-web-mac/backend/`](../../../src/ks0223-web-mac/backend/) |
