@@ -2,6 +2,7 @@ import { Grid, Stack } from '@mui/material'
 import { useState } from 'react'
 import type { AutopilotPreviewDto } from '../api'
 import { AutopilotPanel } from '../components/AutopilotPanel'
+import { DemoReplayPanel } from '../components/DemoReplayPanel'
 import { CameraPanel } from '../components/CameraPanel'
 import { ConnectionCard } from '../components/ConnectionCard'
 import { ControlPad } from '../components/ControlPad'
@@ -199,6 +200,11 @@ export function ControlPage({
             onShadowPreviewUpdate={setPolicyPreview}
             saliencyOn={saliencyOn}
             onSaliencyToggle={setSaliencyOn}
+          />
+          <DemoReplayPanel
+            clientId={clientInstanceId}
+            runtimeMode={runtimeMode}
+            agentId={unityControlAgentId}
           />
         </Stack>
       </Grid>

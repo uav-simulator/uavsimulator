@@ -169,6 +169,63 @@ export async function stopDemoRecording(): Promise<DemoState> {
   return handleJson<DemoState>(response)
 }
 
+// ── Demo replay (Plan 3) ──
+
+export type DemoSessionFile = {
+  fileName: string
+  filePath: string
+  sizeKb: number
+  lastWriteUtc: string
+  commandCount: number
+}
+
+export type DemoReplayInfo = {
+  totalCommands: number
+  estimatedDurationMs: number
+  sessionFile: string
+}
+
+export type DemoReplayProgress = {
+  state: 'Idle' | 'Loading' | 'Playing' | 'Done' | 'Error' | 'Stopped' | string
+  currentIndex: number
+  totalCommands: number
+  currentTimestampUtc: string | null
+  startedAtUtc: string | null
+  elapsedMs: number
+  lastCommand: string | null
+  lastError: string | null
+}
+
+export async function listDemoReplaySessions(): Promise<DemoSessionFile[]> {
+  const response = await fetch(withBase('/api/demo/replay/sessions'))
+  return handleJson<DemoSessionFile[]>(response)
+}
+
+export async function startDemoReplay(payload: {
+  clientId: string
+  runtimeMode: string
+  sessionFilePath: string
+  agentId?: string
+  speedMultiplier?: number
+}): Promise<DemoReplayInfo> {
+  const response = await fetch(withBase('/api/demo/replay/start'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  return handleJson<DemoReplayInfo>(response)
+}
+
+export async function stopDemoReplay(): Promise<{ stopped: boolean; state: string }> {
+  const response = await fetch(withBase('/api/demo/replay/stop'), { method: 'POST' })
+  return handleJson<{ stopped: boolean; state: string }>(response)
+}
+
+export async function getDemoReplayStatus(): Promise<DemoReplayProgress> {
+  const response = await fetch(withBase('/api/demo/replay/status'))
+  return handleJson<DemoReplayProgress>(response)
+}
+
 export async function fetchCameraStatus(clientId: string, runtimeMode: string): Promise<CameraStatusDto> {
   const response = await fetch(withClientRuntime('/api/camera/status', clientId, runtimeMode))
   return handleJson<CameraStatusDto>(response)
