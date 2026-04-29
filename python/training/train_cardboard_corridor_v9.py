@@ -47,6 +47,7 @@ from stable_baselines3.common.vec_env import (
     SubprocVecEnv,
     VecFrameStack,
     VecMonitor,
+    VecNormalize,
 )
 
 from training.ab_corridor_vision_env import ABCorridorVisionEnv
@@ -139,6 +140,12 @@ def parse_args() -> argparse.Namespace:
     # Default 1 = no stacking (back-compat with rev16-rev37 SB3 weights).
     p.add_argument("--frame-stack", type=int, default=1,
                    help="Number of frames to stack channel-wise (k=4 recommended)")
+    # Plan 2 (rev38): VecNormalize for rewards. Keeps running mean/std of
+    # returns; divides each reward to keep PPO value-function targets at
+    # consistent scale across episodes. Helps when reward components vary
+    # widely (lateral_penalty -23 vs goal_bonus +100).
+    p.add_argument("--normalize-rewards", action="store_true",
+                   help="Wrap train_env in VecNormalize for return normalization")
     p.add_argument("--strong-aug", action="store_true",
                    help="Aggressive image augmentations (rev13: enabled — wider brightness/contrast/blur/noise)")
     p.add_argument("--real-cam-postprocess", action="store_true",
@@ -690,6 +697,19 @@ def main() -> int:
         print(f"  Frame stacking: k={args.frame_stack} -> image obs (84, 84, {3 * args.frame_stack})")
         print()
 
+    # Plan 2 (rev38): reward normalization. VecNormalize keeps running mean/std
+    # of returns and divides each reward by sqrt(var+eps), so PPO sees rewards
+    # of comparable magnitude regardless of episode-to-episode swings (e.g.
+    # rev37's lateral_penalty_mean -23 vs +100 goal_bonus). Stabilizes value
+    # function learning. norm_obs=False since we already pass uint8 images.
+    if args.normalize_rewards:
+        if not isinstance(train_env, _VecEnvType):
+            train_env = DummyVecEnv([lambda: train_env])
+        train_env = VecNormalize(train_env, norm_obs=False, norm_reward=True,
+                                 clip_reward=10.0, gamma=args.gamma)
+        print(f"  VecNormalize: reward running mean/std + clip ±10 + gamma={args.gamma}")
+        print()
+
     # rev30: target_kl=None disables the guard (back-compat); positive value
     # enables PPO early-stop on update when approx_kl exceeds it.
     target_kl = args.target_kl if args.target_kl and args.target_kl > 0 else None
@@ -867,6 +887,7 @@ def main() -> int:
                 "entCoefEnd": args.ent_coef_end if args.ent_coef_schedule == "linear" else None,
                 "targetKl": target_kl,
                 "frameStack": args.frame_stack,
+                "normalizeRewards": bool(args.normalize_rewards),
                 "seed": args.seed,
                 "lateralPenaltyMult": args.lateral_penalty_mult,
                 "ultrasonicNoiseSigma": args.ultrasonic_noise_sigma,
