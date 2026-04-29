@@ -83,9 +83,12 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--model-version", default=DEFAULT_MODEL_VERSION)
     p.add_argument("--checkpoint-freq", type=int, default=10000)
     p.add_argument("--learning-rate", type=float, default=3e-4)
-    p.add_argument("--n-steps", type=int, default=256)
+    # Plan 2 (rev38): n_steps 256->512 (4096 transitions/update for
+    # multi-agent x 8) + n_epochs 4->10 (standard SB3 PPO defaults for
+    # vision RL). Old defaults gave undersized batches per update.
+    p.add_argument("--n-steps", type=int, default=512)
     p.add_argument("--batch-size", type=int, default=64)
-    p.add_argument("--n-epochs", type=int, default=4)
+    p.add_argument("--n-epochs", type=int, default=10)
     p.add_argument("--gamma", type=float, default=0.99)
     p.add_argument("--clip-range", type=float, default=0.2)
     # rev29 fix: default raised 0.02 -> 0.1 to match rev10-rev18 (working baselines).
@@ -93,6 +96,14 @@ def parse_args() -> argparse.Namespace:
     # and collapsed into degenerate basins. Always pass --ent-coef explicitly
     # for transfer runs; this default protects against future drift.
     p.add_argument("--ent-coef", type=float, default=0.1)
+    # Plan 2 (rev38): linear schedule support. When 'linear', ent_coef
+    # interpolates from --ent-coef (start, e.g. 0.1) to --ent-coef-end
+    # (end, e.g. 0.01) over training. High exploration early avoids early
+    # commitment to wrong basin; low exploitation late sharpens policy.
+    p.add_argument("--ent-coef-schedule", choices=("constant", "linear"), default="constant",
+                   help="Schedule for entropy bonus coefficient")
+    p.add_argument("--ent-coef-end", type=float, default=0.01,
+                   help="End value for linear schedule (default 0.01)")
     # rev30 (master-plan B6): catastrophic-update guard for transfer. PPO will
     # early-stop the policy update when approx_kl exceeds this. Pre-rev30 was
     # disabled (None); 0.02 is the standard anti-collapse value from the lit.
@@ -179,6 +190,32 @@ class ProgressCallback(BaseCallback):
                 flush=True,
             )
             self._last = self.num_timesteps
+        return True
+
+
+class EntCoefScheduleCallback(BaseCallback):
+    """Plan 2: linear ent_coef schedule for PPO.
+
+    SB3 doesn't natively schedule ent_coef like learning_rate (it's used as a
+    constant in the loss). This callback updates `model.ent_coef` at each step
+    based on `num_timesteps / total_timesteps`, interpolating from
+    `start_value` (typically 0.1) to `end_value` (typically 0.01).
+    """
+
+    def __init__(self, start_value: float, end_value: float, total_timesteps: int):
+        super().__init__()
+        self.start_value = float(start_value)
+        self.end_value = float(end_value)
+        self.total = max(1, int(total_timesteps))
+        self._last_log = 0
+
+    def _on_step(self) -> bool:
+        progress_remaining = max(0.0, 1.0 - self.num_timesteps / self.total)
+        new_ent = self.end_value + (self.start_value - self.end_value) * progress_remaining
+        self.model.ent_coef = new_ent
+        if self.num_timesteps - self._last_log >= 5000:
+            self.logger.record("hyperparams/ent_coef", float(new_ent))
+            self._last_log = self.num_timesteps
         return True
 
 
@@ -657,6 +694,17 @@ def main() -> int:
     # enables PPO early-stop on update when approx_kl exceeds it.
     target_kl = args.target_kl if args.target_kl and args.target_kl > 0 else None
 
+    # Plan 2 (rev38): ent_coef constant or linear schedule. SB3 PPO uses
+    # ent_coef as a constant in loss; for "linear" we install
+    # EntCoefScheduleCallback below to update it per step.
+    if args.ent_coef_schedule == "linear":
+        # Start with the start value; callback overwrites each step.
+        ent_coef_value = float(args.ent_coef)
+        print(f"  ent_coef schedule: linear {args.ent_coef} -> {args.ent_coef_end} (via callback)")
+    else:
+        ent_coef_value = float(args.ent_coef)
+        print(f"  ent_coef: constant {args.ent_coef}")
+
     if args.resume:
         print(f"Resuming PPO from checkpoint: {args.resume}")
         model = PPO.load(args.resume, env=train_env, device=args.device)
@@ -665,7 +713,9 @@ def main() -> int:
         model.learning_rate = args.learning_rate
         model.lr_schedule = get_schedule_fn(args.learning_rate)
         model.clip_range = get_schedule_fn(args.clip_range)
-        model.ent_coef = args.ent_coef
+        # Plan 2: ent_coef updated each step by EntCoefScheduleCallback if
+        # --ent-coef-schedule linear. Here just set start value.
+        model.ent_coef = ent_coef_value
         model.target_kl = target_kl
         # PPO.load preserves num_timesteps automatically; total_timesteps relative
         print(f"  Resumed at num_timesteps={model.num_timesteps}, "
@@ -681,7 +731,7 @@ def main() -> int:
             n_epochs=args.n_epochs,
             gamma=args.gamma,
             clip_range=args.clip_range,
-            ent_coef=args.ent_coef,
+            ent_coef=ent_coef_value,
             target_kl=target_kl,
             verbose=1,
             seed=args.seed,
@@ -711,6 +761,14 @@ def main() -> int:
         ),
         RewardBreakdownCallback(log_freq=args.reward_log_freq),
     ]
+    # Plan 2 (rev38): linear ent_coef schedule via callback (SB3 PPO doesn't
+    # natively schedule ent_coef like learning_rate).
+    if args.ent_coef_schedule == "linear":
+        callbacks.append(EntCoefScheduleCallback(
+            start_value=args.ent_coef,
+            end_value=args.ent_coef_end,
+            total_timesteps=args.total_timesteps,
+        ))
     if args.curriculum:
         from training.maze_curriculum import MazeCurriculumCallback
         callbacks.append(MazeCurriculumCallback())
@@ -805,6 +863,8 @@ def main() -> int:
                 "gamma": args.gamma,
                 "clipRange": args.clip_range,
                 "entCoef": args.ent_coef,
+                "entCoefSchedule": args.ent_coef_schedule,
+                "entCoefEnd": args.ent_coef_end if args.ent_coef_schedule == "linear" else None,
                 "targetKl": target_kl,
                 "frameStack": args.frame_stack,
                 "seed": args.seed,
