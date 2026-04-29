@@ -246,12 +246,13 @@ rev29 **полностью восстановил heavy-DR baseline rev16 (75%)*
 
 **Вывод:** rev29 weights робастные. После моего rev32 revert env baseline восстановлен. Но **TRAINING нового модели** на этом же env шесть раз подряд (rev30-rev35) даёт 0%.
 
-### Почему все 6 training-runs провалились
+### Почему все 7 training-runs провалились
 
-После rev35 (env буквально как в rev29 era) тоже провалившегося, я бесспорно знаю:
+После rev35 (env буквально как в rev29 era) и rev36 (seed=1337) тоже провалившихся, я бесспорно знаю:
 1. **Регрессия не в моих env code изменениях** — rev35 имеет env идентичный rev29.
 2. **Регрессия не в trainer-side изменениях** — `target_kl=None` no-op для resumed model.
-3. **Остаётся stochastic variance**. На heavy-DR landscape PPO с этим reward shape достижим только в редких lucky runs. rev29 = lucky outlier (75%); rev30-rev35 = типичные unlucky runs (0%).
+3. **Регрессия не в seed выборе** — rev36 (seed=1337) дал тот же DirLeft-degenerate как rev32/33/35.
+4. **Остаётся либо deep variance** на heavy-DR (rev29 был lucky outlier с p≪1/7), **либо state drift на Win-стороне** (Unity/CUDA/GPU thermal — что-то изменилось между rev29 (вчера утром) и rev30-36 (этой ночью)).
 
 Этот вывод согласуется с историей **rev24/rev26/rev27/rev28** (35%/0%/0%/0%) и общей наблюдаемой нестабильностью transfer-PPO на heavy-DR. Master-plan ([§ Top-15 actions](../../superpowers/plans/2026-04-28-path-to-100-percent.md)) предупреждал именно об этом — нужны **архитектурные** изменения (BC bootstrap, frame stacking k=4, R3M backbone, scene curriculum), а не дополнительные reward tweaks.
 
@@ -459,6 +460,7 @@ Side-fix параллельно: SessionVideoRecorder перешёл с `+fastst
 | rev33 | rev32 minus angular stall in MA | 0% | DirLeft+Right rotation lock |
 | rev34 | rev33 minus sonar noise/dropout | 0% | DirStop-100% snapped |
 | rev35 | env files **fully reverted to rev29 era** + current trainer | 0% | Confirmed: training is variance-bound, not code regression |
+| rev36 | rev35 launcher with **seed=1337** (multi-seed test) | 0% | Different seed → same DirLeft 84% degenerate. 7/7 attempts failed. |
 
 Ключевая ось истории — два «прыжка»:
 - **rev10 → rev12 → rev16**: восстановление 100% sim-SR на L-коридоре (12 → 16 это переход к воспроизводимой 300k from-scratch конфигурации с правильным reward-stack'ом).
