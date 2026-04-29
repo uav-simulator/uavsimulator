@@ -38,6 +38,11 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--max-steps", type=int, default=400)
     p.add_argument("--seed-offset", type=int, default=3000)
     p.add_argument("--img-size", type=int, default=84)
+    # Plan 1 (rev37): random maze evaluation support
+    p.add_argument("--track-id", default="",
+                   help="Override scenario track (e.g. track.cardboard_maze.v1)")
+    p.add_argument("--maze-randomize", action="store_true",
+                   help="Per-episode random maze geometry (only for cardboard_maze.v1)")
     p.add_argument("--latency-steps", type=int, default=0,
                    help="Apply DelayedActionWrapper with N-tick action delay (matches training)")
     p.add_argument("--output-json", default="")
@@ -97,7 +102,11 @@ def evaluate(args):
         oob_margin_m=0.10,
         time_scale=1.0,
         img_size=args.img_size,
+        track_id=args.track_id if args.track_id else None,
+        maze_randomize=args.maze_randomize,
     )
+    if args.track_id:
+        print(f"  Track override: {args.track_id} (maze_randomize={args.maze_randomize})")
     # Wrap env in discrete adapter so we can env.step(int)
     env = DiscreteActionWrapper(base_env)
     if args.latency_steps > 0:
