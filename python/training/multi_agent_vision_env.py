@@ -407,17 +407,13 @@ class MultiAgentVisionVecEnv(VecEnv):
                 terminated = True
                 term_reason = "out_of_bounds"
             else:
-                # rev30: angular-aware stall. Pure progress-delta stall
-                # detection terminated valid in-place rotations as "stalled"
-                # (master-plan B1). Now require both no progress AND no yaw
-                # rotation to count as stalled.
-                yaw_delta = abs(yaw - state.prev_yaw)
-                # Wrap to [0, pi]
-                if yaw_delta > math.pi:
-                    yaw_delta = 2 * math.pi - yaw_delta
-                no_progress = abs(delta) < 1e-4
-                no_rotation = yaw_delta < 0.04  # ~2.3 deg/step
-                if no_progress and no_rotation and state.step_count > 20:
+                # rev33: revert "angular-aware" stall introduced for rev30.
+                # That change let pure in-place rotation episodes never stall,
+                # creating a stable +0.08/step survival reward attractor that
+                # PPO locked onto (rev30 = Right-top, rev32 = DirLeft 93%).
+                # Original delta-only rule is the correct one: 30 consecutive
+                # zero-progress steps = stall, regardless of rotation.
+                if abs(delta) < 1e-4 and state.step_count > 20:
                     state.stalled_steps += 1
                 else:
                     state.stalled_steps = 0
@@ -426,7 +422,7 @@ class MultiAgentVisionVecEnv(VecEnv):
                     terminated = True
                     term_reason = "stalled"
 
-        state.prev_yaw = yaw
+        state.prev_yaw = yaw  # kept in state for diag/symmetry, not used
 
         if terminated and term_reason == "goal_reached":
             reward = (progress_reward + goal_bonus + goal_stop_bonus +
