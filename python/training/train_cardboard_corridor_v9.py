@@ -88,6 +88,10 @@ def parse_args() -> argparse.Namespace:
     # and collapsed into degenerate basins. Always pass --ent-coef explicitly
     # for transfer runs; this default protects against future drift.
     p.add_argument("--ent-coef", type=float, default=0.1)
+    # rev30 (master-plan B6): catastrophic-update guard for transfer. PPO will
+    # early-stop the policy update when approx_kl exceeds this. Pre-rev30 was
+    # disabled (None); 0.02 is the standard anti-collapse value from the lit.
+    p.add_argument("--target-kl", type=float, default=0.02)
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--img-size", type=int, default=84)
     p.add_argument("--num-envs", type=int, default=1)
@@ -518,6 +522,8 @@ def main() -> int:
             goal_radius_m=ma_goal_r,
             waypoints=ma_waypoints if ma_waypoints else None,
             real_cam_postprocess=args.real_cam_postprocess,
+            ultrasonic_noise_sigma=args.ultrasonic_noise_sigma,
+            ultrasonic_dropout_prob=args.ultrasonic_dropout_prob,
         )
         probe_track = "track.cardboard_corridor.v1"
         probe_corridor_w = ma_corridor_w
@@ -610,6 +616,10 @@ def main() -> int:
     print(f"  goal_radius:     {probe_goal_r:.2f}m")
     print()
 
+    # rev30: target_kl=None disables the guard (back-compat); positive value
+    # enables PPO early-stop on update when approx_kl exceeds it.
+    target_kl = args.target_kl if args.target_kl and args.target_kl > 0 else None
+
     if args.resume:
         print(f"Resuming PPO from checkpoint: {args.resume}")
         model = PPO.load(args.resume, env=train_env, device=args.device)
@@ -619,9 +629,10 @@ def main() -> int:
         model.lr_schedule = get_schedule_fn(args.learning_rate)
         model.clip_range = get_schedule_fn(args.clip_range)
         model.ent_coef = args.ent_coef
+        model.target_kl = target_kl
         # PPO.load preserves num_timesteps automatically; total_timesteps relative
         print(f"  Resumed at num_timesteps={model.num_timesteps}, "
-              f"will train to reach {args.total_timesteps}")
+              f"will train to reach {args.total_timesteps}, target_kl={target_kl}")
     else:
         print(f"Creating new PPO model with MultiInputPolicy (device={args.device})...")
         model = PPO(
@@ -634,6 +645,7 @@ def main() -> int:
             gamma=args.gamma,
             clip_range=args.clip_range,
             ent_coef=args.ent_coef,
+            target_kl=target_kl,
             verbose=1,
             seed=args.seed,
             device=args.device,
@@ -756,6 +768,7 @@ def main() -> int:
                 "gamma": args.gamma,
                 "clipRange": args.clip_range,
                 "entCoef": args.ent_coef,
+                "targetKl": target_kl,
                 "seed": args.seed,
                 "lateralPenaltyMult": args.lateral_penalty_mult,
                 "ultrasonicNoiseSigma": args.ultrasonic_noise_sigma,
