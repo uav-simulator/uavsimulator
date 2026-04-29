@@ -73,14 +73,46 @@ def build_discrete_predictor(model_path: Path):
 
     if suffix == ".zip":
         from stable_baselines3 import PPO
+        # Plan 5: try PPO first; if it fails, try RecurrentPPO (sb3-contrib).
+        model = None
+        kind = "ppo"
+        try:
+            model = PPO.load(str(model_path))
+        except (KeyError, RuntimeError, AttributeError, ValueError):
+            try:
+                from sb3_contrib import RecurrentPPO
+                model = RecurrentPPO.load(str(model_path))
+                kind = "recurrent_ppo"
+            except Exception as e:
+                raise RuntimeError(
+                    f"Failed to load checkpoint as PPO or RecurrentPPO: {e}"
+                )
 
-        model = PPO.load(str(model_path))
-
-        def predict(obs):
-            action, _ = model.predict(obs, deterministic=True)
-            return int(action)
-
-        return predict, "ppo"
+        if kind == "recurrent_ppo":
+            # RecurrentPPO carries LSTM hidden state across steps. Reset on
+            # each new episode by external call to predict.reset().
+            class _RecurrentPredictor:
+                def __init__(self, m):
+                    self.model = m
+                    self.lstm_states = None
+                    self.episode_start = True
+                def __call__(self, obs):
+                    action, self.lstm_states = self.model.predict(
+                        obs, state=self.lstm_states,
+                        episode_start=np.array([self.episode_start]),
+                        deterministic=True,
+                    )
+                    self.episode_start = False
+                    return int(action)
+                def reset(self):
+                    self.lstm_states = None
+                    self.episode_start = True
+            return _RecurrentPredictor(model), kind
+        else:
+            def predict(obs):
+                action, _ = model.predict(obs, deterministic=True)
+                return int(action)
+            return predict, kind
 
     raise ValueError(f"Unsupported model format: {model_path}")
 
@@ -141,6 +173,9 @@ def evaluate(args):
 
     for ep_idx in range(args.episodes):
         obs, info = env.reset(seed=args.seed_offset + ep_idx)
+        # Plan 5: reset LSTM hidden state for recurrent predictors at episode start.
+        if hasattr(predict, "reset"):
+            predict.reset()
         if image_buffer is not None:
             image_buffer.clear()
             ultra_buffer.clear()
