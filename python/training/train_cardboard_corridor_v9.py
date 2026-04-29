@@ -42,7 +42,12 @@ from stable_baselines3.common.callbacks import (
     EvalCallback,
 )
 from stable_baselines3.common.monitor import Monitor
-from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecMonitor
+from stable_baselines3.common.vec_env import (
+    DummyVecEnv,
+    SubprocVecEnv,
+    VecFrameStack,
+    VecMonitor,
+)
 
 from training.ab_corridor_vision_env import ABCorridorVisionEnv
 from training.anti_spin_reward import AntiSpinRewardWrapper
@@ -116,6 +121,13 @@ def parse_args() -> argparse.Namespace:
     # Default keeps cardboard_corridor for backward compat with rev10..rev36.
     p.add_argument("--track-id", default="track.cardboard_corridor.v1",
                    help="Unity track ID (track.cardboard_corridor.v1 | track.cardboard_maze.v1)")
+    # Plan 2 (rev38): frame stacking for motion-aware features. k=4 stacks
+    # 4 consecutive frames channel-wise (84x84x12). Helps policy distinguish
+    # 'standing near wall' from 'approaching wall' — directly addresses the
+    # multi-modal reward landscape problem (rev30-rev36 collapse to DirStop).
+    # Default 1 = no stacking (back-compat with rev16-rev37 SB3 weights).
+    p.add_argument("--frame-stack", type=int, default=1,
+                   help="Number of frames to stack channel-wise (k=4 recommended)")
     p.add_argument("--strong-aug", action="store_true",
                    help="Aggressive image augmentations (rev13: enabled — wider brightness/contrast/blur/noise)")
     p.add_argument("--real-cam-postprocess", action="store_true",
@@ -391,7 +403,13 @@ def _build_eval_env(args):
     eval_seed = args.seed + 9999
     wrapped.reset(seed=eval_seed)
     monitored = Monitor(wrapped)
-    return DummyVecEnv([lambda: monitored])
+    eval_env = DummyVecEnv([lambda: monitored])
+    # Plan 2 (rev38): match train-time frame stacking so policy sees the
+    # same (84, 84, 3*k) obs in eval. Without this, eval-time obs shape
+    # mismatches policy expectations and PPO crashes on first env.step().
+    if args.frame_stack > 1:
+        eval_env = VecFrameStack(eval_env, n_stack=args.frame_stack, channels_order='last')
+    return eval_env
 
 
 def export_to_onnx_discrete(model: PPO, output_path: Path, img_size: int = 84) -> None:
@@ -622,6 +640,19 @@ def main() -> int:
     print(f"  goal_radius:     {probe_goal_r:.2f}m")
     print()
 
+    # Plan 2 (rev38): frame stacking k>1 wraps train_env in VecFrameStack.
+    # Image obs goes from (84, 84, 3) -> (84, 84, 3*k) channel-wise stacked.
+    # Multi-agent / SubprocVec / DummyVec already are VecEnvs; single-env path
+    # produces a Monitor (gym env) — VecFrameStack expects VecEnv so wrap
+    # in DummyVecEnv first if needed.
+    from stable_baselines3.common.vec_env import VecEnv as _VecEnvType
+    if args.frame_stack > 1:
+        if not isinstance(train_env, _VecEnvType):
+            train_env = DummyVecEnv([lambda: train_env])
+        train_env = VecFrameStack(train_env, n_stack=args.frame_stack, channels_order='last')
+        print(f"  Frame stacking: k={args.frame_stack} -> image obs (84, 84, {3 * args.frame_stack})")
+        print()
+
     # rev30: target_kl=None disables the guard (back-compat); positive value
     # enables PPO early-stop on update when approx_kl exceeds it.
     target_kl = args.target_kl if args.target_kl and args.target_kl > 0 else None
@@ -775,6 +806,7 @@ def main() -> int:
                 "clipRange": args.clip_range,
                 "entCoef": args.ent_coef,
                 "targetKl": target_kl,
+                "frameStack": args.frame_stack,
                 "seed": args.seed,
                 "lateralPenaltyMult": args.lateral_penalty_mult,
                 "ultrasonicNoiseSigma": args.ultrasonic_noise_sigma,

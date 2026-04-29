@@ -45,6 +45,10 @@ def parse_args() -> argparse.Namespace:
                    help="Per-episode random maze geometry (only for cardboard_maze.v1)")
     p.add_argument("--latency-steps", type=int, default=0,
                    help="Apply DelayedActionWrapper with N-tick action delay (matches training)")
+    # Plan 2 (rev38): frame-stack support — eval-time observation must match
+    # train-time channel count. Default 1 keeps back-compat with rev16-rev37.
+    p.add_argument("--frame-stack", type=int, default=1,
+                   help="Number of frames to stack channel-wise (must match training)")
     p.add_argument("--output-json", default="")
     return p.parse_args()
 
@@ -113,20 +117,43 @@ def evaluate(args):
         env = DelayedActionWrapper(env, delay_steps=args.latency_steps)
         print(f"  DelayedActionWrapper enabled: delay_steps={args.latency_steps}")
 
+    # Plan 2 (rev38): frame stacking buffer — concat last k frames channel-wise.
+    # Initialised with copies of first frame at episode start so policy never
+    # sees zeros (which would confuse motion-aware features).
+    from collections import deque
+    frame_stack_k = max(1, int(args.frame_stack))
+    frame_buffer: deque | None = deque(maxlen=frame_stack_k) if frame_stack_k > 1 else None
+
+    def stack_obs(raw_obs):
+        """Apply frame stacking to obs.image if k>1; passthrough otherwise."""
+        if frame_buffer is None:
+            return raw_obs
+        # Buffer holds last k frames; stack along channel axis
+        stacked_image = np.concatenate(list(frame_buffer), axis=-1)
+        return {"image": stacked_image, "ultrasonic": raw_obs["ultrasonic"]}
+
     action_counts = {name: 0 for name in ACTION_NAMES}
     episodes: list[dict[str, Any]] = []
+    if frame_stack_k > 1:
+        print(f"  Frame stacking k={frame_stack_k} -> obs image shape (84, 84, {3*frame_stack_k})")
 
     for ep_idx in range(args.episodes):
         obs, info = env.reset(seed=args.seed_offset + ep_idx)
+        if frame_buffer is not None:
+            frame_buffer.clear()
+            for _ in range(frame_stack_k):
+                frame_buffer.append(obs["image"])
         total_reward = 0.0
         steps = 0
         ep_actions: list[int] = []
         done = False
         while not done:
-            action_idx = predict(obs)
+            action_idx = predict(stack_obs(obs))
             ep_actions.append(action_idx)
             action_counts[ACTION_NAMES[action_idx]] += 1
             obs, reward, terminated, truncated, info = env.step(action_idx)
+            if frame_buffer is not None:
+                frame_buffer.append(obs["image"])
             total_reward += reward
             steps += 1
             done = terminated or truncated
