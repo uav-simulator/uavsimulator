@@ -117,32 +117,36 @@ def evaluate(args):
         env = DelayedActionWrapper(env, delay_steps=args.latency_steps)
         print(f"  DelayedActionWrapper enabled: delay_steps={args.latency_steps}")
 
-    # Plan 2 (rev38): frame stacking buffer — concat last k frames channel-wise.
-    # Initialised with copies of first frame at episode start so policy never
-    # sees zeros (which would confuse motion-aware features).
+    # Plan 2 (rev38): frame stacking buffer — concat last k frames channel-wise
+    # for image AND last k ultrasonic readings concat-axis-0 for sonar.
+    # SB3's VecFrameStack does this by default for *all* dict obs keys, so
+    # eval-time policy.predict expects matching shapes.
     from collections import deque
     frame_stack_k = max(1, int(args.frame_stack))
-    frame_buffer: deque | None = deque(maxlen=frame_stack_k) if frame_stack_k > 1 else None
+    image_buffer: deque | None = deque(maxlen=frame_stack_k) if frame_stack_k > 1 else None
+    ultra_buffer: deque | None = deque(maxlen=frame_stack_k) if frame_stack_k > 1 else None
 
     def stack_obs(raw_obs):
-        """Apply frame stacking to obs.image if k>1; passthrough otherwise."""
-        if frame_buffer is None:
+        """Apply frame stacking to obs.image and obs.ultrasonic if k>1; passthrough otherwise."""
+        if image_buffer is None:
             return raw_obs
-        # Buffer holds last k frames; stack along channel axis
-        stacked_image = np.concatenate(list(frame_buffer), axis=-1)
-        return {"image": stacked_image, "ultrasonic": raw_obs["ultrasonic"]}
+        stacked_image = np.concatenate(list(image_buffer), axis=-1)
+        stacked_ultra = np.concatenate(list(ultra_buffer), axis=-1).astype(np.float32)
+        return {"image": stacked_image, "ultrasonic": stacked_ultra}
 
     action_counts = {name: 0 for name in ACTION_NAMES}
     episodes: list[dict[str, Any]] = []
     if frame_stack_k > 1:
-        print(f"  Frame stacking k={frame_stack_k} -> obs image shape (84, 84, {3*frame_stack_k})")
+        print(f"  Frame stacking k={frame_stack_k} -> obs image (84, 84, {3*frame_stack_k}) + ultrasonic ({frame_stack_k},)")
 
     for ep_idx in range(args.episodes):
         obs, info = env.reset(seed=args.seed_offset + ep_idx)
-        if frame_buffer is not None:
-            frame_buffer.clear()
+        if image_buffer is not None:
+            image_buffer.clear()
+            ultra_buffer.clear()
             for _ in range(frame_stack_k):
-                frame_buffer.append(obs["image"])
+                image_buffer.append(obs["image"])
+                ultra_buffer.append(obs["ultrasonic"])
         total_reward = 0.0
         steps = 0
         ep_actions: list[int] = []
@@ -152,8 +156,9 @@ def evaluate(args):
             ep_actions.append(action_idx)
             action_counts[ACTION_NAMES[action_idx]] += 1
             obs, reward, terminated, truncated, info = env.step(action_idx)
-            if frame_buffer is not None:
-                frame_buffer.append(obs["image"])
+            if image_buffer is not None:
+                image_buffer.append(obs["image"])
+                ultra_buffer.append(obs["ultrasonic"])
             total_reward += reward
             steps += 1
             done = terminated or truncated
