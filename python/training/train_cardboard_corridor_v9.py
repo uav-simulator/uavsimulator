@@ -156,6 +156,20 @@ def parse_args() -> argparse.Namespace:
     # widely (lateral_penalty -23 vs goal_bonus +100).
     p.add_argument("--normalize-rewards", action="store_true",
                    help="Wrap train_env in VecNormalize for return normalization")
+    # Plan 5 (rev40): pre-trained vision feature extractor. Bypasses scratch
+    # CNN training (the 1/8 success rate on heavy-DR transfer). Frozen
+    # backbone = orders of magnitude fewer trainable params + ImageNet
+    # pretrained weights closer to real-camera distribution.
+    p.add_argument("--feature-extractor", choices=("default", "r3m"), default="default",
+                   help="default = SB3 NatureCNN; r3m = frozen pretrained ResNet18 backbone")
+    p.add_argument("--feature-dim", type=int, default=256,
+                   help="Output dim of feature extractor head")
+    # Plan 5 (rev40): RecurrentPPO (LSTM policy) for memory across maze
+    # junctions ("I just turned left at last junction; now in second
+    # segment"). Critical for non-Markovian random-maze navigation.
+    p.add_argument("--recurrent", action="store_true",
+                   help="Use sb3-contrib RecurrentPPO with LSTM hidden state")
+    p.add_argument("--lstm-hidden-size", type=int, default=128)
     p.add_argument("--strong-aug", action="store_true",
                    help="Aggressive image augmentations (rev13: enabled — wider brightness/contrast/blur/noise)")
     p.add_argument("--real-cam-postprocess", action="store_true",
@@ -745,9 +759,28 @@ def main() -> int:
         ent_coef_value = float(args.ent_coef)
         print(f"  ent_coef: constant {args.ent_coef}")
 
+    # Plan 5 (rev40): pick PPO class + feature extractor.
+    if args.recurrent:
+        from sb3_contrib import RecurrentPPO
+        ppo_cls = RecurrentPPO
+        policy_id = "MultiInputLstmPolicy"
+        print(f"  RecurrentPPO: lstm_hidden_size={args.lstm_hidden_size}")
+    else:
+        ppo_cls = PPO
+        policy_id = "MultiInputPolicy"
+
+    extra_policy_kwargs = {}
+    if args.feature_extractor == "r3m":
+        from training.r3m_feature_extractor import R3MFeatureExtractor
+        extra_policy_kwargs["features_extractor_class"] = R3MFeatureExtractor
+        extra_policy_kwargs["features_extractor_kwargs"] = dict(features_dim=args.feature_dim)
+        print(f"  Feature extractor: R3M (frozen ResNet18) -> {args.feature_dim}-d")
+    else:
+        print(f"  Feature extractor: SB3 default (NatureCNN)")
+
     if args.resume:
         print(f"Resuming PPO from checkpoint: {args.resume}")
-        model = PPO.load(args.resume, env=train_env, device=args.device)
+        model = ppo_cls.load(args.resume, env=train_env, device=args.device)
         # Refresh hyperparameters that may differ from training run
         from stable_baselines3.common.utils import get_schedule_fn
         model.learning_rate = args.learning_rate
@@ -761,9 +794,13 @@ def main() -> int:
         print(f"  Resumed at num_timesteps={model.num_timesteps}, "
               f"will train to reach {args.total_timesteps}, target_kl={target_kl}")
     else:
-        print(f"Creating new PPO model with MultiInputPolicy (device={args.device})...")
-        model = PPO(
-            "MultiInputPolicy",
+        print(f"Creating new {ppo_cls.__name__} model with {policy_id} (device={args.device})...")
+        policy_kwargs = dict(net_arch=dict(pi=[128, 64], vf=[128, 64]))
+        policy_kwargs.update(extra_policy_kwargs)
+        if args.recurrent:
+            policy_kwargs["lstm_hidden_size"] = args.lstm_hidden_size
+        model = ppo_cls(
+            policy_id,
             train_env,
             learning_rate=args.learning_rate,
             n_steps=args.n_steps,
@@ -777,9 +814,7 @@ def main() -> int:
             seed=args.seed,
             device=args.device,
             tensorboard_log=tensorboard_log,
-            policy_kwargs=dict(
-                net_arch=dict(pi=[128, 64], vf=[128, 64]),
-            ),
+            policy_kwargs=policy_kwargs,
         )
     print(f"  Action dist: {type(model.policy.action_dist).__name__}")
     assert "Categorical" in type(model.policy.action_dist).__name__, \
@@ -911,6 +946,10 @@ def main() -> int:
                 "spawnJitterM": args.spawn_jitter_m,
                 "spawnYawJitterDeg": args.spawn_yaw_jitter_deg,
                 "latencyMax": args.latency_max,
+                "featureExtractor": args.feature_extractor,
+                "featureDim": args.feature_dim,
+                "recurrent": bool(args.recurrent),
+                "lstmHiddenSize": args.lstm_hidden_size if args.recurrent else None,
                 "seed": args.seed,
                 "lateralPenaltyMult": args.lateral_penalty_mult,
                 "ultrasonicNoiseSigma": args.ultrasonic_noise_sigma,
