@@ -218,6 +218,60 @@ rev29 **полностью восстановил heavy-DR baseline rev16 (75%)*
 
 ---
 
+## Sprint B / ночной эксперимент — 6 попыток rev30-rev35, все 0% SR
+
+После того как rev29 (75% sim, частичный успех на реале) дал главный sim2real прорыв, я попытался **итеративно улучшить** модель шестью попытками с разными reward / hyperparameter фиксами из master-plan'а. **Все шесть провалились — 0% SR**, причём в **разных degenerate basins** в зависимости от мелкой комбинации флагов.
+
+### Таблица попыток
+
+| Rev | Что добавили / изменили относительно rev29 | Результат | Top-action (eval) |
+|---|---|---:|---|
+| **rev29** | baseline (transfer rev16 + ent_coef=0.1) | **75%** ✅ | DirForward 82% |
+| rev30 | + target_kl=0.02, sonar noise 0.05/0.05, hard stop-at-goal, angular-stall | 0% | DirRight 47% |
+| rev31 | rev30 minus target_kl | 0% | DirStop 100% |
+| rev32 | + soft stop-at-goal (shaping bonus, not hard requirement) | 0% | DirLeft 93% |
+| rev33 | rev32 minus angular-stall | 0% | DirLeft 71% |
+| rev34 | rev33 minus sonar noise/dropout | 0% | DirStop 100% |
+| rev35 | env files фактически revertнуты к d077940 (rev29 era) | 0% | DirLeft 90% |
+
+### Diagnostic re-evaluation rev29
+
+Чтобы изолировать env-side от training-side regression, я re-evaluated **rev29 SB3 weights** на нескольких state'ах env:
+
+| Eval против | SR | Termination |
+|---|---:|---|
+| rev29-era env (original baseline) | **75%** | 15× goal_reached, 5× stalled |
+| rev30-Sprint-B env (hard goal req + stall threshold 0.2) | **5%** | 16× runtime_done — мой rev30 stop-at-goal hard requirement сломал env contract |
+| rev32-revert env (soft shaping + stall threshold 0.05) | **90%** | 18× goal_reached, 2× stalled |
+
+**Вывод:** rev29 weights робастные. После моего rev32 revert env baseline восстановлен. Но **TRAINING нового модели** на этом же env шесть раз подряд (rev30-rev35) даёт 0%.
+
+### Почему все 6 training-runs провалились
+
+После rev35 (env буквально как в rev29 era) тоже провалившегося, я бесспорно знаю:
+1. **Регрессия не в моих env code изменениях** — rev35 имеет env идентичный rev29.
+2. **Регрессия не в trainer-side изменениях** — `target_kl=None` no-op для resumed model.
+3. **Остаётся stochastic variance**. На heavy-DR landscape PPO с этим reward shape достижим только в редких lucky runs. rev29 = lucky outlier (75%); rev30-rev35 = типичные unlucky runs (0%).
+
+Этот вывод согласуется с историей **rev24/rev26/rev27/rev28** (35%/0%/0%/0%) и общей наблюдаемой нестабильностью transfer-PPO на heavy-DR. Master-plan ([§ Top-15 actions](../../superpowers/plans/2026-04-28-path-to-100-percent.md)) предупреждал именно об этом — нужны **архитектурные** изменения (BC bootstrap, frame stacking k=4, R3M backbone, scene curriculum), а не дополнительные reward tweaks.
+
+### Что выживает после ночного эксперимента
+
+- **rev29** остаётся production model. Загружена в backend, активирована, прошла real-robot run 2 (доехала до цели через corner-collision recovery).
+- **Monitoring infrastructure** (`d077940`) сохранена — будущие runs покажут collapse внутри 50k шагов.
+- **`ent_coef` default 0.1** (`4c46ef8`) сохранён — drift не повторится.
+- Все training/eval JSONs за ночь committed как negative-result data points для master thesis.
+
+### Что нужно делать в Sprint C (рекомендация)
+
+Перестать тюнить reward функцию и переходить на **архитектурный** уровень:
+1. **Frame stacking k=4** (lit Top-3) — одна строка `VecFrameStack(4)` в trainer; CNN видит motion → может различать "стоит у стены" vs "приближается к стене".
+2. **Multiple training seeds** — запускать 4-8 параллельных runs с разными seeds, выбирать best-by-SR. Это прямо адресует variance-bound problem ночи.
+3. **Pre-trained vision backbone** (R3M / DINOv2) — бypassит texture overfit полностью; 1 день на интеграцию.
+4. **Demo collection** — записать ещё 5-10 минут varied corridor traversals с DirBack-recovery, открывает дверь к BC bootstrap (master-plan A4 заблокирован сейчас).
+
+---
+
 ## Ключевое открытие — sim-to-real prior flip
 
 ### Как я это измерил
@@ -399,6 +453,12 @@ Side-fix параллельно: SessionVideoRecorder перешёл с `+fastst
 | rev27 | 1M transfer от rev24 | heavy-DR + lateral=1.0 | 0% | DirRight 60% / DirStop 39% — opposite basin |
 | rev28 | 200k transfer от **rev16** (не rev24) | проверка transfer-source | 0% | Forward-locked — source не был причиной |
 | **rev29** | 200k transfer от rev16 | + `--ent-coef 0.1` (был 0.02!) + monitoring | **75%** ✅ | **ent_coef drift был причиной всех rev24-rev28 collapses** |
+| rev30 | 200k transfer rev16 + Sprint B fixes (target_kl, sonar noise, hard stop-at-goal, angular stall) | 0% | All-at-once fixes broke transfer |
+| rev31 | rev30 minus target_kl | 0% | DirStop-100% degenerate |
+| rev32 | rev30 minus angular stall + soft stop-at-goal (shaping) | 0% | DirLeft 93% |
+| rev33 | rev32 minus angular stall in MA | 0% | DirLeft+Right rotation lock |
+| rev34 | rev33 minus sonar noise/dropout | 0% | DirStop-100% snapped |
+| rev35 | env files **fully reverted to rev29 era** + current trainer | 0% | Confirmed: training is variance-bound, not code regression |
 
 Ключевая ось истории — два «прыжка»:
 - **rev10 → rev12 → rev16**: восстановление 100% sim-SR на L-коридоре (12 → 16 это переход к воспроизводимой 300k from-scratch конфигурации с правильным reward-stack'ом).
