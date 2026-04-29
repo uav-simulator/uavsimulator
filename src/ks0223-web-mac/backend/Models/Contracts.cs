@@ -240,3 +240,45 @@ public sealed record AutopilotStatusDto(
     int MaxDurationSeconds = 0,
     int RepeatedCommandCount = 0,
     string? StopReason = null);
+
+// ── Demo replay ──
+
+public enum DemoReplayState
+{
+    Idle,
+    Loading,
+    Playing,
+    Done,
+    Error,
+    Stopped,
+}
+
+public sealed record DemoReplayStartRequest(
+    string ClientId,
+    string RuntimeMode,
+    string SessionFilePath,
+    string? AgentId = null,
+    double? SpeedMultiplier = 1.0);
+
+public sealed record DemoReplayInfo(
+    int TotalCommands,
+    int EstimatedDurationMs,
+    string SessionFile);
+
+public sealed record DemoReplayProgress(
+    string State,
+    int CurrentIndex,
+    int TotalCommands,
+    string? CurrentTimestampUtc,
+    DateTimeOffset? StartedAtUtc,
+    int ElapsedMs,
+    string? LastCommand,
+    string? LastError);
+
+public sealed record DemoSessionFileDto(
+    string FileName,
+    string FilePath,
+    long SizeKb,
+    DateTimeOffset LastWriteUtc,
+    int CommandCount);
+
