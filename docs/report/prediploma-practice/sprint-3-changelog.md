@@ -273,6 +273,64 @@ rev29 **полностью восстановил heavy-DR baseline rev16 (75%)*
 
 ---
 
+## Sprint 3 финальный пуш — Plans 1-6 + rev37 baseline + WebUI demo replay
+
+После ночи 2026-04-29 я переключился с reward-tweak подхода на **structured roadmap из 6 sub-планов** (см. [`2026-04-29-sprint3-master.md`](../../superpowers/plans/2026-04-29-sprint3-master.md)). Цель: довести sim SR ≥ 90% на random maze + дать оператору WebUI replay инструмент.
+
+### Plan 1: heavy-DR на random maze + curriculum (rev37)
+
+Задача — впервые активировать `track.cardboard_maze.v1` + `--maze-randomize` + `--curriculum` (built-in в коде, **никогда не использовались** в rev10-rev36) с heavy-DR visuals того же уровня что rev24+ corridor.
+
+Сделано:
+1. **Unity port** ([`6076d74`](https://github.com/NMGorovenko/uav-simulator/commit/6076d74)): wood-plank floor + per-wall style mix (cardboard/white/mixed) + per-wall albedo value jitter + warm tungsten point lights + spot above finish marker портированы из `CardboardCorridorTrack.cs` (630 строк) в `CardboardMazeTrack.cs` (262 → 590 строк). Win Unity batch-build PASS (exit 0).
+2. **Multi-agent maze plumbing** ([`7d6ed34`](https://github.com/NMGorovenko/uav-simulator/commit/7d6ed34)): `MultiAgentVisionVecEnv` теперь принимает `maze_randomize` + `maze_param_ranges` + `maze_regen_every` и порт `_apply_maze_randomization` из ABCorridorVisionEnv для per-episode geometry sampling через python `MazeGenerator`. Trainer добавил `--track-id` flag.
+3. **rev37 train + eval** ([`fe83094`](https://github.com/NMGorovenko/uav-simulator/commit/fe83094)): 200k шагов transfer от rev16, 18.6 мин на Win.
+
+| Eval-track | SR | avgProgress | avgReward | Top action (eval) |
+|---|---|---|---|---|
+| Random maze | 0/20 | **47.5%** | +35.6 | DirForward 100% |
+| L-corridor | 0/20 | 47.5% | +35.4 | DirForward 100% |
+
+**Что значит:** Robot reliably driving forward через половину каждого random maze layout (vs rev30-36 у которых progress был 0%). Heavy-DR + curriculum работают — training-time action distribution healthy (Forward 26%, остальные ~17-22%). **Но deterministic argmax на eval = 100% DirForward — robot не выдает turns когда нужно**. Это ожидаемый предел Plan 1; turn behavior требует Plan 2/5 (frame stacking + LSTM).
+
+### Plan 3: WebUI demo replay (parallel track)
+
+Задача — оператор записывает свой ручной проезд через робота (existing Demo Recording feature), потом ставит робота на старт + нажимает Play в WebUI → backend проигрывает все `command.outgoing` events с теми же timestamps. Цель: записать раз → воспроизводить N раз, без сидения с камерой каждый раз.
+
+Сделано:
+1. **Backend** ([`3a9665f`](https://github.com/NMGorovenko/uav-simulator/commit/3a9665f)): `DemoReplayService.cs` (350+ строк) + 4 API endpoints:
+   - `POST /api/demo/replay/start` — load JSONL, schedule events, fire с original time gaps (или scaled через `speedMultiplier`)
+   - `POST /api/demo/replay/stop` — cancel + DirStop как final safety
+   - `GET /api/demo/replay/status` — state machine (Idle/Loading/Playing/Done/Error/Stopped) + progress
+   - `GET /api/demo/replay/sessions` — list available JSONLs с metadata (commandCount, sizeKb)
+
+   Replay routes through `RuntimeSessionManager.SendCommandAsync` — **safety filter (sonar E-stop, deadman) остаётся active**.
+
+2. **Frontend** ([`ef3ef48`](https://github.com/NMGorovenko/uav-simulator/commit/ef3ef48)): `DemoReplayPanel.tsx` Material UI card с:
+   - Session dropdown (auto-loads, hides empty sessions)
+   - Speed toggle (0.5x / 1x / 2x / 4x)
+   - Play / Stop buttons
+   - Live LinearProgress bar polling status @ 250ms
+   - State chip + last-command + elapsed display
+   - Mounted в ControlPage рядом с AutopilotPanel
+
+   Build OK (gzipped 210 KB).
+
+3. **Smoke-tested** на Mac backend: все 4 endpoints отвечают корректно; sessions endpoint правильно перечисляет 6 JSONLs с commandCount; start без подключенного робота даёт ожидаемый Error state.
+
+**Real-robot end-to-end test** оставлен пользователю (требует физического робота включенного на старте L-коридора).
+
+### Что дальше — Plan 2-6
+
+| План | Что делает | Ожидаемый прирост над rev37 |
+|---|---|---|
+| Plan 2 | Frame stacking k=4, multi-seed sweep ×4, EvalCallback с 2-Unity, linear ent_coef schedule, n_steps 256→512 | +20-30% SR (turn detection through motion gradient + escape DirForward-100% basin) |
+| Plan 4 | Robot spawn pose jitter, dynamics DR, sonar noise (tuned), camera pitch jitter, geometry jitter | +5-10% sim + significant real-robot improvement |
+| Plan 5 | R3M frozen ResNet-50 backbone + RecurrentPPO LSTM | +10-15% (architectural; bypasses scratch CNN training variance) |
+| Plan 6 (stretch) | BC bootstrap from re-recorded demos с DirBack examples | +5%; reliable stop-at-goal behavior |
+
+---
+
 ## Ключевое открытие — sim-to-real prior flip
 
 ### Как я это измерил
@@ -461,6 +519,7 @@ Side-fix параллельно: SessionVideoRecorder перешёл с `+fastst
 | rev34 | rev33 minus sonar noise/dropout | 0% | DirStop-100% snapped |
 | rev35 | env files **fully reverted to rev29 era** + current trainer | 0% | Confirmed: training is variance-bound, not code regression |
 | rev36 | rev35 launcher with **seed=1337** (multi-seed test) | 0% | Different seed → same DirLeft 84% degenerate. 7/7 attempts failed. |
+| **rev37** | 200k transfer от rev16 на **track.cardboard_maze.v1** + heavy-DR + curriculum + maze-randomize | **0% SR / 47% avg progress** | Plan 1 deliverable: maze visuals + curriculum работают, action dist healthy в training (Forward top 26%); но deterministic argmax на eval = 100% DirForward, robot doesn't turn at maze junctions. Plan 2 (frame-stack + multi-seed) and Plan 5 (R3M + LSTM) required to teach turning. |
 
 Ключевая ось истории — два «прыжка»:
 - **rev10 → rev12 → rev16**: восстановление 100% sim-SR на L-коридоре (12 → 16 это переход к воспроизводимой 300k from-scratch конфигурации с правильным reward-stack'ом).
