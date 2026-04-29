@@ -608,30 +608,33 @@ class ABCorridorVisionEnv(gym.Env):
         goal_x, goal_z = self.waypoints[-1]
         geometric_goal = math.hypot(px - goal_x, pz - goal_z) < self.goal_radius_m
 
-        # rev30: stop-at-goal — terminate only when policy issues DirStop while
-        # in goal_radius. Without this, sim auto-terminates on geometric arrival
-        # and the policy never learns DirStop is the goal action; on real robot
-        # that means the robot drives past the target. DirStop = (throttle==0,
-        # steer==0) per ACTION_TABLE in discrete_action_wrapper.py.
+        # rev32: stop-at-goal as SHAPING bonus only, not a hard termination
+        # gate. The earlier rev30/31 design required DirStop for the goal
+        # terminate; this caused 16/20 episodes to hit "runtime_done" because
+        # sim auto-detects done before the policy emits DirStop, costing -15
+        # per episode and dropping rev29's SR from 75% -> 5% on the same model.
+        # Compromise: terminate as before (geometric / ArUco), AND give a small
+        # shaping bonus for DirStop in goal-radius so policy gradually learns
+        # DirStop is the right action there. DirStop = (throttle==0, steer==0).
         is_dir_stop = abs(throttle) < 1e-6 and abs(steer) < 1e-6
         goal_stop_bonus = 0.0
         if geometric_goal or aruco_goal_reached:
             self._in_goal_steps += 1
             if is_dir_stop:
                 self._goal_stop_steps += 1
-                goal_stop_bonus = 5.0
-                # center_quality: 1.0 = perfect center, 0.0 = always at wall
-                center_quality = self._center_quality_sum / max(self._center_quality_count, 1)
-                # Goal bonus: 30 (wall-rider) to 150 (centered driver)
-                goal_bonus = 30.0 + 120.0 * center_quality
-                if aruco_goal_reached:
-                    goal_bonus += 20.0
-                terminated = True
-                termination_reason = "goal_reached_aruco" if (aruco_goal_reached and not geometric_goal) else "goal_reached"
+                goal_stop_bonus = 5.0  # DirStop at goal — terminal+shaping
             else:
                 self._goal_stop_steps = 0
                 if self._in_goal_steps <= 10:
-                    goal_stop_bonus = 0.5
+                    goal_stop_bonus = 0.5  # in-goal but not stopping
+            # center_quality: 1.0 = perfect center, 0.0 = always at wall
+            center_quality = self._center_quality_sum / max(self._center_quality_count, 1)
+            # Goal bonus: 30 (wall-rider) to 150 (centered driver)
+            goal_bonus = 30.0 + 120.0 * center_quality
+            if aruco_goal_reached:
+                goal_bonus += 20.0
+            terminated = True
+            termination_reason = "goal_reached_aruco" if (aruco_goal_reached and not geometric_goal) else "goal_reached"
         else:
             self._goal_stop_steps = 0
             self._in_goal_steps = 0
@@ -656,11 +659,12 @@ class ABCorridorVisionEnv(gym.Env):
         stall_penalty = 0.0
         if not terminated:
             no_linear = self._computed_speed < 0.0015
-            # rev30 (master-plan B1): threshold 0.05 -> 0.2 rad/s. Real in-place
-            # rotation is 0.5-1.5 rad/s, but at time_scale=3 it renders in very
-            # short impulses; sensor noise/frame drops gave false-positive
-            # "no_angular" during real rotations and trained "never rotate".
-            no_angular = self._computed_angular_speed < 0.2  # ~11 deg/s
+            # rev32: revert master-plan B1 — threshold 0.2 is too aggressive,
+            # broke eval (rev29 dropped from 75% to 5% post-fix, see
+            # eval-rev29-heavy-dr-postBfix.json). Original 0.05 was correct;
+            # at time_scale=3 sim does deliver enough yaw to clear it during
+            # real rotations.
+            no_angular = self._computed_angular_speed < 0.05  # ~3 deg/s
             no_progress = abs(delta_progress) < 1e-4
             if self._step_count > 20 and no_linear and no_angular and no_progress:
                 self._stalled_steps += 1
