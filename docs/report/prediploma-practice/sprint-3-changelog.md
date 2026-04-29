@@ -526,6 +526,20 @@ Side-fix параллельно: SessionVideoRecorder перешёл с `+fastst
 | rev41 | 200k transfer rev16 на heavy-DR L-corridor + Plan 4 DR (spawn jitter ±0.10m / ±30°, dynamics, motor asymmetry, latency 1-3, sonar 0.02) | 20% SR / 52% avg progress | Plan 4 sim DR на L-corridor ухудшил SR (rev29 75% → 20%). Spawn yaw jitter ±30° на 0.60m коридоре часто стартует robot looking прямо в стену — policy не успевает повернуть. **Plan 4 нужно тюнить for L-corridor** или применять только на maze. |
 | rev42 | rev29 exact config (no Plan 4) + seed=**1337** на heavy-DR L-corridor | 0% SR / 0% avg progress | Multi-seed test rev29's recipe with different seed → DirStop 100% degenerate. **rev29's 75% — статистический outlier, не воспроизводимый.** Variance bound на этом config very severe. |
 | rev43 | rev29 + stabilization (n_steps=512, n_epochs=10, linear ent 0.1→0.02) + seed=42 (rev29's lucky seed) | 0% SR / 0% avg progress | DirLeft 77% + DirRight 23% — rotation-lock basin. Stabilization не помогла, наоборот ухудшила. Confirms variance is not addressed by larger batch sizes — needs architectural change OR many more seeds. |
+| rev44 | rev29 exact + seed=**2024** (multi-seed sweep) | 0% SR / 0% | DirStop 72% degenerate. |
+| rev45 | rev29 exact + seed=**9999** (multi-seed sweep) | 0% SR / 0% | DirStop 100%. |
+| rev46 | rev29 exact + seed=**7** (multi-seed sweep) | 0% SR / 0% | DirStop 100%. |
+
+### Финальная сводка эмпирической вариативности (rev29 vs 10 повторов)
+
+После 11 training-attempts (rev29 + Sprint B's 7 + tonight's 4 + multi-seed sweep 3): **hit rate 1/11 ≈ 9%**. Все попытки с тем же recipe (transfer rev16, ent_coef=0.1, heavy-DR L-corridor, multi-agent×8, 200k steps) — единственный success rev29 (seed=42, 75% SR). Все 10 остальных — 0% degenerate basins (DirStop / DirLeft / DirRight).
+
+**Заключение:** PPO transfer на heavy-DR landscape **fundamentally variance-bound** — narrow basin of attraction, p_lucky ≈ 1/11. Multi-seed sweep уровня 4 seeds недостаточен (95% confidence нужно ≥30 seeds). Reliable путь к высокому SR требует:
+1. **Architectural change** — Plan 5 R3M+RecurrentPPO (код shipped в commit 356f7c1, untested at scale — нужно ≥1M шагов или BC bootstrap initialization)
+2. **BC bootstrap** — записать ≥1500 (frame, action) demo pairs через Plan 3 WebUI replay tool, build BC dataset, pretrain policy
+3. **Принять rev29 как best-effort** baseline (deployed, real-robot validated) и фокус на sim2real
+
+Production model в backend остаётся **rev29** (model-20260428-143510-ac49dd3a, 75% sim SR, real-robot driven через L corridor с corner-collision recovery в rev29 real run 2).
 
 Ключевая ось истории — два «прыжка»:
 - **rev10 → rev12 → rev16**: восстановление 100% sim-SR на L-коридоре (12 → 16 это переход к воспроизводимой 300k from-scratch конфигурации с правильным reward-stack'ом).
