@@ -24,14 +24,25 @@ from gymnasium import spaces
 
 
 class DelayedActionWrapper(gym.Wrapper):
-    """Apply each action `delay_steps` steps later than agent submitted it."""
+    """Apply each action `delay_steps` steps later than agent submitted it.
 
-    def __init__(self, env: gym.Env, *, delay_steps: int = 1):
+    Plan 4 (rev39): when delay_max > delay_min, sample actual delay per step
+    from [delay_min, delay_max] inclusive. Real KS0223 loop has ~140ms target
+    but ±50ms jitter from network, USB, and Pi scheduling — sim should match.
+    """
+
+    def __init__(self, env: gym.Env, *, delay_steps: int = 1, delay_max: int | None = None):
         super().__init__(env)
         if delay_steps < 0:
             raise ValueError(f"delay_steps must be >= 0, got {delay_steps}")
-        self.delay_steps = delay_steps
-        self._queue: deque = deque(maxlen=delay_steps + 1)
+        self.delay_min = delay_steps
+        self.delay_max = delay_steps if delay_max is None else max(delay_steps, int(delay_max))
+        if self.delay_max < self.delay_min:
+            raise ValueError(f"delay_max ({self.delay_max}) must be >= delay_steps ({delay_steps})")
+        # Queue holds at most delay_max + 1 actions to support max delay variant.
+        self.delay_steps = delay_steps  # Kept for back-compat
+        self._queue: deque = deque(maxlen=self.delay_max + 1)
+        self._rng = np.random.default_rng()
 
     def reset(self, **kwargs):
         self._queue.clear()
@@ -41,11 +52,18 @@ class DelayedActionWrapper(gym.Wrapper):
         # Push current action onto the queue
         self._queue.append(action)
 
-        # Compute the action to actually execute (delayed)
-        if len(self._queue) > self.delay_steps:
-            executed = self._queue.popleft()
+        # Per-step random delay if delay_max > delay_min
+        if self.delay_max > self.delay_min:
+            actual_delay = int(self._rng.integers(self.delay_min, self.delay_max + 1))
         else:
-            # Queue not yet full; emit neutral action
+            actual_delay = self.delay_min
+
+        # Compute the action to actually execute (delayed by actual_delay)
+        if len(self._queue) > actual_delay:
+            # Pull oldest action that satisfies the delay requirement.
+            # Queue grows with each step; oldest at left.
+            executed = self._queue[len(self._queue) - 1 - actual_delay]
+        else:
             executed = self._neutral_action()
 
         return self.env.step(executed)

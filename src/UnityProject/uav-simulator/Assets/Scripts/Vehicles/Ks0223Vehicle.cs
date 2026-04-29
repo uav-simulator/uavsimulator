@@ -67,6 +67,17 @@ namespace UavSimulator.Vehicles
         [SerializeField] private Vector3 cameraLocalEuler = new Vector3(6f, 0f, 0f);
         [SerializeField] private Color presentationAccentColor = new Color(0.77f, 0.11f, 0.10f);
 
+        // Plan 4 (rev39): per-episode dynamics randomization for sim2real generalization.
+        // master-plan sim audit #4: real KS0223 mass varies 0.8-1.2 kg with battery,
+        // motor strength asymmetric per-wheel by ±10%. Camera pitch jitter (audit #3):
+        // declared in CardboardCorridorTrack but never wired up — applied here.
+        // All toggle-able: set jitter ranges to 0 to disable.
+        [SerializeField] private bool randomizeDynamics = true;
+        [SerializeField] private float massJitterPct = 0.20f;       // ±20% around 1.0kg
+        [SerializeField] private float dampingJitterPct = 0.20f;    // ±20% around defaults
+        [SerializeField] private float motorAsymmetryPct = 0.10f;   // ±10% per-wheel
+        [SerializeField] private float cameraPitchJitterDeg = 4f;   // ±4° around base pitch
+
         private Rigidbody body;
         private Camera frontCamera;
         private RenderTexture frontCameraRt;
@@ -80,6 +91,11 @@ namespace UavSimulator.Vehicles
         private float rightPwmCmd;
         private float currentSpeed;
         private float currentYawRateDeg;
+        // Plan 4: per-episode motor asymmetry — multiplies leftPwm/rightPwm
+        // independently so DirForward (left=right=1) gives slight yaw bias.
+        // Real KS0223 motors are not perfectly matched.
+        private float leftMotorMult = 1f;
+        private float rightMotorMult = 1f;
         private void Awake()
         {
             body = GetComponent<Rigidbody>();
@@ -123,8 +139,11 @@ namespace UavSimulator.Vehicles
                 leftPwmCmd = Mathf.Clamp(left, -1f, 1f);
                 rightPwmCmd = Mathf.Clamp(right, -1f, 1f);
 
-                speedCmd = Mathf.Clamp((leftPwmCmd + rightPwmCmd) * 0.5f, -1f, 1f);
-                yawCmd = Mathf.Clamp((rightPwmCmd - leftPwmCmd) * 0.5f, -1f, 1f);
+                // Plan 4: motor asymmetry applies AFTER PWM derivation.
+                var effLeft = leftPwmCmd * leftMotorMult;
+                var effRight = rightPwmCmd * rightMotorMult;
+                speedCmd = Mathf.Clamp((effLeft + effRight) * 0.5f, -1f, 1f);
+                yawCmd = Mathf.Clamp((effRight - effLeft) * 0.5f, -1f, 1f);
                 brakeCmd = Mathf.Clamp01(command.brake);
                 return;
             }
@@ -134,6 +153,15 @@ namespace UavSimulator.Vehicles
             brakeCmd = Mathf.Clamp01(command.brake);
             leftPwmCmd = Mathf.Clamp(speedCmd - yawCmd, -1f, 1f);
             rightPwmCmd = Mathf.Clamp(speedCmd + yawCmd, -1f, 1f);
+            // Plan 4: re-derive speed/yaw with motor asymmetry applied. For
+            // throttle/steer command path, this means DirForward (throttle=1,
+            // steer=0) -> leftPwm=rightPwm=1 -> with asymmetry, effective
+            // yaw becomes non-zero (real-robot KS0223 DirRight bias, master
+            // plan sim2real audit).
+            var effLeft2 = leftPwmCmd * leftMotorMult;
+            var effRight2 = rightPwmCmd * rightMotorMult;
+            speedCmd = Mathf.Clamp((effLeft2 + effRight2) * 0.5f, -1f, 1f);
+            yawCmd = Mathf.Clamp((effRight2 - effLeft2) * 0.5f, -1f, 1f);
         }
 
         public override VehicleState ReadState()
@@ -275,6 +303,43 @@ namespace UavSimulator.Vehicles
             {
                 body.linearVelocity = Vector3.zero;
                 body.angularVelocity = Vector3.zero;
+            }
+
+            // Plan 4 (rev39): per-episode dynamics + motor asymmetry + camera
+            // pitch jitter. Sample from per-episode seed so results are
+            // reproducible. Defaults to 1.0/0/etc when randomizeDynamics off.
+            if (randomizeDynamics && body != null)
+            {
+                var rng = new System.Random(seed);
+                if (massJitterPct > 0f)
+                {
+                    var massScale = 1f + ((float)rng.NextDouble() - 0.5f) * 2f * massJitterPct;
+                    body.mass = 1.0f * massScale;
+                }
+                if (dampingJitterPct > 0f)
+                {
+                    var lDampScale = 1f + ((float)rng.NextDouble() - 0.5f) * 2f * dampingJitterPct;
+                    var aDampScale = 1f + ((float)rng.NextDouble() - 0.5f) * 2f * dampingJitterPct;
+                    body.linearDamping = 0.2f * lDampScale;
+                    body.angularDamping = 1.5f * aDampScale;
+                }
+                if (motorAsymmetryPct > 0f)
+                {
+                    leftMotorMult = 1f + ((float)rng.NextDouble() - 0.5f) * 2f * motorAsymmetryPct;
+                    rightMotorMult = 1f + ((float)rng.NextDouble() - 0.5f) * 2f * motorAsymmetryPct;
+                }
+                else
+                {
+                    leftMotorMult = 1f;
+                    rightMotorMult = 1f;
+                }
+                if (cameraPitchJitterDeg > 0f && frontCamera != null)
+                {
+                    var pitchOffset = ((float)rng.NextDouble() - 0.5f) * 2f * cameraPitchJitterDeg;
+                    var jittered = new Vector3(cameraLocalEuler.x + pitchOffset,
+                                               cameraLocalEuler.y, cameraLocalEuler.z);
+                    frontCamera.transform.localRotation = Quaternion.Euler(jittered);
+                }
             }
         }
 

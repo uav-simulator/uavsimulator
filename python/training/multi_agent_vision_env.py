@@ -154,6 +154,9 @@ class MultiAgentVisionVecEnv(VecEnv):
         maze_randomize: bool = False,
         maze_param_ranges: Optional[dict] = None,
         maze_regen_every: int = 1,
+        # Plan 4 (rev39): spawn pose jitter (Unity-side via trackParams)
+        spawn_jitter_m: float = 0.0,
+        spawn_yaw_jitter_deg: float = 0.0,
     ) -> None:
         self.n_agents = n_agents
         self.client = SimClient(base_url, timeout_s=60.0)
@@ -179,6 +182,9 @@ class MultiAgentVisionVecEnv(VecEnv):
         self._maze_regen_every = max(1, int(maze_regen_every))
         self._maze_reset_count = 0
         self._maze_cached_params = None  # (sampled_params, geometry) tuple
+        # Plan 4 (rev39): Unity-side spawn pose jitter via trackParams
+        self._spawn_jitter_m = float(max(0.0, spawn_jitter_m))
+        self._spawn_yaw_jitter_deg = float(max(0.0, spawn_yaw_jitter_deg))
         self._maze_param_ranges = maze_param_ranges or {
             "length_cells": (5, 12),
             "left_turns": (1, 4),
@@ -239,6 +245,17 @@ class MultiAgentVisionVecEnv(VecEnv):
         # progress/goal computation stays in sync.
         if self._maze_randomize and self.track_id == "track.cardboard_maze.v1":
             self._apply_maze_randomization(config)
+
+        # Plan 4 (rev39): inject spawn pose jitter trackParams. Unity
+        # SimulationManager.ResolveSpawnPose reads spawn.jitter_m and
+        # spawn.yaw_jitter_deg keys and applies seeded offset.
+        if self._spawn_jitter_m > 0.0 or self._spawn_yaw_jitter_deg > 0.0:
+            tp = list(config.get("trackParams", []))
+            tp.extend([
+                {"key": "spawn.jitter_m", "value": f"{self._spawn_jitter_m:.4f}"},
+                {"key": "spawn.yaw_jitter_deg", "value": f"{self._spawn_yaw_jitter_deg:.2f}"},
+            ])
+            config["trackParams"] = tp
 
         return config
 

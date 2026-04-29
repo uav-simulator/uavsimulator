@@ -31,6 +31,12 @@ namespace UavSimulator.Core
         private const string RouteLoopKey = "route.loop";
         private const string SpawnPositionKey = "spawn.position";
         private const string SpawnYawDegKey = "spawn.yaw_deg";
+        // Plan 4 (rev39): spawn pose jitter for sim-to-real generalization.
+        // Master-plan sim audit #1 — without this, policy memorizes
+        // "after start drive 20 steps then turn left" instead of learning
+        // "turn when vanishing point shows corner".
+        private const string SpawnJitterMKey = "spawn.jitter_m";
+        private const string SpawnYawJitterDegKey = "spawn.yaw_jitter_deg";
         private const string RenderQualityProfileKey = "render.quality_profile";
         private const string AllowEmptyAgentsKey = "agents.allow_empty";
         private static readonly Vector3[] CardboardCorridorDefaultRoute =
@@ -185,7 +191,7 @@ namespace UavSimulator.Core
                 var vehicle = InstantiateVehicle(agent.Descriptor);
                 vehicle.ApplyVehicleConfig(agent.VehicleParams);
                 vehicle.ResetVehicle(config.seed + index);
-                ApplyVehicleSpawn(vehicle, agent.TrackParams, index);
+                ApplyVehicleSpawn(vehicle, agent.TrackParams, index, config.seed);
 
                 activeAgents.Add(new ActiveAgentRuntime
                 {
@@ -729,14 +735,14 @@ namespace UavSimulator.Core
             return value.ToString("0.###", CultureInfo.InvariantCulture);
         }
 
-        private void ApplyVehicleSpawn(VehicleBase vehicle, ConfigKeyValue[] trackParams, int agentIndex)
+        private void ApplyVehicleSpawn(VehicleBase vehicle, ConfigKeyValue[] trackParams, int agentIndex, int seed)
         {
             if (vehicle == null)
             {
                 return;
             }
 
-            var spawn = ResolveSpawnPose(trackParams, agentIndex);
+            var spawn = ResolveSpawnPose(trackParams, agentIndex, seed);
             vehicle.transform.position = spawn.position;
             vehicle.transform.rotation = Quaternion.Euler(0f, spawn.yawDeg, 0f);
 
@@ -747,7 +753,7 @@ namespace UavSimulator.Core
             }
         }
 
-        private (Vector3 position, float yawDeg) ResolveSpawnPose(ConfigKeyValue[] trackParams, int agentIndex)
+        private (Vector3 position, float yawDeg) ResolveSpawnPose(ConfigKeyValue[] trackParams, int agentIndex, int seed)
         {
             var spawn = GetDefaultSpawnPose(activeTrackId);
             var hasExplicitSpawn = false;
@@ -757,6 +763,39 @@ namespace UavSimulator.Core
             var trackSpawnYaw = activeTrack != null ? activeTrack.GetDefaultSpawnYawDeg() : null;
             if (trackSpawnPos.HasValue) spawn.position = trackSpawnPos.Value;
             if (trackSpawnYaw.HasValue) spawn.yawDeg = trackSpawnYaw.Value;
+
+            // Plan 4 (rev39): per-episode spawn pose jitter. Sample from seed +
+            // agentIndex so different agents get different jitter, and same
+            // (seed, agent) reproduces same offset.
+            float spawnJitterM = 0f;
+            float spawnYawJitterDeg = 0f;
+            if (TryReadTrackParam(trackParams, SpawnJitterMKey, out var jM) &&
+                float.TryParse(jM, NumberStyles.Float, CultureInfo.InvariantCulture, out var pj))
+            {
+                spawnJitterM = Mathf.Max(0f, pj);
+            }
+            if (TryReadTrackParam(trackParams, SpawnYawJitterDegKey, out var jD) &&
+                float.TryParse(jD, NumberStyles.Float, CultureInfo.InvariantCulture, out var yj))
+            {
+                spawnYawJitterDeg = Mathf.Max(0f, yj);
+            }
+            if (spawnJitterM > 0f || spawnYawJitterDeg > 0f)
+            {
+                var jitterSeed = unchecked(seed * 1000003 + agentIndex * 17);
+                var rng = new System.Random(jitterSeed);
+                if (spawnJitterM > 0f)
+                {
+                    var dx = ((float)rng.NextDouble() - 0.5f) * 2f * spawnJitterM;
+                    var dz = ((float)rng.NextDouble() - 0.5f) * 2f * spawnJitterM;
+                    spawn.position.x += dx;
+                    spawn.position.z += dz;
+                }
+                if (spawnYawJitterDeg > 0f)
+                {
+                    var dyaw = ((float)rng.NextDouble() - 0.5f) * 2f * spawnYawJitterDeg;
+                    spawn.yawDeg = (spawn.yawDeg + dyaw + 360f) % 360f;
+                }
+            }
 
             if (activeRouteWaypointsConfigured && activeRouteWaypoints.Length >= 2)
             {

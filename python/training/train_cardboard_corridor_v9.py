@@ -115,6 +115,16 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--device", default="auto")
     p.add_argument("--latency-steps", type=int, default=1,
                    help="Action latency in env ticks (real loop ~140ms = ~1 tick at fast train speed)")
+    # Plan 4 (rev39): randomize action latency between [latency-steps, latency-max]
+    # if latency-max > latency-steps. Simulates real-robot timing jitter.
+    p.add_argument("--latency-max", type=int, default=-1,
+                   help="Max latency for randomization (-1 disables, equals --latency-steps)")
+    # Plan 4 (rev39): spawn pose jitter passed to Unity via trackParams.
+    # 0.0 disables. Recommended 0.10m / 30deg for maze (narrow cells).
+    p.add_argument("--spawn-jitter-m", type=float, default=0.0,
+                   help="±N metres XY spawn jitter (Unity-side via trackParams)")
+    p.add_argument("--spawn-yaw-jitter-deg", type=float, default=0.0,
+                   help="±N degrees spawn yaw jitter (Unity-side via trackParams)")
     p.add_argument("--disable-aug", action="store_true",
                    help="Disable image augmentation (for ablation / debugging)")
     p.add_argument("--disable-anti-spin", action="store_true")
@@ -158,10 +168,13 @@ def parse_args() -> argparse.Namespace:
                         "Ports are base_port..base_port+N-1.")
     p.add_argument("--lateral-penalty-mult", type=float, default=1.0,
                    help="Multiplier for lateral wall-proximity penalty (rev13: 5.0)")
+    # Plan 4 (rev39): default 0 keeps back-compat with rev37; recommended values
+    # for rev39+ are 0.02/0.02 (master-plan: 0.05/0.05 from Sprint B was too
+    # aggressive, broke training in rev30+).
     p.add_argument("--ultrasonic-noise-sigma", type=float, default=0.0,
-                   help="Gaussian noise stddev (meters) added to front ultrasonic (rev13: 0.05)")
+                   help="Gaussian noise stddev (meters) added to front ultrasonic (rev39 rec: 0.02)")
     p.add_argument("--ultrasonic-dropout-prob", type=float, default=0.0,
-                   help="Per-step probability that ultrasonic returns 0 or 5m (rev13: 0.05)")
+                   help="Per-step probability ultrasonic returns 0 or 5m (rev39 rec: 0.02)")
     p.add_argument("--aruco-goal", action="store_true",
                    help="Enable ArUco bonus (+20 if detected)")
     p.add_argument("--aruco-distance-m", type=float, default=0.50)
@@ -325,13 +338,16 @@ def _wrap_env(
     seed: int,
     enable_discrete: bool = True,
     strong_aug: bool = False,
+    latency_max: int = -1,
 ):
     """Apply v9 wrapper stack: Discrete -> Latency -> AntiSpin -> ImageAug."""
     env = base_env
     if enable_discrete:
         env = DiscreteActionWrapper(env)
         if enable_latency and latency_steps > 0:
-            env = DelayedActionWrapper(env, delay_steps=latency_steps)
+            # Plan 4 (rev39): if latency_max > latency_steps, randomize per step.
+            dmax = latency_max if latency_max > latency_steps else None
+            env = DelayedActionWrapper(env, delay_steps=latency_steps, delay_max=dmax)
         if enable_anti_spin:
             env = AntiSpinRewardWrapper(env)
     if enable_aug:
@@ -440,6 +456,7 @@ def _build_eval_env(args):
         enable_anti_spin=False,
         enable_latency=not args.disable_latency,
         latency_steps=args.latency_steps,
+        latency_max=args.latency_max,
         seed=args.seed + 9999,
         enable_discrete=not args.disable_discrete,
         strong_aug=False,
@@ -592,6 +609,8 @@ def main() -> int:
             real_cam_postprocess=args.real_cam_postprocess,
             maze_randomize=args.maze_randomize,
             maze_regen_every=args.maze_regen_every,
+            spawn_jitter_m=args.spawn_jitter_m,
+            spawn_yaw_jitter_deg=args.spawn_yaw_jitter_deg,
         )
         probe_track = args.track_id
         probe_corridor_w = ma_corridor_w
@@ -619,6 +638,7 @@ def main() -> int:
             enable_anti_spin=enable_anti_spin,
             enable_latency=enable_latency,
             latency_steps=args.latency_steps,
+            latency_max=args.latency_max,
             seed=args.seed,
             enable_discrete=not args.disable_discrete,
             strong_aug=args.strong_aug,
@@ -888,6 +908,9 @@ def main() -> int:
                 "targetKl": target_kl,
                 "frameStack": args.frame_stack,
                 "normalizeRewards": bool(args.normalize_rewards),
+                "spawnJitterM": args.spawn_jitter_m,
+                "spawnYawJitterDeg": args.spawn_yaw_jitter_deg,
+                "latencyMax": args.latency_max,
                 "seed": args.seed,
                 "lateralPenaltyMult": args.lateral_penalty_mult,
                 "ultrasonicNoiseSigma": args.ultrasonic_noise_sigma,
