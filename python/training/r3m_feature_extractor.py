@@ -86,23 +86,52 @@ class R3MFeatureExtractor(BaseFeaturesExtractor):
         )
 
     def forward(self, obs):
-        image = obs["image"]  # (B, 84, 84, 3) uint8 or float
-        # Convert to (B, 3, H, W) float in [0, 1]
+        image = obs["image"]
         if image.dtype == torch.uint8:
             image = image.float()
         # SB3 may pass 0-255 floats; normalise to 0-1
         if image.max() > 1.5:
             image = image / 255.0
-        image_chw = image.permute(0, 3, 1, 2).contiguous()
+
+        # Layout detection: SB3 auto-wraps HWC obs in VecTransposeImage,
+        # producing (B, C, H, W). Frame-stack also works on CHW. Without
+        # the wrapper obs comes through as (B, H, W, C). Detect by checking
+        # if dim 1 is the small channel count (3 or 3*k frame-stack) vs the
+        # large H = 84.
+        if image.dim() == 4 and image.shape[1] in (3, 6, 9, 12, 15):
+            # Already CHW — VecTransposeImage applied
+            image_chw = image.contiguous()
+        else:
+            # HWC — permute to CHW
+            image_chw = image.permute(0, 3, 1, 2).contiguous()
+
         # Resize to ResNet input size (224x224)
         image_chw = F.interpolate(image_chw, size=(224, 224), mode="bilinear", align_corners=False)
-        # Apply ImageNet normalization
-        image_chw = (image_chw - self.img_mean) / self.img_std
-        # Forward through frozen backbone (no_grad so we don't accumulate intermediates)
+
+        # Apply ImageNet normalization. img_mean/std are (1, 3, 1, 1) — for
+        # frame-stacked obs (channels=12), normalize each k-block independently
+        # by repeating mean/std along channel axis.
+        c = image_chw.shape[1]
+        if c == 3:
+            image_chw = (image_chw - self.img_mean) / self.img_std
+        else:
+            # Repeat normalization stats across stacked frames
+            mean_rep = self.img_mean.repeat(1, c // 3, 1, 1)
+            std_rep = self.img_std.repeat(1, c // 3, 1, 1)
+            image_chw = (image_chw - mean_rep) / std_rep
+
+        # Forward through frozen backbone. ResNet18 expects 3 channels —
+        # for frame-stacked obs (12 channels), reduce to 3 via channel-mean
+        # over the k-block. This loses fine motion info but keeps the
+        # network usable; alternative is to retrain backbone first conv.
+        if c != 3:
+            B = image_chw.shape[0]
+            image_chw = image_chw.reshape(B, c // 3, 3, 224, 224).mean(dim=1)
+
         with torch.no_grad():
             features = self.backbone(image_chw)  # (B, 512) for resnet18
 
-        sonar = obs["ultrasonic"].float()  # (B, k)
+        sonar = obs["ultrasonic"].float()
         if sonar.dim() == 1:
             sonar = sonar.unsqueeze(0)
 
