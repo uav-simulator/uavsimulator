@@ -37,7 +37,8 @@ def main():
     model = PPO.load(str(zip_path), device='cpu')
     policy = model.policy
     dummy_img = torch.zeros(1, 84, 84, channels, dtype=torch.float32)
-    dummy_ultra = torch.zeros(1, 1, dtype=torch.float32)
+    # VecFrameStack stacks ultrasonic too: (1,) -> (k,) per timestep.
+    dummy_ultra = torch.zeros(1, k, dtype=torch.float32)
 
 
     class DiscretePolicyWrapper(torch.nn.Module):
@@ -65,7 +66,7 @@ def main():
         opset_version=11,
     )
     print(f"Exported {out_path} ({out_path.stat().st_size/1024/1024:.2f} MB)")
-    print(f"  Input shape: image=(B,84,84,{channels}), ultrasonic=(B,1)")
+    print(f"  Input shape: image=(B,84,84,{channels}), ultrasonic=(B,{k})")
     print(f"  Frame stacking: k={k}")
 
 
