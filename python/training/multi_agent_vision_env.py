@@ -121,8 +121,7 @@ def _parse_float(m: dict[str, str], *keys: str, default: float = 0.0) -> float:
 
 class _AgentState:
     __slots__ = ("prev_progress", "stalled_steps", "step_count", "done",
-                 "reached_waypoints", "prev_steer", "prev_yaw", "goal_stop_steps",
-                 "in_goal_steps")
+                 "reached_waypoints", "prev_steer")
 
     def __init__(self) -> None:
         self.prev_progress = 0.0
@@ -131,12 +130,6 @@ class _AgentState:
         self.done = False
         self.reached_waypoints: set[int] = set()
         self.prev_steer = 0.0
-        self.prev_yaw = 0.0
-        # rev30: stop-at-goal — count consecutive DirStop in goal-radius
-        self.goal_stop_steps = 0
-        # rev30: count steps inside goal-radius (regardless of action),
-        # used to give shaped DirStop incentive
-        self.in_goal_steps = 0
 
 
 class MultiAgentVisionVecEnv(VecEnv):
@@ -157,8 +150,6 @@ class MultiAgentVisionVecEnv(VecEnv):
         track_id: str = "track.cardboard_corridor.v1",
         vehicle_id: str = "vehicle.ks0223.v1",
         real_cam_postprocess: bool = False,
-        ultrasonic_noise_sigma: float = 0.0,
-        ultrasonic_dropout_prob: float = 0.0,
     ) -> None:
         self.n_agents = n_agents
         self.client = SimClient(base_url, timeout_s=60.0)
@@ -170,11 +161,6 @@ class MultiAgentVisionVecEnv(VecEnv):
         self.goal_radius_m = goal_radius_m
         self.track_id = track_id
         self.vehicle_id = vehicle_id
-        # rev30: sim ultrasonic noise/dropout — adds Gaussian + missing-reading
-        # uncertainty to match real HC-SR04 physical noise + echo timeouts.
-        self._ultrasonic_noise_sigma = float(max(0.0, ultrasonic_noise_sigma))
-        self._ultrasonic_dropout_prob = float(max(0.0, min(1.0, ultrasonic_dropout_prob)))
-        self._rng = np.random.default_rng()
 
         if waypoints is not None:
             self.waypoints = waypoints
@@ -238,9 +224,6 @@ class MultiAgentVisionVecEnv(VecEnv):
             state.step_count = 0
             state.done = False
             state.reached_waypoints = set()
-            state.prev_yaw = 0.0
-            state.goal_stop_steps = 0
-            state.in_goal_steps = 0
         self._step_count = 0
 
         # Per-agent first observations: Unity reset returns frame for primary
@@ -371,70 +354,39 @@ class MultiAgentVisionVecEnv(VecEnv):
                 heading_bonus = (fx * dx + fz * dz) / d  # cos(angle), [-1, +1]
 
         goal_bonus = 0.0
-        goal_stop_bonus = 0.0  # rev30: shaped DirStop-in-goal incentive
         oob_penalty = 0.0
         stall_penalty = 0.0
         terminated = False
         term_reason = "running"
 
         gx, gz = self.waypoints[-1]
-        in_goal = math.hypot(px - gx, pz - gz) < self.goal_radius_m
-
-        # rev32: stop-at-goal as SHAPING ONLY, not termination gate (the rev30
-        # hard-requirement design caused eval to drop to 5% — see commit msg
-        # for rev32). Geometric goal still terminates as before; DirStop in
-        # goal area gets a shaping bonus to slowly steer policy toward "stop
-        # on arrival" without breaking the env contract.
-        if in_goal:
-            state.in_goal_steps += 1
-            if action_idx == 0:  # DirStop
-                state.goal_stop_steps += 1
-                goal_stop_bonus = 5.0
-            else:
-                state.goal_stop_steps = 0
-                if state.in_goal_steps <= 10:
-                    goal_stop_bonus = 0.5
+        if math.hypot(px - gx, pz - gz) < self.goal_radius_m:
             goal_bonus = 100.0
             terminated = True
             term_reason = "goal_reached"
+        elif lateral_dist > self.oob_threshold_m:
+            oob_penalty = -30.0
+            terminated = True
+            term_reason = "out_of_bounds"
         else:
-            state.goal_stop_steps = 0
-            state.in_goal_steps = 0
-
-        if not terminated:
-            if lateral_dist > self.oob_threshold_m:
-                oob_penalty = -30.0
-                terminated = True
-                term_reason = "out_of_bounds"
+            if abs(delta) < 1e-4 and state.step_count > 20:
+                state.stalled_steps += 1
             else:
-                # rev33: revert "angular-aware" stall introduced for rev30.
-                # That change let pure in-place rotation episodes never stall,
-                # creating a stable +0.08/step survival reward attractor that
-                # PPO locked onto (rev30 = Right-top, rev32 = DirLeft 93%).
-                # Original delta-only rule is the correct one: 30 consecutive
-                # zero-progress steps = stall, regardless of rotation.
-                if abs(delta) < 1e-4 and state.step_count > 20:
-                    state.stalled_steps += 1
-                else:
-                    state.stalled_steps = 0
-                if state.stalled_steps >= 30:
-                    stall_penalty = -10.0
-                    terminated = True
-                    term_reason = "stalled"
-
-        state.prev_yaw = yaw  # kept in state for diag/symmetry, not used
+                state.stalled_steps = 0
+            if state.stalled_steps >= 30:
+                stall_penalty = -10.0
+                terminated = True
+                term_reason = "stalled"
 
         if terminated and term_reason == "goal_reached":
-            reward = (progress_reward + goal_bonus + goal_stop_bonus +
-                      survival_bonus + heading_bonus)
+            reward = progress_reward + goal_bonus + survival_bonus + heading_bonus
         elif terminated and term_reason == "out_of_bounds":
             reward = progress_reward + lateral_penalty + oob_penalty
         elif terminated and term_reason == "stalled":
             reward = progress_reward + lateral_penalty + stall_penalty
         else:
             reward = (progress_reward + waypoint_bonus + lateral_penalty +
-                      survival_bonus + time_penalty + backward_penalty +
-                      heading_bonus + goal_stop_bonus)
+                      survival_bonus + time_penalty + backward_penalty + heading_bonus)
 
         breakdown = {
             "progress": float(progress_reward),
@@ -445,7 +397,6 @@ class MultiAgentVisionVecEnv(VecEnv):
             "backward_penalty": float(backward_penalty),
             "heading_bonus": float(heading_bonus),
             "goal_bonus": float(goal_bonus),
-            "goal_stop_bonus": float(goal_stop_bonus),
             "oob_penalty": float(oob_penalty),
             "stall_penalty": float(stall_penalty),
         }
@@ -477,15 +428,6 @@ class MultiAgentVisionVecEnv(VecEnv):
 
         tm = _telemetry_map(step)
         front_m = _parse_float(tm, "sensor.ultrasonic.front.m")
-        # rev30: sim ultrasonic noise + dropout — real HC-SR04 has ~5-10%
-        # Gaussian noise and ~5% dropout (echo timeouts on open-space rotations).
-        # Without this, policy overfits on perfect sim ultrasonic.
-        if self._ultrasonic_noise_sigma > 0.0:
-            front_m += float(self._rng.normal(0.0, self._ultrasonic_noise_sigma))
-        if self._ultrasonic_dropout_prob > 0.0 and self._rng.random() < self._ultrasonic_dropout_prob:
-            # Dropout: random saturation (timeout = max range, or zero = miss)
-            front_m = 5.0 if self._rng.random() < 0.5 else 0.0
-        front_m = max(0.0, min(5.0, front_m))
         ultrasonic = np.array([np.clip(front_m / 5.0, 0.0, 1.0)], dtype=np.float32)
         return {"image": image, "ultrasonic": ultrasonic}
 

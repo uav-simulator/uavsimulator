@@ -522,8 +522,6 @@ def main() -> int:
             goal_radius_m=ma_goal_r,
             waypoints=ma_waypoints if ma_waypoints else None,
             real_cam_postprocess=args.real_cam_postprocess,
-            ultrasonic_noise_sigma=args.ultrasonic_noise_sigma,
-            ultrasonic_dropout_prob=args.ultrasonic_dropout_prob,
         )
         probe_track = "track.cardboard_corridor.v1"
         probe_corridor_w = ma_corridor_w
