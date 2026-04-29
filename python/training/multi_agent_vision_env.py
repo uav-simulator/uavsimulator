@@ -150,12 +150,17 @@ class MultiAgentVisionVecEnv(VecEnv):
         track_id: str = "track.cardboard_corridor.v1",
         vehicle_id: str = "vehicle.ks0223.v1",
         real_cam_postprocess: bool = False,
+        # Plan 1 (rev37): random-track training support
+        maze_randomize: bool = False,
+        maze_param_ranges: Optional[dict] = None,
+        maze_regen_every: int = 1,
     ) -> None:
         self.n_agents = n_agents
         self.client = SimClient(base_url, timeout_s=60.0)
         self.max_steps = max_steps
         self.time_scale = time_scale
         self.img_size = img_size
+        self.oob_margin_m = oob_margin_m
         self.corridor_width_m = corridor_width_m
         self.oob_threshold_m = corridor_width_m * 0.5 + oob_margin_m
         self.goal_radius_m = goal_radius_m
@@ -168,6 +173,19 @@ class MultiAgentVisionVecEnv(VecEnv):
             # Fallback default — caller should pass scenario waypoints.
             self.waypoints = [(0.0, 0.0), (0.0, 1.0), (1.0, 1.0)]
         self.total_route_length = _route_length(self.waypoints)
+
+        # Plan 1 (rev37): maze randomization state
+        self._maze_randomize = bool(maze_randomize)
+        self._maze_regen_every = max(1, int(maze_regen_every))
+        self._maze_reset_count = 0
+        self._maze_cached_params = None  # (sampled_params, geometry) tuple
+        self._maze_param_ranges = maze_param_ranges or {
+            "length_cells": (5, 12),
+            "left_turns": (1, 4),
+            "right_turns": (1, 4),
+            "corridor_width_m": (0.50, 0.80),
+            "wall_height_m": (0.20, 0.30),
+        }
 
         self.agent_ids = ["ego"] + [f"agent-{i + 1}" for i in range(1, n_agents)]
 
@@ -203,7 +221,8 @@ class MultiAgentVisionVecEnv(VecEnv):
                 "flags": [],
             }
             agents.append(entry)
-        return {
+
+        config: dict[str, Any] = {
             "seed": self._episode_seed,
             "timeScale": self.time_scale,
             "selectedTrackId": self.track_id,
@@ -213,6 +232,81 @@ class MultiAgentVisionVecEnv(VecEnv):
             "flags": flags,
             "agents": agents,
         }
+
+        # Plan 1 (rev37): per-episode maze randomization on cardboard_maze.v1.
+        # Mirrors ABCorridorVisionEnv._apply_maze_randomization — uses python
+        # MazeGenerator port to get the same geometry Unity will build, so
+        # progress/goal computation stays in sync.
+        if self._maze_randomize and self.track_id == "track.cardboard_maze.v1":
+            self._apply_maze_randomization(config)
+
+        return config
+
+    def _apply_maze_randomization(self, config: dict) -> None:
+        import random as _random
+        try:
+            from training.maze_generator import MazeParams, generate as generate_maze
+        except ImportError:
+            # Maze generator missing — silently fall back to scenario defaults.
+            return
+
+        # Reuse cached params if we're within the regen window
+        reuse = (
+            self._maze_cached_params is not None
+            and self._maze_reset_count % self._maze_regen_every != 0
+        )
+        self._maze_reset_count += 1
+
+        if reuse:
+            sampled_params, geometry = self._maze_cached_params
+        else:
+            ranges = self._maze_param_ranges
+            rng = _random.Random(self._episode_seed)
+
+            sampled_params = None
+            geometry = None
+            for _ in range(10):
+                try_seed = rng.randint(0, 999999)
+                params = MazeParams(
+                    seed=try_seed,
+                    length_cells=rng.randint(*ranges["length_cells"]),
+                    corridor_width_m=round(rng.uniform(*ranges["corridor_width_m"]), 3),
+                    left_turns=rng.randint(*ranges["left_turns"]),
+                    right_turns=rng.randint(*ranges["right_turns"]),
+                    wall_height_m=round(rng.uniform(*ranges["wall_height_m"]), 3),
+                )
+                try:
+                    geometry = generate_maze(params)
+                    sampled_params = params
+                    break
+                except RuntimeError:
+                    continue
+
+            if sampled_params is None or geometry is None:
+                return  # all 10 attempts failed — fall back to scenario default
+
+            self._maze_cached_params = (sampled_params, geometry)
+
+        # Inject into trackParams
+        path_encoded = ";".join(f"{x},{z}" for (x, z) in geometry.path_cells)
+        track_params = [kv for kv in config.get("trackParams", []) if not kv.get("key", "").startswith("maze.")]
+        track_params.extend([
+            {"key": "maze.seed", "value": str(sampled_params.seed)},
+            {"key": "maze.length_cells", "value": str(sampled_params.length_cells)},
+            {"key": "maze.corridor_width_m", "value": str(sampled_params.corridor_width_m)},
+            {"key": "maze.left_turns", "value": str(sampled_params.left_turns)},
+            {"key": "maze.right_turns", "value": str(sampled_params.right_turns)},
+            {"key": "maze.wall_height_m", "value": str(sampled_params.wall_height_m)},
+            {"key": "maze.path_encoded", "value": path_encoded},
+        ])
+        config["trackParams"] = track_params
+
+        # Update env's waypoints + derived quantities from geometry
+        self.waypoints = list(geometry.waypoints)
+        self.corridor_width_m = geometry.corridor_width_m
+        self.goal_radius_m = geometry.goal_radius_m
+        self.oob_threshold_m = max(0.05, self.corridor_width_m * 0.5 - self.oob_margin_m)
+        self.total_route_length = _route_length(self.waypoints)
 
     def reset(self) -> VecEnvObs:
         self._episode_seed += 1

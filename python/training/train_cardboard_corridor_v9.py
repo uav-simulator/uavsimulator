@@ -112,6 +112,10 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--maze-regen-every", type=int, default=1)
     p.add_argument("--curriculum", action="store_true",
                    help="Enable staged maze curriculum. Implies --maze-randomize.")
+    # Plan 1 (rev37): override track from CLI for multi-agent maze training.
+    # Default keeps cardboard_corridor for backward compat with rev10..rev36.
+    p.add_argument("--track-id", default="track.cardboard_corridor.v1",
+                   help="Unity track ID (track.cardboard_corridor.v1 | track.cardboard_maze.v1)")
     p.add_argument("--strong-aug", action="store_true",
                    help="Aggressive image augmentations (rev13: enabled — wider brightness/contrast/blur/noise)")
     p.add_argument("--real-cam-postprocess", action="store_true",
@@ -511,6 +515,7 @@ def main() -> int:
         ma_corridor_w = float(params.get("corridor.width_m", 0.60))
         ma_goal_r = float(params.get("goal.radius_m", 0.25))
         print(f"  Multi-agent mode: 1 Unity x {num_envs} agents (port {args.base_url})")
+        print(f"  Track: {args.track_id}, maze_randomize={args.maze_randomize}, regen_every={args.maze_regen_every}")
         train_env = MultiAgentVisionVecEnv(
             n_agents=num_envs,
             base_url=args.base_url,
@@ -521,9 +526,12 @@ def main() -> int:
             corridor_width_m=ma_corridor_w,
             goal_radius_m=ma_goal_r,
             waypoints=ma_waypoints if ma_waypoints else None,
+            track_id=args.track_id,
             real_cam_postprocess=args.real_cam_postprocess,
+            maze_randomize=args.maze_randomize,
+            maze_regen_every=args.maze_regen_every,
         )
-        probe_track = "track.cardboard_corridor.v1"
+        probe_track = args.track_id
         probe_corridor_w = ma_corridor_w
         probe_goal_r = ma_goal_r
     elif num_envs == 1:
