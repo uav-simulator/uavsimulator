@@ -379,9 +379,9 @@ namespace UavSimulator.Tracks
             }
 
             // 3. Spot light above finish marker — emphasizes the goal
-            if (g.FloorCells != null && g.FloorCells.Count > 0)
+            if (g.FloorCells != null && g.FloorCells.Length > 0)
             {
-                var finishCell = g.FloorCells[g.FloorCells.Count - 1];
+                var finishCell = g.FloorCells[g.FloorCells.Length - 1];
                 var spotGo = new GameObject("FinishSpot");
                 spotGo.transform.SetParent(transform, false);
                 spotGo.transform.localPosition = new Vector3(finishCell.x, 1.2f, finishCell.z);
