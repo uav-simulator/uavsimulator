@@ -380,28 +380,23 @@ class MultiAgentVisionVecEnv(VecEnv):
         gx, gz = self.waypoints[-1]
         in_goal = math.hypot(px - gx, pz - gz) < self.goal_radius_m
 
-        # rev30: stop-at-goal — termination requires DirStop while inside
-        # goal_radius. Without this, in sim goal terminates env-side and the
-        # policy never learns DirStop is the correct terminal action; on real
-        # robot it then drives through the target.
+        # rev32: stop-at-goal as SHAPING ONLY, not termination gate (the rev30
+        # hard-requirement design caused eval to drop to 5% — see commit msg
+        # for rev32). Geometric goal still terminates as before; DirStop in
+        # goal area gets a shaping bonus to slowly steer policy toward "stop
+        # on arrival" without breaking the env contract.
         if in_goal:
             state.in_goal_steps += 1
             if action_idx == 0:  # DirStop
                 state.goal_stop_steps += 1
-                # Per-step shaped bonus for stopping in goal — gives a learning
-                # signal even before termination (one-step transitions).
                 goal_stop_bonus = 5.0
-                if state.goal_stop_steps >= 1:
-                    goal_bonus = 100.0
-                    terminated = True
-                    term_reason = "goal_reached"
             else:
                 state.goal_stop_steps = 0
-                # Small "in-goal but not stopping" bonus — encourages staying
-                # in the goal region while exploring DirStop. Capped at 10
-                # cumulative steps to prevent reward farming.
                 if state.in_goal_steps <= 10:
                     goal_stop_bonus = 0.5
+            goal_bonus = 100.0
+            terminated = True
+            term_reason = "goal_reached"
         else:
             state.goal_stop_steps = 0
             state.in_goal_steps = 0
