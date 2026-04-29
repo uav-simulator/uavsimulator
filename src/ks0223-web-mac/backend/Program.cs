@@ -52,6 +52,7 @@ builder.Services.AddSingleton<AutopilotSafetyFilter>(sp => new AutopilotSafetyFi
     sp.GetRequiredService<ILogger<AutopilotSafetyFilter>>()));
 builder.Services.AddSingleton<SessionVideoRecorder>();
 builder.Services.AddSingleton<AutopilotService>();
+builder.Services.AddSingleton<DemoReplayService>();
 builder.Services.AddHostedService(serviceProvider => serviceProvider.GetRequiredService<RuntimeSessionManager>());
 
 var app = builder.Build();
@@ -570,6 +571,45 @@ app.MapPost("/api/demo/stop", async (SessionLogger logger, SessionVideoRecorder 
         sessionLogPath = logState.CurrentFile,
         videoPath = videoFile,
     });
+});
+
+// ── Demo replay (Plan 3) ──
+// POST /api/demo/replay/start    — load JSONL, schedule command.outgoing events, fire to robot
+// POST /api/demo/replay/stop     — cancel current playback, send DirStop
+// GET  /api/demo/replay/status   — current state + progress (poll while playing)
+// GET  /api/demo/replay/sessions — list available session JSONL files
+
+app.MapPost("/api/demo/replay/start", (DemoReplayStartRequest request, DemoReplayService replay) =>
+{
+    try
+    {
+        var info = replay.Start(
+            clientId: request.ClientId,
+            runtimeMode: request.RuntimeMode,
+            sessionFilePath: request.SessionFilePath,
+            agentId: request.AgentId,
+            speedMultiplier: request.SpeedMultiplier ?? 1.0);
+        return Results.Ok(info);
+    }
+    catch (FileNotFoundException e) { return Results.NotFound(new { error = e.Message }); }
+    catch (Exception e) { return Results.BadRequest(new { error = e.Message }); }
+});
+
+app.MapPost("/api/demo/replay/stop", async (DemoReplayService replay, CancellationToken cancellationToken) =>
+{
+    await replay.StopAsync(cancellationToken);
+    return Results.Ok(new { stopped = true, state = replay.State.ToString() });
+});
+
+app.MapGet("/api/demo/replay/status", (DemoReplayService replay) =>
+{
+    return Results.Ok(replay.GetProgress());
+});
+
+app.MapGet("/api/demo/replay/sessions", (DemoReplayService replay, SessionLogger logger) =>
+{
+    var sessions = replay.ListSessions(logger.LogsDirectory);
+    return Results.Ok(sessions);
 });
 
 app.MapGet("/api/protocol", (HttpRequest http, RuntimeSessionManager runtimeSessionManager) =>
