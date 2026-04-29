@@ -520,6 +520,7 @@ Side-fix параллельно: SessionVideoRecorder перешёл с `+fastst
 | rev35 | env files **fully reverted to rev29 era** + current trainer | 0% | Confirmed: training is variance-bound, not code regression |
 | rev36 | rev35 launcher with **seed=1337** (multi-seed test) | 0% | Different seed → same DirLeft 84% degenerate. 7/7 attempts failed. |
 | **rev37** | 200k transfer от rev16 на **track.cardboard_maze.v1** + heavy-DR + curriculum + maze-randomize | **0% SR / 47% avg progress** | Plan 1 deliverable: maze visuals + curriculum работают, action dist healthy в training (Forward top 26%); но deterministic argmax на eval = 100% DirForward, robot doesn't turn at maze junctions. Plan 2 (frame-stack + multi-seed) and Plan 5 (R3M + LSTM) required to teach turning. |
+| rev38 | 300k from-scratch (no resume — frame-stack mismatch with rev16) на maze + Plan 2 stack: framestack=4 + linear ent 0.1→0.01 + n_steps=512 + n_epochs=10 + VecNormalize | **0% SR / 0% avg progress** | Plan 2 stack from-scratch недостаточно за 300k — DirRight 100% degenerate worse than rev37. Conclusion: framestack-policy needs either >>300k from-scratch, or transfer initialization from a framestack-aware checkpoint. Plan 5 (R3M frozen backbone) or Plan 4 (sim coverage augmentation building on rev37's 47% progress) — better next step than more reward-shape variants. |
 
 Ключевая ось истории — два «прыжка»:
 - **rev10 → rev12 → rev16**: восстановление 100% sim-SR на L-коридоре (12 → 16 это переход к воспроизводимой 300k from-scratch конфигурации с правильным reward-stack'ом).
