@@ -192,21 +192,34 @@ public sealed class DemoReplayService
     {
         try
         {
+            // Absolute-time scheduling: each command fires at
+            //   playbackStart + (cmd[i].Timestamp - cmd[0].Timestamp) / speedMultiplier
+            // This compensates for SendCommandAsync network round-trip time
+            // (Wi-Fi to Pi ~150-200ms). With delta-time scheduling, each
+            // SendCommand's processing time was added to the gap, accumulating
+            // ~10s drift over a 58-command session and causing the robot to
+            // overshoot stop points by seconds.
+            var firstCmdTs = commands[0].Timestamp;
+            var playbackStart = DateTimeOffset.UtcNow;
+
             for (int i = 0; i < commands.Count; i++)
             {
                 ct.ThrowIfCancellationRequested();
 
                 if (i > 0)
                 {
-                    var gap = commands[i].Timestamp - commands[i - 1].Timestamp;
-                    if (gap.TotalMilliseconds > 0)
+                    var sourceOffsetMs = (commands[i].Timestamp - firstCmdTs).TotalMilliseconds;
+                    var targetOffsetMs = sourceOffsetMs / speedMultiplier;
+                    var elapsedMs = (DateTimeOffset.UtcNow - playbackStart).TotalMilliseconds;
+                    var waitMs = (int)(targetOffsetMs - elapsedMs);
+                    if (waitMs > 0)
                     {
-                        var sleepMs = (int)(gap.TotalMilliseconds / speedMultiplier);
-                        if (sleepMs > 0)
-                        {
-                            await Task.Delay(sleepMs, ct);
-                        }
+                        await Task.Delay(waitMs, ct);
                     }
+                    // If waitMs <= 0 we're behind schedule (network was slower
+                    // than expected) — fire immediately to catch up. This
+                    // means one command may follow another with no gap, but
+                    // wall-clock alignment is preserved going forward.
                 }
 
                 lock (stateLock)
@@ -229,11 +242,18 @@ public sealed class DemoReplayService
                 }
             }
 
-            // Final DirStop for safety
+            // Final DirStop for safety. If the last logged command was already
+            // DirStop, this is redundant but harmless. If user stopped recording
+            // mid-motion, this guarantees the robot halts. Small gap (100ms)
+            // so it doesn't race the final logged command on the network.
             try
             {
-                await runtimeSessionManager.SendCommandAsync(
-                    clientId!, runtimeMode!, "DirStop", agentId, ct);
+                await Task.Delay(100, ct);
+                if (commands.Count == 0 || !string.Equals(commands[^1].Command, "DirStop", StringComparison.Ordinal))
+                {
+                    await runtimeSessionManager.SendCommandAsync(
+                        clientId!, runtimeMode!, "DirStop", agentId, ct);
+                }
             }
             catch { /* best effort */ }
 
