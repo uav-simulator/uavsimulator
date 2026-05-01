@@ -18,14 +18,14 @@
 
 - [Спринт 1](report/prediploma-practice/sprint-1-changelog.md)
 - [Спринт 2](report/prediploma-practice/sprint-2-changelog.md)
-- [Спринт 3](report/prediploma-practice/sprint-3-changelog.md)
+- [Спринт 3](report/prediploma-practice/sprint-3-report.md)
 
 ## Основные материалы раздела
 
 - [Model Lifecycle](model-lifecycle.md)
 - [Спринт 1](report/prediploma-practice/sprint-1-changelog.md)
 - [Спринт 2](report/prediploma-practice/sprint-2-changelog.md)
-- [Спринт 3](report/prediploma-practice/sprint-3-changelog.md)
+- [Спринт 3](report/prediploma-practice/sprint-3-report.md)
 
 ## Что уже есть в wiki
 
