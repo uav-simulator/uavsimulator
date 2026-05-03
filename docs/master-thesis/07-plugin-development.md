@@ -27,8 +27,9 @@ flowchart LR
     Validate --> Export["Export Plugin (.zip)"]
     Export --> Archive[".rusim-plugin.zip"]
     Archive --> Install["rusim plugin install"]
-    Install --> Registry["PluginRegistryAsset"]
-    Registry --> Spawn["SimulationManager spawn"]
+    Install --> UserRegistry["~/.rusim/plugin-registry.json"]
+    UserRegistry --> Load["PluginRegistry.Load (merge с built-in PluginRegistryAsset)"]
+    Load --> Spawn["SimulationManager spawn"]
 ```
 
 Out-of-scope для текущей версии SDK сознательно оставлены три типа расширений. Physics plugins (альтернативные физические движки или существенные модификации физики) не поддерживаются: ядро использует встроенный физический контур Unity, и его подмена в рамках descriptor-based подхода невозможна без DLL hot-reload. Sensor plugins как самостоятельная сущность отсутствуют — добавление нового сенсора выполняется в составе vehicle plugin через `DeviceContractDescriptor` и компоненты на префабе. Reward plugins не входят в Unity-сторону платформы: функция награды относится к training pipeline и реализуется на стороне Python (`stable-baselines3` callbacks и обёртки среды).
@@ -341,7 +342,7 @@ Built-in плагины читаются из жёстко закодирова�
 ## 7.6. Распространение плагинов: формат архива и CLI
 ### 7.6.1. Структура .rusim-plugin.zip
 ### 7.6.2. CLI: rusim plugin install/list/remove/new
-### 7.6.3. Регистрация в PluginRegistryAsset
+### 7.6.3. Регистрация в plugin-registry.json и merge с built-in PluginRegistryAsset
 
 ## 7.7. Версионирование и совместимость
 ### 7.7.1. ContractVersion: semver для контрактов
