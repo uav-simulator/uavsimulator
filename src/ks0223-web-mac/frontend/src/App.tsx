@@ -37,6 +37,7 @@ import {
   uploadModelArtifact,
   updateSensorConfig,
 } from './api'
+import { DemoReplayPanel } from './components/DemoReplayPanel'
 import { ControlPage } from './pages/ControlPage'
 import { LedPage } from './pages/LedPage'
 import { LogsPage } from './pages/LogsPage'
@@ -57,7 +58,7 @@ import type {
   UnityRuntimeCatalogDto,
 } from './types'
 
-type TabKey = 'dashboard' | 'sensors' | 'led' | 'logs' | 'models'
+type TabKey = 'dashboard' | 'sensors' | 'led' | 'logs' | 'models' | 'demoReplay'
 type RuntimeMode = 'real-robot' | 'unity-sim'
 type UnityAgentDraft = { agentId?: string; vehicleId?: string; isPrimary?: boolean }
 type UnityPendingSelection = { trackId: string; vehicleId: string; cameraMode: string; agents: UnityAgentDraft[]; collisionsEnabled: boolean; seeEachOther: boolean }
@@ -1033,6 +1034,16 @@ function App() {
       )
     }
 
+    if (tab === 'demoReplay') {
+      return (
+        <DemoReplayPanel
+          clientId={clientInstanceId}
+          runtimeMode={activeRuntimeMode}
+          agentId={activeRuntimeMode === 'unity-sim' ? unityControlAgentId || undefined : undefined}
+        />
+      )
+    }
+
     if (tab === 'models') {
       return (
         <ModelControlPage
@@ -1205,6 +1216,7 @@ function App() {
             <Tab value="sensors" label="Сенсоры KS0223" />
             <Tab value="led" label="LED панель" />
             <Tab value="models" label="Model Control" />
+            <Tab value="demoReplay" label="Demo Replay" />
             <Tab value="logs" label="Логи" />
           </Tabs>
 
