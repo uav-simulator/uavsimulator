@@ -105,6 +105,31 @@ curl -X POST "http://localhost:5058/api/unity/client-selection" \
 Manual safety:
 - Любая ручная команда через `/api/command` автоматически останавливает автопилот для данного `clientId/runtimeMode`.
 
+## Demo Replay API
+
+Воспроизводит сохранённый JSONL session log: backend читает события `command.outgoing`, отправляет команды роботу в исходных временных интервалах. Используется чтобы повторно проиграть hand-driven траекторию (например, для записи top-down видео сверху телефоном без необходимости каждый раз ехать руками).
+
+- `POST /api/demo/replay/start` — стартовать playback. Body: `{"clientId":"tab-a","runtimeMode":"real-robot","sessionFilePath":"runtime-data/session-logs/session_*.jsonl","speedMultiplier":1.0,"agentId":"car-a"}`. `speedMultiplier` опционален (default 1.0; 0.5/2.0/4.0 для slow-mo / fast preview). `agentId` нужен только в Unity. Response: `DemoReplayInfo` (`totalCommands`, `estimatedDurationMs`).
+- `POST /api/demo/replay/stop` — отменить текущий playback. Без body. Response: `{"stopped":true,"state":"Stopped"}`.
+- `GET /api/demo/replay/status` — текущее состояние и progress. Response: `DemoReplayProgress` (`state` ∈ `Idle|Loading|Playing|Done|Stopped|Error`, `currentIndex`, `totalCommands`, `elapsedMs`, `lastCommand`, `lastError`).
+- `GET /api/demo/replay/sessions` — список доступных JSONL session файлов из `runtime-data/session-logs/`. Response: массив `DemoSessionFile` (`fileName`, `filePath`, `sizeKb`, `commandCount`).
+
+```bash
+# list available sessions
+curl http://localhost:5058/api/demo/replay/sessions
+
+# start replay at 2x speed
+curl -X POST http://localhost:5058/api/demo/replay/start \
+  -H "content-type: application/json" \
+  -d '{"clientId":"tab-a","runtimeMode":"real-robot","sessionFilePath":"runtime-data/session-logs/session_20260428_004613.jsonl","speedMultiplier":2.0}'
+
+# poll progress
+curl http://localhost:5058/api/demo/replay/status
+
+# stop mid-playback
+curl -X POST http://localhost:5058/api/demo/replay/stop
+```
+
 ## Real robot camera bootstrap
 
 - На KS0223 `FramesSend.py` стартует отправку UDP-кадров только после первого ICMP echo на `wlan0`.
