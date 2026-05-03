@@ -409,9 +409,66 @@ rusim plugin install vehicle.arcade.green.v1.rusim-plugin.zip
 Проверить установку можно командой `rusim plugin list` — установленный плагин появится с тегом source `[user]` (в отличие от тега `[built-in]` у плагинов, зашитых в build). После этого плагин доступен в YAML-сценариях как `vehicle.vehicleId: vehicle.arcade.green.v1` либо в массиве `agents.vehicles[]`. Для удаления используется команда `rusim plugin remove vehicle.arcade.green.v1` — она удаляет директорию плагина и убирает запись из реестра.
 
 ## 7.5. Worked example: track plugin (track.city_demo.v1)
+
+Параллельно с vehicle-плагином в качестве сквозного примера track-плагина рассматривается `track.city_demo.v1` — городская сцена с улицами, перекрёстками и светофорами, на которой запускается arcade-машина из 7.4. Сам плагин также ещё не существует в репозитории; данная секция показывает authoring workflow на минимальном примере, оставляя интеграцию city-asset'а и логики светофоров за рамками туториала.
+
 ### 7.5.1. Префаб трассы и наследник TrackBase
+
+Track plugin состоит из одного префаба сцены и его описания. В новой сцене создаётся root GameObject (например, `CityDemoTrack`), на который вешается наследник `TrackBase` — компонент `CityDemoTrack : TrackBase`. У `TrackBase` единственная точка расширения — метод `ResetTrack(int seed)`, переопределяемый при необходимости рандомизации или восстановления детерминированного состояния трассы.
+
+```csharp
+public class CityDemoTrack : TrackBase
+{
+    [SerializeField] private TrafficLightController[] trafficLights;
+    [SerializeField] private NpcTrafficSpawner npcSpawner;
+
+    public override void ResetTrack(int seed)
+    {
+        var rng = new System.Random(seed);
+        foreach (var tl in trafficLights) tl.ResetCycle(rng.Next());
+        npcSpawner.RespawnAll(rng.Next());
+    }
+}
+```
+
+Дочерние объекты префаба содержат непосредственно содержимое сцены: ground-меши, дома, дорожные сегменты, точки спавна и префабы светофоров. Готовая иерархия сохраняется как prefab — он подключается в дескриптор как `prefab` (см. 7.5.3). В отличие от vehicle, track не требует `DeviceContractDescriptor`: трасса пассивна и не предоставляет каналов observation/action, поэтому SDK для track-плагинов проще.
+
 ### 7.5.2. ParametersSchemaJson — параметризация трассы
+
+Поле `parametersSchemaJson` дескриптора `TrackPluginDescriptor` хранит JSON Schema, описывающую параметры, которые YAML-сценарий может передавать трассе при reset через `world.params`. Поле необязательно, но настоятельно рекомендуется к заполнению: схема является контрактом между автором плагина и автором сценария, и её наличие позволяет валидировать конфигурации до запуска симуляции.
+
+Пример schema для city demo:
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "traffic.density": { "type": "string", "enum": ["low", "medium", "high"] },
+    "time_of_day":     { "type": "string", "enum": ["day", "dusk", "night"] },
+    "weather":         { "type": "string", "enum": ["clear", "rain", "fog"] }
+  }
+}
+```
+
+В YAML-сценарии параметры передаются как обычные key-value пары:
+
+```yaml
+world:
+  trackId: track.city_demo.v1
+  params:
+    traffic.density: medium
+    time_of_day: day
+    weather: clear
+```
+
+Consumer'ом параметров на стороне Unity является сам автор плагина: в текущей версии SDK runtime передаёт массив `ConfigKeyValue[]` в lifecycle-хуки трассы, а как именно эти значения интерпретируются — определяет реализация `ResetTrack` или вспомогательных компонентов на префабе. Валидация значений против schema выполняется до запуска сценария: в Editor — утилитой `Validate Plugins` (синтаксическая корректность JSON, см. 7.5.3), на runtime — при загрузке сценария в backend.
+
 ### 7.5.3. Validate + Export + Install
+
+В Project window выбирается `Create > UavSimulator/Plugins/Track Plugin` — создаётся `CityDemoTrackDescriptor.asset`. В Inspector заполняются: `id` = `track.city_demo.v1`, `displayName` = `City Demo`, `version` = `{ major: 1, minor: 0, patch: 0 }`, `prefab` (drag-n-drop), `parametersSchemaJson` (paste из 7.5.2). `Tools > UavSimulator > Validate Plugins` для track-плагинов проверяет: `id` непустой, `displayName` непустой, `version.IsValid`, `prefab` не `null`, и если `parametersSchemaJson` непустая строка — что она парсится как JSON. Поле `deviceContract` для track не существует и не проверяется.
+
+После прохождения Validate плагин экспортируется через `Tools > UavSimulator > Export Plugin (.zip)`. Архив `track.city_demo.v1.rusim-plugin.zip` имеет ту же структуру, что и vehicle-архив, но без `device-contract.json`: `manifest.json` (с `type` = `track`), `descriptor.json`, `README.md`. Установка идентична vehicle-плагину: `rusim plugin install track.city_demo.v1.rusim-plugin.zip`, после чего трасса доступна в YAML как `world.trackId: track.city_demo.v1`.
 
 ## 7.6. Распространение плагинов: формат архива и CLI
 ### 7.6.1. Структура .rusim-plugin.zip
