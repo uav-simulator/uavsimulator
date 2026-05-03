@@ -225,7 +225,7 @@ namespace UavSimulator.Contracts
 
 Поле `deviceId` совпадает по семантике с `id` плагина и служит ключом для сопоставления устройств между runtime-ом и training-стороной. Поле `deviceType` фиксирует категорию робота через строковый идентификатор по конвенции snake_case: `ground_robot_differential` для дифференциальных наземных роботов, `quadcopter` для квадрокоптеров и т. п. Эта категория используется training-стороной для выбора подходящего набора обёрток среды и стратегии rollout-а.
 
-Массив `sensors[]` описывает все датчики устройства. Каждый `SensorDescriptor` содержит уникальный `id` (например, `camera`, `speedometer`, `imu`), `sensorType` (классификатор: `camera`, `scalar`, `lidar`), `format` (кодировка данных: `jpeg_base64`, `float32`, `raw`), `unit` (единица измерения, опционально), форму данных `shape[]` и частоту `rateHz`. Массив `actuators[]` описывает каналы управления: `id` (`throttle`, `steer`, `brake`), `actuatorType` (как правило `continuous`), единицу измерения и допустимый диапазон `min..max`.
+Массив `sensors[]` описывает все датчики устройства. Каждый `SensorDescriptor` содержит уникальный `id` (например, `camera`, `speedometer`, `imu`), `sensorType` (классификатор; в текущей версии runtime валидирует и специализированно обрабатывает два значения: `camera` и `scalar`), `format` (кодировка данных: `jpeg_base64`, `float32`, `raw`), `unit` (единица измерения, опционально), форму данных `shape[]` и частоту `rateHz`. Поле `sensorType` в JSON-схеме объявлено open-string, поэтому авторы плагинов формально могут расширять номенклатуру, но runtime в текущей версии не имеет специализированной обработки для типов помимо `camera` и `scalar`. Массив `actuators[]` описывает каналы управления: `id` (`throttle`, `steer`, `brake`), `actuatorType` (как правило `continuous`), единицу измерения и допустимый диапазон `min..max`.
 
 Поля `observationSchemaJson` и `actionSchemaJson` хранят JSON Schema для observation- и action-пространств, передаваемые в training-обёртку среды на стороне Python; в текущих плагинах эти поля часто остаются пустыми, поскольку observation- и action-spaces выводятся непосредственно из `sensors[]` и `actuators[]`.
 
@@ -242,15 +242,14 @@ public sealed class DeviceContractDescriptorAsset : ScriptableObject
 
 Эти две сущности нельзя путать: одна предназначена для сериализации/межсистемного обмена, другая — для редактирования в Editor.
 
-В качестве справки ниже приведены поддерживаемые в текущей версии SDK типы сенсоров, выведенные из шаблона плагина (`templates/plugin-vehicle/device-contract.json`) и из реализаций runtime-а:
+В качестве справки ниже приведены типы сенсоров, для которых runtime в текущей версии SDK имеет специализированную обработку, выведенные из шаблона плагина (`templates/plugin-vehicle/device-contract.json`) и из реализаций runtime-а:
 
 | sensorType | format                       | shape         | пример rateHz | назначение                                |
 | ---------- | ---------------------------- | ------------- | ------------- | ----------------------------------------- |
 | `camera`   | `jpeg_base64`, `png`, `raw`  | `[H, W, C]`   | 30            | RGB/Grayscale-кадр с навешенной камеры    |
 | `scalar`   | `float32`                    | `[1]`         | 50            | Скалярная телеметрия (скорость, IMU, ...) |
-| `lidar`    | `float32`                    | `[N]`         | 10            | Дальностный массив (vector ranges)        |
 
-Конкретный пример из шаблона: сенсор `camera` объявляется с `format: jpeg_base64`, `shape: [480, 640, 3]`, `rateHz: 30`, что соответствует RGB-кадру 480×640 при частоте обновления 30 Hz. Для `scalar` и `lidar` `unit` имеет содержательное значение (например, `m/s` или `m`), для `camera` оно остаётся пустым.
+Конкретный пример из шаблона: сенсор `camera` объявляется с `format: jpeg_base64`, `shape: [480, 640, 3]`, `rateHz: 30`, что соответствует RGB-кадру 480×640 при частоте обновления 30 Hz. Для `scalar`-сенсоров `unit` имеет содержательное значение (например, `m/s` для одометрии или `m/s²` для акселерометра), для `camera` оно остаётся пустым.
 
 ### 7.3.5. ContractVersion и совместимость
 
@@ -291,9 +290,11 @@ namespace UavSimulator.Contracts
 
 Метод `TryParse(string value, out ContractVersion version)` парсит строковый формат `"major.minor.patch"` (с обязательными тремя точечно-разделёнными целочисленными компонентами) и возвращает `false` при любом отклонении: пустая строка, неверное число компонент, нечисловые компоненты, отрицательные значения. Этот метод используется при чтении строкового поля `version` из `manifest.json` плагина (конвенция формата manifest и стратегия `compatibleRuntime` обсуждаются в 7.7).
 
-### 7.3.6. PluginRegistryAsset
+### 7.3.6. Реестры плагинов: PluginRegistryAsset + plugin-registry.json
 
-`PluginRegistryAsset` — это `ScriptableObject`-реестр всех установленных плагинов, который runtime читает на старте сцены. Структура реестра тривиальна:
+Архитектура хранения списка плагинов в текущей версии платформы двухуровневая. Это не случайный артефакт, а сознательное разделение по двум измерениям: что зашито в скомпилированный runtime build (built-in плагины) против что устанавливается пользователем в существующий runtime (user-installed плагины), и кто владеет соответствующим состоянием — Unity Editor против CLI.
+
+Первый уровень — `PluginRegistryAsset`, `ScriptableObject`-каталог встроенных плагинов, попадающих в build на этапе компиляции. Структура актива тривиальна:
 
 ```csharp
 namespace UavSimulator.Plugins
@@ -307,9 +308,22 @@ namespace UavSimulator.Plugins
 }
 ```
 
-Канонический путь актива — `Assets/Resources/UavSimulator/PluginRegistry.asset`; его расположение внутри `Resources/`-папки критично, поскольку именно оттуда runtime загружает реестр через `Resources.Load<PluginRegistryAsset>("UavSimulator/PluginRegistry")` (см. `Assets/Scripts/Plugins/PluginRegistry.cs`). Загруженный snapshot затем мержится с встроенными factory-плагинами и descriptor-ами из других подпапок `Resources`, образуя единый `PluginRegistrySnapshot`, по которому `SimulationManager` ищет робот и трассу для текущего сценария.
+Канонический путь актива — `Assets/Resources/UavSimulator/PluginRegistry.asset`; его расположение внутри `Resources/`-папки критично, поскольку именно оттуда runtime загружает реестр через `Resources.Load<PluginRegistryAsset>("UavSimulator/PluginRegistry")` (см. `Assets/Scripts/Plugins/PluginRegistry.cs`). Заполнение этого актива выполняется в Unity Editor на этапе разработки runtime-а: автор платформы добавляет ссылки на descriptor-ы тех плагинов, которые должны быть встроены в .exe (на момент текущей итерации это набор демонстрационных vehicle- и track-плагинов, перечисленных в `_BUILTIN_PLUGINS` в CLI: `vehicle.prometeo.sport.v1`, `vehicle.arcade.{blue,red,gray,purple}.v1`, `vehicle.drone.simple.v1`, `track.basic_arena.v1`, `track.roadsystem_arena.v1`, `track.roadsystem_realistic.v2`). После компиляции содержимое этого актива зафиксировано: built-in плагины удалить из конкретного runtime build нельзя — это и есть смысл слова «built-in».
 
-Регистрация новых плагинов в текущей версии runtime устроена следующим образом. Команда `rusim plugin install` распаковывает архив плагина в фиксированную директорию пользовательского проекта, но автоматическое обновление `PluginRegistry.asset` после распаковки — known limitation: на момент текущей итерации требуется ручное добавление descriptor-а в массив `vehicles` или `tracks` через Unity Editor (drag-and-drop в Inspector). Автоматизация этого шага запланирована, но пока не реализована — пользователь должен явно открыть проект в Editor и сохранить актив. Этот компромисс задокументирован осознанно: descriptor-based подход требует, чтобы ссылки на префабы существовали внутри Unity-серилизованного актива, а формирование такого актива из CLI без запуска Editor-а в headless-режиме нетривиально.
+Второй уровень — `~/.rusim/plugin-registry.json`, JSON-реестр пользовательских плагинов, которым владеет CLI и который не зависит от runtime build-а. Этот реестр находится не внутри Unity-проекта, а в пользовательском home-каталоге, рядом с распакованными артефактами (`~/.rusim/plugins/<pluginId>/`). Команда `rusim plugin install <archive.zip>` распаковывает плагин в `~/.rusim/plugins/<pluginId>/` и атомарно дописывает запись в JSON-реестр (`pluginId`, `type`, `displayName`, `version`, `installedFrom`, `installedAt`). Команда `rusim plugin remove` обратна установке: удаляет директорию плагина и стирает запись из JSON. CLI запрещает обе операции для built-in идентификаторов: `Cannot overwrite built-in plugin: <id>` при попытке install/remove — встроенный плагин неприкосновенен.
+
+Команда `rusim plugin list` объединяет оба источника и возвращает плоский список с тегом источника:
+
+```
+[built-in]    vehicle.prometeo.sport.v1    PROMETEO Sport Car        1.0.0
+[built-in]    vehicle.drone.simple.v1      Simple Quadcopter         1.0.0
+...
+[user]        vehicle.arcade.green.v1      Arcade Free Racing (Green) 1.0.0
+```
+
+Built-in плагины читаются из жёстко закодированного списка `_BUILTIN_PLUGINS` в `python/sim_client/cli.py` (что, по сути, является зеркалом содержимого `PluginRegistryAsset` со стороны клиента); user-плагины — из `~/.rusim/plugin-registry.json`.
+
+Мотивация двухуровневой схемы. Built-in плагины зашиты в build не потому что это удобно, а потому что они являются частью distributable runtime: пользователь скачивает `.exe`, и набор встроенных плагинов уже работает без дополнительных шагов установки. User-плагины же по определению должны быть отделены от build-а — иначе любая установка нового плагина требовала бы пересборки runtime-а в Unity Editor, что противоречит самой идее plugin-системы. JSON-реестр в home-каталоге — простейшая форма mutable state, которой может управлять CLI без участия Unity Editor; descriptor-based подход (с прямыми ссылками на префабы) для user-плагинов реализуется через runtime-загрузку артефактов из `~/.rusim/plugins/<pluginId>/` по записям JSON-реестра, без необходимости открывать Unity Editor для регистрации каждого нового плагина.
 
 ## 7.4. Worked example: vehicle plugin (vehicle.arcade.green.v1)
 ### 7.4.1. Создание Unity-проекта плагина
