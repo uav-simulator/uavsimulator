@@ -471,9 +471,84 @@ Consumer'ом параметров на стороне Unity является с
 После прохождения Validate плагин экспортируется через `Tools > UavSimulator > Export Plugin (.zip)`. Архив `track.city_demo.v1.rusim-plugin.zip` имеет ту же структуру, что и vehicle-архив, но без `device-contract.json`: `manifest.json` (с `type` = `track`), `descriptor.json`, `README.md`. Установка идентична vehicle-плагину: `rusim plugin install track.city_demo.v1.rusim-plugin.zip`, после чего трасса доступна в YAML как `world.trackId: track.city_demo.v1`.
 
 ## 7.6. Распространение плагинов: формат архива и CLI
+
 ### 7.6.1. Структура .rusim-plugin.zip
+
+Готовый плагин распространяется как ZIP-архив с фиксированной структурой, генерируемой утилитой `PluginExporter` (см. 7.4.5). Имя архива по конвенции совпадает с pluginId и оканчивается на `.rusim-plugin.zip` — например, `vehicle.arcade.green.v1.rusim-plugin.zip`. На верхнем уровне архива четыре файла:
+
+```
+manifest.json          — метаданные плагина (pluginId, type, version, compatibleRuntime, author)
+descriptor.json        — сериализованный VehiclePluginDescriptor или TrackPluginDescriptor
+device-contract.json   — сериализованный DeviceContractDescriptor (только для vehicle-плагинов)
+README.md              — auto-generated PluginExporter'ом инструкция по установке
+```
+
+Пример `manifest.json` (формат соответствует шаблону в `templates/plugin-vehicle/manifest.json`):
+
+```json
+{
+  "pluginId": "vehicle.arcade.green.v1",
+  "type": "vehicle",
+  "displayName": "Arcade Green",
+  "version": "1.0.0",
+  "compatibleRuntime": ">=0.2.0",
+  "author": ""
+}
+```
+
+Поле `compatibleRuntime` использует синтаксис ограничений в стиле npm/pip и трактуется как минимальная версия runtime, с которой плагин совместим (подробнее в 7.7.2). Все четыре файла лежат в корне архива без дополнительных директорий — это упрощает inspection через стандартные ZIP-утилиты и явно фиксирует формат на уровне SDK.
+
 ### 7.6.2. CLI: rusim plugin install/list/remove/new
+
+Подсистема `rusim plugin` предоставляет четыре команды:
+
+| Команда | Назначение |
+|---|---|
+| `rusim plugin new --type {vehicle\|track} <id>` | Скопировать template из `templates/plugin-{vehicle\|track}/`, заменить плейсхолдеры (`{{PLUGIN_ID}}`, `{{DISPLAY_NAME}}`, `{{DESCRIPTION}}`, `{{AUTHOR}}`) и создать каркас проекта плагина в `--output-dir/<id>/` |
+| `rusim plugin install <archive>` | Распаковать `.rusim-plugin.zip` в `~/.rusim/plugins/<id>/`, провалидировать manifest, добавить запись в `~/.rusim/plugin-registry.json` |
+| `rusim plugin list [--json]` | Вывести объединённый список всех плагинов (built-in из `_BUILTIN_PLUGINS` в CLI + user-installed из JSON-реестра) с тегом источника |
+| `rusim plugin remove <id>` | Удалить директорию плагина и убрать запись из реестра; built-in плагины удалить нельзя — попытка завершается ошибкой `Cannot remove built-in plugin` |
+
+Пример вывода `rusim plugin list` (текстовый режим):
+
+```
+  [built-in]   vehicle.prometeo.sport.v1                PROMETEO Sport Car                  1.0.0
+  [built-in]   vehicle.arcade.blue.v1                   Arcade Free Racing Car (Blue)       1.0.0
+  ...
+  [user]       vehicle.arcade.green.v1                  Arcade Green                        1.0.0
+```
+
+Команды `install` и `remove` дополнительно возвращают JSON-отчёт со статусом операции на stdout — это упрощает встраивание `rusim plugin` в CI/CD-пайплайны и автоматизированные тесты совместимости.
+
 ### 7.6.3. Регистрация в plugin-registry.json и merge с built-in PluginRegistryAsset
+
+Поведение `rusim plugin install` детально разобрано в 7.3.6. Кратко: команда не модифицирует Unity-asset `PluginRegistry.asset`, который содержит исключительно built-in плагины и компилируется в распространяемый build runtime'а. Вместо этого `install` ведёт собственный JSON-реестр `~/.rusim/plugin-registry.json` с записями вида `{ "pluginId", "type", "displayName", "version" }` и распакованными директориями плагинов в `~/.rusim/plugins/<id>/`.
+
+При запуске симулятора Unity-сторона runtime в `PluginRegistry.Load()` (см. `Assets/Scripts/Plugins/PluginRegistry.cs`) собирает финальный snapshot из трёх источников: built-in `PluginRegistryAsset` (зашит в build), descriptor-ы из подпапок `Resources/UavSimulator/` (для плагинов, разрабатываемых внутри основного проекта) и пользовательский JSON-реестр (для user-installed плагинов). При коллизии `pluginId` приоритет получает источник, помеченный как primary в `PluginRegistrySource`. Такая схема разрешает безопасный override built-in плагинов в development-сборках и одновременно гарантирует неизменяемость built-in каталога в production-сборке.
+
+## 7.7. Версионирование и совместимость
+
+### 7.7.1. ContractVersion: semver для контрактов
+
+Версия плагина описывается struct'ом `ContractVersion` (см. 7.3.5) и подчиняется обычной semver-семантике `major.minor.patch`. Major-инкремент означает breaking change в контракте плагина (изменение сигнатур override'ов `VehicleBase`/`TrackBase`, удаление полей в `DeviceContractDescriptor`, переименование sensor/actuator id). Minor-инкремент — обратносовместимое расширение (добавление нового sensor'а к контракту, новые опциональные поля в descriptor, новые лейблы в `ParametersSchemaJson`). Patch-инкремент — bugfix-релиз без изменения публичной поверхности.
+
+Сама версия фигурирует в двух местах: внутри сериализованного дескриптора плагина (`descriptor.json` поле `version` как структура `{ major, minor, patch }`) и в строковом представлении в `manifest.json` (поле `version` формата `"1.2.3"`). Парсинг строкового формата выполняется методом `ContractVersion.TryParse` — он отвергает строки, не распадающиеся на ровно три неотрицательных целых через точку. Compare-операторы `<`, `>`, `==` etc. позволяют runtime'у и backend'у проверять upgrade-цепочки и минимальные версии пакета без отдельной библиотеки сравнения semver.
+
+### 7.7.2. compatibleRuntime в manifest.json
+
+Поле `compatibleRuntime` в `manifest.json` описывает контракт между плагином и runtime'ом: минимальную (а опционально — максимальную) версию runtime'а, с которой плагин гарантированно работает. Формат — строка-ограничение в стиле `>=0.2.0`, `>=1.0.0,<2.0.0`. Текущий `PluginExporter` записывает значение по умолчанию `>=0.2.0` (см. `PluginExporter.cs`), но автор плагина может переопределить это значение в собственной сборочной утилите или вручную после экспорта.
+
+Принципиальное отличие от `ContractVersion` (7.7.1) состоит в том, что `compatibleRuntime` фиксирует диапазон **runtime**-версий, а `ContractVersion` фиксирует версию **самого плагина**. Один и тот же плагин может выходить в нескольких major-версиях (`v1`, `v2`), каждая со своим диапазоном `compatibleRuntime`; пользователь устанавливает ту, которая совместима с его установленной версией ядра.
+
+### 7.7.3. Стратегия breaking changes
+
+При выпуске breaking change в SDK или транспортных контрактах рекомендованная стратегия — bump major-версии runtime, выпуск двух параллельных runtime-релизов на один цикл (старая major-версия в режиме maintenance, новая — для активной разработки) и постепенная миграция плагинов. В наименовании плагинов major-версия SDK явно фигурирует в `pluginId` (по конвенции, `vehicle.arcade.blue.v1` против гипотетической `vehicle.arcade.blue.v2`) — это позволяет двум поколениям одного и того же плагина сосуществовать в реестре одновременно, а пользователю — выбирать совместимую с его runtime'ом версию через YAML-сценарий. На стороне SDK breaking change оформляется через bump major-версии пакета `com.uav-simulator.plugin-sdk`: автор плагина обновляет git URL в Package Manager и проходит compile-fix цикл, пока его override'ы `VehicleBase`/`TrackBase` снова не соберутся.
+
+## 7.8. Заключение
+
+Plugin-архитектура, описанная в данной главе, формализует расширяемость симулятора как самостоятельный feature ядра, а не как побочный эффект случайной модулярности. Ключевые свойства полученного решения: descriptor-as-data модель на базе `ScriptableObject`, явный device contract для каждого vehicle, фиксированный архивный формат `.rusim-plugin.zip`, two-tier реестр (built-in `PluginRegistryAsset` + пользовательский `~/.rusim/plugin-registry.json`) и валидация на этапе экспорта. С точки зрения plugin author'а workflow сведён к нескольким явным шагам в Unity Editor + одной команде установки `rusim plugin install`; с точки зрения конечного пользователя плагин выглядит как обычный архив, не требующий ни написания кода, ни пересборки runtime.
+
+Текущий SDK сознательно ограничен двумя типами плагинов — vehicle и track. Очевидные направления развития: (а) plugin'ы для альтернативных типов сенсоров с runtime-обработкой выходящих за `camera`/`scalar` форматов (lidar, depth, IMU); (б) plugin'ы reward-функций на стороне Python для обмена изолированными research-задачами без привязки к конкретному ядру training-цикла; (в) signed plugins и plugin marketplace — необходимые шаги при выходе платформы за пределы исследовательского контекста. Однако приоритетом текущей версии остаётся стабильность контрактов, описанных в этой главе: масштабирование и автоматизация имеют смысл только поверх предсказуемого ядра, который уже имеется.
 
 ## 7.7. Версионирование и совместимость
 ### 7.7.1. ContractVersion: semver для контрактов
