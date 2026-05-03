@@ -134,12 +134,24 @@ namespace UavSimulator.Recording
 
         private void LateUpdate()
         {
+            Tick(Time.unscaledDeltaTime, capture: true);
+        }
+
+        /// <summary>
+        /// Public tick entry point. Production code drives this from <see cref="LateUpdate"/>;
+        /// EditMode tests call it directly to validate state transitions without spinning up a
+        /// PlayMode session or a live Camera.
+        /// </summary>
+        /// <param name="deltaTime">Seconds since previous tick.</param>
+        /// <param name="capture">If false, skips the actual frame capture (no Camera needed).</param>
+        public void Tick(float deltaTime, bool capture)
+        {
             if (!IsRecording)
             {
                 return;
             }
 
-            ElapsedSeconds += Time.unscaledDeltaTime;
+            ElapsedSeconds += deltaTime;
 
             if (_maxDurationSec > 0f && ElapsedSeconds >= _maxDurationSec)
             {
@@ -153,7 +165,14 @@ namespace UavSimulator.Recording
             }
             _nextCaptureTime += _frameInterval;
 
-            CaptureFrame();
+            if (capture)
+            {
+                CaptureFrame();
+            }
+            else
+            {
+                _frameIndex++;
+            }
         }
 
         private void CaptureFrame()
