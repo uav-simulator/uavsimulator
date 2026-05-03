@@ -111,8 +111,8 @@ Manual safety:
 
 - `POST /api/demo/replay/start` — стартовать playback. Body: `{"clientId":"tab-a","runtimeMode":"real-robot","sessionFilePath":"runtime-data/session-logs/session_*.jsonl","speedMultiplier":1.0,"agentId":"car-a"}`. `speedMultiplier` опционален (default 1.0; 0.5/2.0/4.0 для slow-mo / fast preview). `agentId` нужен только в Unity. Response: `DemoReplayInfo` (`totalCommands`, `estimatedDurationMs`).
 - `POST /api/demo/replay/stop` — отменить текущий playback. Без body. Response: `{"stopped":true,"state":"Stopped"}`.
-- `GET /api/demo/replay/status` — текущее состояние и progress. Response: `DemoReplayProgress` (`state` ∈ `Idle|Loading|Playing|Done|Stopped|Error`, `currentIndex`, `totalCommands`, `elapsedMs`, `lastCommand`, `lastError`).
-- `GET /api/demo/replay/sessions` — список доступных JSONL session файлов из `runtime-data/session-logs/`. Response: массив `DemoSessionFile` (`fileName`, `filePath`, `sizeKb`, `commandCount`).
+- `GET /api/demo/replay/status` — текущее состояние и progress. Response: `DemoReplayProgress` (`state` ∈ `Idle|Loading|Playing|Done|Stopped|Error`, `currentIndex`, `totalCommands`, `currentTimestampUtc`, `startedAtUtc`, `elapsedMs`, `lastCommand`, `lastError`).
+- `GET /api/demo/replay/sessions` — список доступных JSONL session файлов из `runtime-data/session-logs/`. Response: массив `DemoSessionFileDto` (`fileName`, `filePath`, `sizeKb`, `lastWriteUtc`, `commandCount`).
 
 ```bash
 # list available sessions
