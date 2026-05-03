@@ -327,12 +327,86 @@ Built-in плагины читаются из жёстко закодирова�
 Мотивация двухуровневой схемы. Built-in плагины зашиты в build не потому что это удобно, а потому что они являются частью distributable runtime: пользователь скачивает `.exe`, и набор встроенных плагинов уже работает без дополнительных шагов установки. User-плагины же по определению должны быть отделены от build-а — иначе любая установка нового плагина требовала бы пересборки runtime-а в Unity Editor, что противоречит самой идее plugin-системы. JSON-реестр в home-каталоге — простейшая форма mutable state, которой может управлять CLI без участия Unity Editor; descriptor-based подход (с прямыми ссылками на префабы) для user-плагинов реализуется через runtime-загрузку артефактов из `~/.rusim/plugins/<pluginId>/` по записям JSON-реестра, без необходимости открывать Unity Editor для регистрации каждого нового плагина.
 
 ## 7.4. Worked example: vehicle plugin (vehicle.arcade.green.v1)
+
+В качестве сквозного примера ниже описывается процедура создания плагина `vehicle.arcade.green.v1` — зелёного варианта существующего arcade-автомобиля. Сам плагин на момент написания главы ещё не создан в репозитории; тутор показывает, как plugin author мог бы его собрать на базе существующих arcade-плагинов (`vehicle.arcade.blue.v1`, `vehicle.arcade.red.v1`) и SDK.
+
 ### 7.4.1. Создание Unity-проекта плагина
+
+Для разработки плагина возможны два подхода. Первый — создание отдельного Unity 6 (URP) проекта, целиком посвящённого этому плагину. Такой подход даёт чистое разделение исходного кода плагина от ядра и упрощает дистрибуцию: содержимое проекта целиком переносимо. Недостаток — необходимость дублировать общие assets (материалы, текстуры, dependency-пакеты), а также отсутствие быстрого тестирования в составе симулятора без отдельной сборки runtime. Второй подход — разработка плагина внутри основного uav-simulator проекта, во вложенной директории `Assets/Plugins/<id>/`. Это сокращает цикл итераций (можно сразу запускать сценарий и видеть результат), но стоит понимать, что без явного cleanup плагин не будет переносим в виде самостоятельной поставки. Для production-плагинов рекомендован первый вариант, для прототипирования и встроенных в платформу плагинов — второй.
+
 ### 7.4.2. Подключение SDK как Unity Package
+
+Plugin SDK поставляется как Unity Package и подключается стандартным механизмом UPM. В Unity Editor: `Window > Package Manager > + > Add package from git URL` с адресом
+
+```
+https://github.com/NMGorovenko/uav-simulator.git?path=packages/com.uav-simulator.plugin-sdk
+```
+
+Альтернативно — вручную в `Packages/manifest.json`:
+
+```json
+{
+  "dependencies": {
+    "com.uav-simulator.plugin-sdk": "https://github.com/NMGorovenko/uav-simulator.git?path=packages/com.uav-simulator.plugin-sdk"
+  }
+}
+```
+
+После импорта в Project window появляются пункты меню `Create > UavSimulator/Plugins/Vehicle Plugin`, `Create > UavSimulator/Plugins/Track Plugin` и `Create > UavSimulator/Plugins/Registry`; в меню `Tools` — `UavSimulator > Validate Plugins` и `UavSimulator > Export Plugin (.zip)`. Корректность импорта удобно проверить именно по наличию этих пунктов.
+
 ### 7.4.3. Создание префаба и наследника VehicleBase
+
+Для arcade-плагина в качестве отправной точки удобно дублировать префаб существующего `Arcade Blue Car` (он лежит в директории `Assets/ARCADE - FREE Racing Car/`), переименовать его в `ArcadeGreenCar` и заменить материал кузова на зелёный (создать новый material на базе существующего, изменить базовый цвет albedo).
+
+На корневой GameObject префаба необходимо повесить наследник `VehicleBase` — например, компонент `ArcadeGreenController`. В минимальной реализации он переопределяет единственный обязательный (abstract) метод `ApplyControl(ControlCommand command)`, маршрутизируя управляющую команду к существующему PROMETEO car controller на префабе:
+
+```csharp
+public class ArcadeGreenController : VehicleBase
+{
+    [SerializeField] private CarController carController; // PROMETEO
+
+    public override void ApplyControl(ControlCommand cmd)
+    {
+        carController.SetExternalControl(
+            throttle: cmd.throttle,
+            steer: cmd.steer,
+            brake: cmd.brake);
+    }
+
+    public override void ResetVehicle(int seed)
+    {
+        // teleport to spawn pose, zero velocities, reset PROMETEO state
+    }
+}
+```
+
+Псевдокод выше иллюстрирует общий принцип; конкретный API контроллера зависит от выбранной модели — для arcade-плагинов в текущем репозитории используется PROMETEO car controller (см. `Assets/PROMETEO - Car Controller/`), и точная сигнатура `SetExternalControl` определяется его реализацией. Остальные методы `VehicleBase` (`ReadState`, `TryReadCameraFrame`, `ApplyVehicleConfig`, `SetPeerVisibility`, `ResetVehicle`) объявлены как `virtual` и имеют sensible defaults (см. 7.3.2); переопределять их следует только при необходимости — например, override `TryReadCameraFrame` нужен, если плагин предоставляет камеру как сенсор.
+
 ### 7.4.4. Создание VehiclePluginDescriptor + DeviceContract
+
+В Project window выбрать `Create > UavSimulator/Plugins/Vehicle Plugin` — создаётся ScriptableObject-asset, который удобно сохранить как `VehicleArcadeGreen.asset` в директории плагина. В Inspector необходимо заполнить поля дескриптора: `id` = `vehicle.arcade.green.v1`, `displayName` = `Arcade Green`, `version` = `{ major: 1, minor: 0, patch: 0 }`, `description` — краткое описание назначения. В поле `prefab` через drag-n-drop кладётся ссылка на созданный в 7.4.3 префаб.
+
+Далее создаётся `DeviceContractDescriptorAsset` (`Create > UavSimulator/Plugins/Device Contract`), описывающий интерфейс робота. В нём заполняются `descriptor.deviceId` (значение совпадает с `pluginId` плагина), `descriptor.deviceType` (например, `ground_robot_differential`), массив `sensors` (камера 640×480 RGB jpeg @ 30 Hz, плюс скаляр скорости в `m/s` @ 50 Hz) и массив `actuators` (`throttle` continuous `[-1, 1]`, `steer` continuous `[-1, 1]`, `brake` continuous `[0, 1]`). Готовый contract drag-n-drop'ом подключается в поле `deviceContract` дескриптора плагина.
+
+Здесь стоит явно различать две сущности: `DeviceContractDescriptor` — POCO data-класс из `SimulatorContracts.cs` (см. 7.3.4), описывающий собственно контракт; `DeviceContractDescriptorAsset` — ScriptableObject-обёртка над ним, нужная для редактирования в Editor. В архив плагина при экспорте сериализуется именно содержимое POCO, а не ScriptableObject-обёртка.
+
 ### 7.4.5. Validate + Export
+
+После заполнения descriptors нужно проверить корректность плагина: `Tools > UavSimulator > Validate Plugins`. Утилита (см. `PluginValidator.cs`) находит все ассеты типов `VehiclePluginDescriptor` и `TrackPluginDescriptor` в проекте и проверяет инварианты. Для vehicle plugin: `id` не пустой, `displayName` не пустой, `version.IsValid`, `prefab` не равен `null`, `deviceContract` не `null`, его внутренний `descriptor` не `null`, массив `sensors` не пуст, массив `actuators` не пуст. Все обнаруженные нарушения выводятся в Console как `LogWarning` и в итоговый dialog с подсчётом валидных и проблемных плагинов.
+
+Когда Validate проходит чисто, descriptor выделяется в Project window и запускается `Tools > UavSimulator > Export Plugin (.zip)`. Утилита (`PluginExporter.cs`) показывает диалог сохранения с предложенным именем файла `<pluginId>.rusim-plugin.zip` и собирает архив следующего состава: `manifest.json` (поля `pluginId`, `type`, `displayName`, `version`, `compatibleRuntime` со значением `>=0.2.0`, `author`), `descriptor.json` (сериализованный `VehiclePluginDescriptor`), `device-contract.json` (сериализованный `DeviceContractDescriptor` — только для vehicle), `README.md` (auto-generated с инструкцией по установке). Если в Project window не выделен ни один descriptor, утилита возвращает диалог с ошибкой `No asset selected`.
+
 ### 7.4.6. Установка в runtime через rusim CLI
+
+Готовый архив устанавливается на target-машине одной командой:
+
+```bash
+rusim plugin install vehicle.arcade.green.v1.rusim-plugin.zip
+```
+
+Команда (см. `_plugin_install` в `python/sim_client/cli.py`) распаковывает архив в `~/.rusim/plugins/vehicle.arcade.green.v1/`, валидирует `manifest.json` на обязательные поля (`pluginId`, `type`, `displayName`, `version`) и регистрирует плагин в `~/.rusim/plugin-registry.json`. Built-in плагины перезаписать нельзя — попытка установить плагин с тем же `pluginId`, что у одного из встроенных, отклоняется с сообщением `Cannot overwrite built-in plugin`.
+
+Проверить установку можно командой `rusim plugin list` — установленный плагин появится с тегом source `[user]` (в отличие от тега `[built-in]` у плагинов, зашитых в build). После этого плагин доступен в YAML-сценариях как `vehicle.vehicleId: vehicle.arcade.green.v1` либо в массиве `agents.vehicles[]`. Для удаления используется команда `rusim plugin remove vehicle.arcade.green.v1` — она удаляет директорию плагина и убирает запись из реестра.
 
 ## 7.5. Worked example: track plugin (track.city_demo.v1)
 ### 7.5.1. Префаб трассы и наследник TrackBase
