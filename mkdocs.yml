@@ -63,6 +63,7 @@ nav:
   - Архитектура: architecture.md
   - API: api.md
   - Model Lifecycle: model-lifecycle.md
+  - Глоссарий: glossary.md
   - Преддипломная практика:
       - Обзор: prediploma-practice.md
       - Спринт 1: report/prediploma-practice/sprint-1-changelog.md
