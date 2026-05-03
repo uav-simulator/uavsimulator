@@ -1,9 +1,6 @@
 site_name: UAV Simulator Docs
 site_description: Документация sim-to-real платформы для симуляции и реального стенда
 site_url: https://nmgorovenko.github.io/uav-simulator/
-repo_url: https://github.com/NMGorovenko/uav-simulator
-repo_name: NMGorovenko/uav-simulator
-edit_uri: blob/develop/docs/
 docs_dir: docs
 site_dir: .mkdocs-site
 strict: false
