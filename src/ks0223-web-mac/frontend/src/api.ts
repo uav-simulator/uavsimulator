@@ -226,6 +226,48 @@ export async function getDemoReplayStatus(): Promise<DemoReplayProgress> {
   return handleJson<DemoReplayProgress>(response)
 }
 
+// ─── Scenario picker ────────────────────────────────────────────────────────
+
+export type ScenarioFile = {
+  fileName: string
+  displayName: string
+  filePath: string
+  sizeBytes: number
+  lastWriteUtc: string
+}
+
+export type ScenarioListResponse = {
+  scenariosDir: string
+  count: number
+  items: ScenarioFile[]
+  warning?: string
+}
+
+export type ScenarioLoadResult = {
+  scenarioId?: string
+  selectedTrackId?: string
+  selectedVehicleId?: string
+  agentsConfigured?: number
+  done?: boolean
+  hasFrame?: boolean
+  baseUrl?: string
+  rawOutput?: string
+}
+
+export async function listScenarios(): Promise<ScenarioListResponse> {
+  const response = await fetch(withBase('/api/scenarios'))
+  return handleJson<ScenarioListResponse>(response)
+}
+
+export async function loadScenario(filePath: string): Promise<ScenarioLoadResult> {
+  const response = await fetch(withBase('/api/scenarios/load'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ filePath }),
+  })
+  return handleJson<ScenarioLoadResult>(response)
+}
+
 export async function fetchCameraStatus(clientId: string, runtimeMode: string): Promise<CameraStatusDto> {
   const response = await fetch(withClientRuntime('/api/camera/status', clientId, runtimeMode))
   return handleJson<CameraStatusDto>(response)

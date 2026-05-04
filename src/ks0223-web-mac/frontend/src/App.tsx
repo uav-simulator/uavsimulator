@@ -38,6 +38,7 @@ import {
   updateSensorConfig,
 } from './api'
 import { DemoReplayPanel } from './components/DemoReplayPanel'
+import { ScenarioPickerPanel } from './components/ScenarioPickerPanel'
 import { ControlPage } from './pages/ControlPage'
 import { LedPage } from './pages/LedPage'
 import { LogsPage } from './pages/LogsPage'
@@ -58,7 +59,7 @@ import type {
   UnityRuntimeCatalogDto,
 } from './types'
 
-type TabKey = 'dashboard' | 'sensors' | 'led' | 'logs' | 'models' | 'demoReplay'
+type TabKey = 'dashboard' | 'sensors' | 'led' | 'logs' | 'models' | 'demoReplay' | 'scenarios'
 type RuntimeMode = 'real-robot' | 'unity-sim'
 type UnityAgentDraft = { agentId?: string; vehicleId?: string; isPrimary?: boolean }
 type UnityPendingSelection = { trackId: string; vehicleId: string; cameraMode: string; agents: UnityAgentDraft[]; collisionsEnabled: boolean; seeEachOther: boolean }
@@ -1044,6 +1045,10 @@ function App() {
       )
     }
 
+    if (tab === 'scenarios') {
+      return <ScenarioPickerPanel />
+    }
+
     if (tab === 'models') {
       return (
         <ModelControlPage
@@ -1213,6 +1218,7 @@ function App() {
         <Container maxWidth="xl" sx={{ py: 2.5 }}>
           <Tabs value={tab} onChange={(_, value: TabKey) => setTab(value)} sx={{ mb: 2.5 }} variant="scrollable">
             <Tab value="dashboard" label="Пульт и телеметрия" />
+            <Tab value="scenarios" label="Сценарии" />
             <Tab value="sensors" label="Сенсоры KS0223" />
             <Tab value="led" label="LED панель" />
             <Tab value="models" label="Model Control" />
