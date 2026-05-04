@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UavSimulator.CityDemo;
+using UavSimulator.Core;
 using UnityEngine;
 #if UNITY_EDITOR
 using UnityEditor;
@@ -43,13 +44,13 @@ namespace UavSimulator.Tracks
         private const string MatGreenOff = PolygonMatRoot + "/Green.mat";
         private const string MatGreenOn = PolygonMatRoot + "/Green lighting.mat";
 
-        // Layout constants — POLYGON Street 4 prefab is roughly 12m long after its
-        // built-in 200x scale, so 12m spacing per tile gives a continuous road.
-        // These values are conservative; user can tweak via Inspector if cells
-        // overlap or leave gaps when the asset is updated.
-        [SerializeField] private float tileSpacing = 12f;
+        // Layout constants. tileSpacing = 0 → auto-detect from the prefab's
+        // Renderer bounds at runtime (preferred — POLYGON tiles ship with
+        // 200x scale on the inner mesh, so static spacing is fragile).
+        [SerializeField] private float tileSpacing = 0f;
         [SerializeField] private int armTileCount = 2; // tiles per arm of the cross (excluding center)
         [SerializeField] private float trafficLightOffset = 3.5f; // distance from intersection center
+        [SerializeField] private float trafficLightYOffset = 0f;  // ground offset for traffic light prefabs
 
         [Header("Cycle timing (forwarded to controller)")]
         [SerializeField] private float redSeconds = 8f;
@@ -108,22 +109,79 @@ namespace UavSimulator.Tracks
             var streetPrefab = LoadPrefab(StreetStraightPrefabPath);
             if (streetPrefab == null) return;
 
-            // Center tile.
-            Instantiate(streetPrefab, Vector3.zero, Quaternion.identity, transform).name = "StreetCenter";
+            // Center tile — also serves as the size probe.
+            var center = SpawnSanitized(streetPrefab, Vector3.zero, Quaternion.identity, "StreetCenter");
+
+            var spacing = tileSpacing > 0.01f
+                ? tileSpacing
+                : MeasureWorldSize(center, Axis.Z, fallback: 12f);
 
             // North-South arm (along Z axis).
             for (var i = 1; i <= armTileCount; i++)
             {
-                Instantiate(streetPrefab, new Vector3(0f, 0f, i * tileSpacing), Quaternion.identity, transform).name = $"StreetN{i}";
-                Instantiate(streetPrefab, new Vector3(0f, 0f, -i * tileSpacing), Quaternion.identity, transform).name = $"StreetS{i}";
+                SpawnSanitized(streetPrefab, new Vector3(0f, 0f, i * spacing), Quaternion.identity, $"StreetN{i}");
+                SpawnSanitized(streetPrefab, new Vector3(0f, 0f, -i * spacing), Quaternion.identity, $"StreetS{i}");
             }
 
             // East-West arm (along X axis, prefabs rotated 90° around Y).
             var ewRotation = Quaternion.Euler(0f, 90f, 0f);
             for (var i = 1; i <= armTileCount; i++)
             {
-                Instantiate(streetPrefab, new Vector3(i * tileSpacing, 0f, 0f), ewRotation, transform).name = $"StreetE{i}";
-                Instantiate(streetPrefab, new Vector3(-i * tileSpacing, 0f, 0f), ewRotation, transform).name = $"StreetW{i}";
+                SpawnSanitized(streetPrefab, new Vector3(i * spacing, 0f, 0f), ewRotation, $"StreetE{i}");
+                SpawnSanitized(streetPrefab, new Vector3(-i * spacing, 0f, 0f), ewRotation, $"StreetW{i}");
+            }
+        }
+
+        private GameObject SpawnSanitized(GameObject prefab, Vector3 position, Quaternion rotation, string name)
+        {
+            var instance = Instantiate(prefab, position, rotation, transform);
+            instance.name = name;
+            // POLYGON pack ships with Built-in pipeline materials; under URP they
+            // render magenta. RuntimeMaterialCompatibility transparently rebuilds
+            // each material on the URP/Lit shader, preserving textures and colour.
+            ReplaceIncompatibleMaterials(instance);
+            return instance;
+        }
+
+        private static void ReplaceIncompatibleMaterials(GameObject root)
+        {
+            var renderers = root.GetComponentsInChildren<Renderer>(includeInactive: true);
+            foreach (var renderer in renderers)
+            {
+                if (renderer == null) continue;
+                var mats = renderer.sharedMaterials;
+                var changed = false;
+                for (var i = 0; i < mats.Length; i++)
+                {
+                    var source = mats[i];
+                    if (source == null) continue;
+                    if (!RuntimeMaterialCompatibility.NeedsReplacement(source)) continue;
+                    mats[i] = RuntimeMaterialCompatibility.CreateReplacementMaterial(source, defaultSmoothness: 0.2f, copyTextures: true);
+                    mats[i].color = RuntimeMaterialCompatibility.ReadSourceColor(source);
+                    changed = true;
+                }
+                if (changed) renderer.sharedMaterials = mats;
+            }
+        }
+
+        private enum Axis { X, Y, Z }
+
+        private static float MeasureWorldSize(GameObject root, Axis axis, float fallback)
+        {
+            if (root == null) return fallback;
+            var renderers = root.GetComponentsInChildren<Renderer>(includeInactive: false);
+            if (renderers == null || renderers.Length == 0) return fallback;
+
+            var bounds = renderers[0].bounds;
+            for (var i = 1; i < renderers.Length; i++)
+            {
+                bounds.Encapsulate(renderers[i].bounds);
+            }
+            switch (axis)
+            {
+                case Axis.X: return bounds.size.x > 0.01f ? bounds.size.x : fallback;
+                case Axis.Y: return bounds.size.y > 0.01f ? bounds.size.y : fallback;
+                default: return bounds.size.z > 0.01f ? bounds.size.z : fallback;
             }
         }
 
@@ -162,8 +220,8 @@ namespace UavSimulator.Tracks
 
             for (var i = 0; i < positions.Length; i++)
             {
-                var instance = Instantiate(trafficLightPrefab, positions[i], rotations[i], transform);
-                instance.name = $"TrafficLight_{i}";
+                var pos = positions[i] + new Vector3(0f, trafficLightYOffset, 0f);
+                var instance = SpawnSanitized(trafficLightPrefab, pos, rotations[i], $"TrafficLight_{i}");
 
                 // Find the renderer on the model — POLYGON pack puts it on the inner
                 // child named like "Traffic_light_N", but checking the children
@@ -196,7 +254,7 @@ namespace UavSimulator.Tracks
             };
             for (var i = 0; i < lampPositions.Length; i++)
             {
-                Instantiate(lampPrefab, lampPositions[i], Quaternion.identity, transform).name = $"Lamp_{i}";
+                SpawnSanitized(lampPrefab, lampPositions[i], Quaternion.identity, $"Lamp_{i}");
             }
         }
 
