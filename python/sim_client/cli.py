@@ -774,6 +774,7 @@ _BUILTIN_PLUGINS: List[Dict[str, str]] = [
     {"pluginId": "track.basic_arena.v1", "type": "track", "displayName": "Basic Arena", "version": "1.0.0"},
     {"pluginId": "track.roadsystem_arena.v1", "type": "track", "displayName": "Road System Arena", "version": "1.0.0"},
     {"pluginId": "track.roadsystem_realistic.v2", "type": "track", "displayName": "Road System Realistic", "version": "2.0.0"},
+    {"pluginId": "track.city_polygon.v1", "type": "track", "displayName": "City (POLYGON pack)", "version": "1.0.0"},
 ]
 
 _BUILTIN_IDS = frozenset(p["pluginId"] for p in _BUILTIN_PLUGINS)

@@ -25,6 +25,7 @@ namespace UavSimulator.Plugins
         public const string RoadSystemRealisticTrackId = "track.roadsystem_realistic.v2";
         public const string CardboardCorridorTrackId = "track.cardboard_corridor.v1";
         public const string CardboardMazeTrackId = "track.cardboard_maze.v1";
+        public const string CityPolygonTrackId = "track.city_polygon.v1";
 
         private const string PrometeoPrefabPath = "Assets/PROMETEO - Car Controller/Prefabs/Prometheus.prefab";
         private const string ArcadeBluePrefabPath = "Assets/ARCADE - FREE Racing Car/Prefabs (Meshes Only)/Free Racing Car Blue Variant.prefab";
@@ -111,9 +112,15 @@ namespace UavSimulator.Plugins
                 "\"maze.wall_height_m\":{\"type\":\"number\",\"minimum\":0.15,\"maximum\":0.4,\"default\":0.25,\"description\":\"Wall height in meters\"}" +
                 "}}";
 
+            var cityPolygonTrack = ScriptableObject.CreateInstance<TrackPluginDescriptor>();
+            cityPolygonTrack.id = CityPolygonTrackId;
+            cityPolygonTrack.displayName = "City (POLYGON pack)";
+            cityPolygonTrack.description = "City demo track assembled from POLYGON City Pack street tiles + 4 traffic lights at the central intersection. Used for traffic-light-aware navigation showcase.";
+            cityPolygonTrack.parametersSchemaJson = "{\"type\":\"object\",\"properties\":{}}";
+
             return new PluginRegistrySnapshot(
                 vehicles: new[] { ks0223Vehicle, vehicle, arcadeBlueVehicle, arcadeRedVehicle, arcadeGrayVehicle, arcadePurpleVehicle, simpleDrone },
-                tracks: new[] { roadSystemTrack, roadSystemRealisticTrack, track, cardboardCorridorTrack, cardboardMazeTrack },
+                tracks: new[] { roadSystemTrack, roadSystemRealisticTrack, track, cardboardCorridorTrack, cardboardMazeTrack, cityPolygonTrack },
                 source: source);
         }
 
@@ -224,6 +231,16 @@ namespace UavSimulator.Plugins
                 root.transform.position = Vector3.zero;
                 root.transform.rotation = Quaternion.identity;
                 track = root.AddComponent<CardboardMazeTrack>();
+                return true;
+            }
+
+            if (string.Equals(descriptorId, CityPolygonTrackId, StringComparison.Ordinal))
+            {
+                var root = new GameObject("CityPolygonTrack");
+                root.transform.SetParent(parent, false);
+                root.transform.position = Vector3.zero;
+                root.transform.rotation = Quaternion.identity;
+                track = root.AddComponent<CityPolygonTrack>();
                 return true;
             }
 

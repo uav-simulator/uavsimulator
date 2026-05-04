@@ -1,0 +1,46 @@
+scenarioId: demo-city-polygon
+displayName: City Demo (POLYGON pack)
+description: Машина едет по перекрёстку с 4 светофорами, собранному из POLYGON City Pack префабов. Демонстрация плагинной архитектуры — track.city_polygon.v1 встроенный плагин использует ассеты стороннего пакета.
+version: 1
+
+runtime:
+  runtimeMode: unity-sim
+  headless: false
+  timeScale: 1.0
+  seed: 42
+
+world:
+  trackId: track.city_polygon.v1
+
+vehicle:
+  vehicleId: vehicle.arcade.blue.v1
+  params:
+    camera.profile: high
+
+route:
+  params:
+    spawn.position: 0.000,0.200,-10.000
+  waypoints:
+    - [0.0, -10.0]
+    - [0.0, 10.0]
+    - [10.0, 10.0]
+    - [10.0, -10.0]
+    - [0.0, -10.0]
+  loop: true
+  reachDistanceM: 1.5
+
+agents:
+  isolated: false
+  seeEachOther: true
+  collisionsEnabled: false
+  vehicles:
+    - agentId: ego
+      vehicleId: vehicle.arcade.blue.v1
+      primary: true
+      spawnPose:
+        position: [0.0, 0.2, -10.0]
+        yawDeg: 0
+
+logging:
+  enabled: true
+  tag: demo-city-polygon
