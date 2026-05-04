@@ -282,3 +282,5 @@ public sealed record DemoSessionFileDto(
     DateTimeOffset LastWriteUtc,
     int CommandCount);
 
+public sealed record LoadScenarioRequest(string FilePath);
+
