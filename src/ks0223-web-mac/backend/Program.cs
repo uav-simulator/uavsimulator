@@ -622,10 +622,18 @@ app.MapGet("/api/demo/replay/sessions", (DemoReplayService replay, SessionLogger
 
 static string ResolveScenariosDir()
 {
+    var fromEnv = Environment.GetEnvironmentVariable("SCENARIOS_DIR");
+    if (!string.IsNullOrWhiteSpace(fromEnv) && Directory.Exists(fromEnv))
+    {
+        return fromEnv;
+    }
+
     var cwd = Directory.GetCurrentDirectory();
-    // Backend typically runs from src/ks0223-web-mac/backend/, so configs lives 3 dirs up.
     var candidates = new[]
     {
+        // Docker: configs/scenarios is bind-mounted at /app/configs/scenarios.
+        "/app/configs/scenarios",
+        // Local dev: backend runs from src/ks0223-web-mac/backend/, configs at repo root.
         Path.Combine(cwd, "..", "..", "..", "configs", "scenarios"),
         Path.Combine(cwd, "configs", "scenarios"),
     };
@@ -634,7 +642,7 @@ static string ResolveScenariosDir()
         var resolved = Path.GetFullPath(c);
         if (Directory.Exists(resolved)) return resolved;
     }
-    return Path.GetFullPath(candidates[0]);
+    return Path.GetFullPath(candidates[1]);
 }
 
 app.MapGet("/api/scenarios", () =>
@@ -704,6 +712,16 @@ app.MapPost("/api/scenarios/load", async (LoadScenarioRequest request, ILoggerFa
     psi.ArgumentList.Add("scenario");
     psi.ArgumentList.Add("reset");
     psi.ArgumentList.Add(path);
+
+    // In Docker, Unity runs on the host (host.docker.internal:8000); on the
+    // host machine itself rusim defaults to localhost:8000. Honour the
+    // RUSIM_BASE_URL override if set (Dockerfile sets it to host.docker.internal).
+    var rusimBaseUrl = Environment.GetEnvironmentVariable("RUSIM_BASE_URL");
+    if (!string.IsNullOrWhiteSpace(rusimBaseUrl))
+    {
+        psi.ArgumentList.Add("--base-url");
+        psi.ArgumentList.Add(rusimBaseUrl);
+    }
 
     using var proc = System.Diagnostics.Process.Start(psi);
     if (proc == null)
