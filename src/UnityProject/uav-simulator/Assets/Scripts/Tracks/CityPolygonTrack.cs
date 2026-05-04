@@ -9,34 +9,56 @@ using UnityEditor;
 namespace UavSimulator.Tracks
 {
     /// <summary>
-    /// City demo track built from POLYGON City Pack prefabs (asset: Unity Asset Store id 107224).
-    /// Layout (top-down, XZ plane): a "+" cross of street tiles meeting at the origin,
-    /// with four traffic light prefabs at the central intersection.
+    /// City demo track built procedurally from POLYGON City Pack prefabs
+    /// (asset: Unity Asset Store id 107224).
     ///
-    /// Traffic lights are managed by a child <see cref="TrafficLightController"/>
-    /// (NS pair vs EW pair). On each <see cref="ResetTrack"/> the controller is restarted
-    /// with the supplied seed.
+    /// Layout (top-down, XZ plane): a regular grid of cells where the parity
+    /// of (row, col) decides cell type:
     ///
-    /// Street tiles, buildings, lamps, and traffic-light prefabs are looked up at runtime
-    /// from the <c>Assets/POLYGON city pack/Prefabs/</c> tree via AssetDatabase. If a prefab
-    /// is missing, the affected component is silently skipped (track still spawns, just
-    /// without that decoration). Editor-only — for standalone builds the city would need
-    /// Addressables or AssetBundles, out of current scope.
+    /// <code>
+    ///   B R B R B
+    ///   R I R I R    B = building cell
+    ///   B R B R B    R = road cell (straight street tile)
+    ///   R I R I R    I = intersection (street + 4 traffic lights)
+    ///   B R B R B
+    /// </code>
     ///
-    /// Spawn pose for the controlled vehicle is at (0, 0.2, -10), facing +Z.
+    /// Grid dimensions: <c>(2 * intersectionsPerSide + 1)</c> cells per side.
+    /// Default <c>intersectionsPerSide = 2</c> gives a 5×5 grid: 9 buildings,
+    /// 4 intersections, 12 road segments.
+    ///
+    /// Each intersection gets its own <see cref="TrafficLightController"/> with
+    /// 4 traffic-light prefabs (N/E/S/W pair) interlocked NS↔EW.
+    ///
+    /// Street tiles, buildings, lamps and traffic-light prefabs are looked up
+    /// at runtime via AssetDatabase. Editor-only — for standalone builds the
+    /// POLYGON pack would need Addressables / Resources/ migration.
     /// </summary>
     public sealed class CityPolygonTrack : TrackBase
     {
-        // POLYGON pack asset paths (verified against shipping package layout).
+        // POLYGON pack asset paths.
         private const string PolygonRoot = "Assets/POLYGON city pack/Prefabs";
         private const string StreetStraightPrefabPath = PolygonRoot + "/Floor/Street 4 Prefab.prefab";
-        private const string StreetIntersectionPrefabPath = PolygonRoot + "/Floor/Street 1 Prefab.prefab";
-        private const string SidewayPrefabPath = PolygonRoot + "/Floor/Sideway 1 prefab.prefab";
+        private const string StreetIntersectionPrefabPath = PolygonRoot + "/Floor/Street 4 Prefab.prefab";
         private const string TrafficLightPrefabPath = PolygonRoot + "/Props/Traffic light 1 Prefab.prefab";
         private const string LampPrefabPath = PolygonRoot + "/Lamps/Lamp_1_prefab.prefab";
 
-        // Traffic light material paths (matched to the slot indices on the POLYGON
-        // Traffic light 1 prefab — see TrafficLightPolygonAdapter for the slot map).
+        // Building variety — instantiated round-robin into building cells.
+        private static readonly string[] BuildingPrefabPaths =
+        {
+            PolygonRoot + "/Buildings/Building_A_prefab.prefab",
+            PolygonRoot + "/Buildings/Building_B_prefab.prefab",
+            PolygonRoot + "/Buildings/Building_D_prefab.prefab",
+            PolygonRoot + "/Buildings/Building_E_prefab.prefab",
+            PolygonRoot + "/Buildings/Building_F_prefab.prefab",
+            PolygonRoot + "/Buildings/Building_H_prefab.prefab",
+            PolygonRoot + "/Buildings/Building_J_prefab.prefab",
+            PolygonRoot + "/Buildings/Building_K_prefab.prefab",
+            PolygonRoot + "/Buildings/Building_M_prefab.prefab",
+            PolygonRoot + "/Buildings/Building_N_Prefab.prefab",
+        };
+
+        // Traffic light material paths (slot mapping is in TrafficLightPolygonAdapter).
         private const string PolygonMatRoot = "Assets/POLYGON city pack/Materials/traffic light";
         private const string MatRedOff = PolygonMatRoot + "/Red.mat";
         private const string MatRedOn = PolygonMatRoot + "/Red lighting.mat";
@@ -44,20 +66,28 @@ namespace UavSimulator.Tracks
         private const string MatGreenOff = PolygonMatRoot + "/Green.mat";
         private const string MatGreenOn = PolygonMatRoot + "/Green lighting.mat";
 
-        // Layout constants. tileSpacing = 0 → auto-detect from the prefab's
-        // Renderer bounds at runtime (preferred — POLYGON tiles ship with
-        // 200x scale on the inner mesh, so static spacing is fragile).
-        [SerializeField] private float tileSpacing = 0f;
-        [SerializeField] private int armTileCount = 2; // tiles per arm of the cross (excluding center)
-        [SerializeField] private float trafficLightOffset = 3.5f; // distance from intersection center
-        [SerializeField] private float trafficLightYOffset = 0f;  // ground offset for traffic light prefabs
+        [Header("City layout")]
+        [Tooltip("Number of intersections per side. 2 → 5×5 grid (9 buildings, 4 intersections). 3 → 7×7 grid (16 buildings, 9 intersections).")]
+        [SerializeField] private int intersectionsPerSide = 2;
 
-        [Header("Cycle timing (forwarded to controller)")]
+        [Tooltip("Cell side length in meters. 0 = auto-detect from Street 4 prefab bounds.")]
+        [SerializeField] private float cellSize = 0f;
+
+        [Tooltip("Distance from intersection center to each of the 4 traffic-light corners (in meters).")]
+        [SerializeField] private float trafficLightOffset = 3.5f;
+
+        [Tooltip("Y-offset for traffic light prefabs (lift above ground if pivot lands underneath).")]
+        [SerializeField] private float trafficLightYOffset = 0f;
+
+        [Tooltip("Y-offset for building prefabs.")]
+        [SerializeField] private float buildingYOffset = 0f;
+
+        [Header("Cycle timing (per intersection)")]
         [SerializeField] private float redSeconds = 8f;
         [SerializeField] private float greenSeconds = 10f;
         [SerializeField] private float yellowSeconds = 2f;
 
-        private TrafficLightController controller;
+        private readonly List<TrafficLightController> controllers = new();
         private bool built;
 
         private void Awake()
@@ -68,10 +98,14 @@ namespace UavSimulator.Tracks
         public override void ResetTrack(int seed)
         {
             BuildIfNeeded();
-            if (controller != null)
+            for (var i = 0; i < controllers.Count; i++)
             {
-                controller.ResetCycle(seed);
-                controller.StartCycle();
+                if (controllers[i] != null)
+                {
+                    // Stagger seeds across intersections so adjacent lights aren't synced.
+                    controllers[i].ResetCycle(seed + i * 7919);
+                    controllers[i].StartCycle();
+                }
             }
         }
 
@@ -80,65 +114,160 @@ namespace UavSimulator.Tracks
             if (built) return;
             built = true;
 
-            // 1. Streets — cross layout: N-S arm + E-W arm + center intersection.
-            PlaceStreetArms();
-
-            // 2. Traffic lights at the four corners of the intersection.
-            var lights = PlaceTrafficLights();
-
-            // 3. Lamps along the streets for atmosphere (skipped if prefab missing).
-            PlaceLamps();
-
-            // 4. Wire the FSM controller. Lights[0]/[2] = NS pair, Lights[1]/[3] = EW pair.
-            if (lights.Count >= 4)
-            {
-                var controllerGo = new GameObject("TrafficLightController");
-                controllerGo.transform.SetParent(transform, false);
-                controller = controllerGo.AddComponent<TrafficLightController>();
-                controller.redSeconds = redSeconds;
-                controller.greenSeconds = greenSeconds;
-                controller.yellowSeconds = yellowSeconds;
-                controller.SetNorthSouthLights(new[] { lights[0], lights[2] });
-                controller.SetEastWestLights(new[] { lights[1], lights[3] });
-                controller.StartCycle();
-            }
-        }
-
-        private void PlaceStreetArms()
-        {
             var streetPrefab = LoadPrefab(StreetStraightPrefabPath);
             if (streetPrefab == null) return;
 
-            // Center tile — also serves as the size probe.
-            var center = SpawnSanitized(streetPrefab, Vector3.zero, Quaternion.identity, "StreetCenter");
+            // Auto-detect cell size by spawning one probe tile and measuring its bounds.
+            var probe = SpawnSanitized(streetPrefab, new Vector3(-10000f, 0f, -10000f), Quaternion.identity, "_SizeProbe");
+            var detectedSize = MeasureWorldSize(probe, Axis.Z, fallback: 12f);
+            DestroyImmediate(probe);
+            var spacing = cellSize > 0.01f ? cellSize : detectedSize;
 
-            var spacing = tileSpacing > 0.01f
-                ? tileSpacing
-                : MeasureWorldSize(center, Axis.Z, fallback: 12f);
+            // Pre-load shared resources.
+            var trafficLightPrefab = LoadPrefab(TrafficLightPrefabPath);
+            var lampPrefab = LoadPrefab(LampPrefabPath);
+            var buildingPrefabs = LoadAllPrefabs(BuildingPrefabPaths);
 
-            // North-South arm (along Z axis).
-            for (var i = 1; i <= armTileCount; i++)
+            var redOff = LoadMaterial(MatRedOff);
+            var redOn = LoadMaterial(MatRedOn);
+            var yellow = LoadMaterial(MatYellowAny);
+            var greenOff = LoadMaterial(MatGreenOff);
+            var greenOn = LoadMaterial(MatGreenOn);
+
+            // Grid: (2N+1) × (2N+1) cells centred on origin.
+            var n = Mathf.Max(1, intersectionsPerSide);
+            var cellsPerSide = 2 * n + 1;
+            var halfExtent = (cellsPerSide - 1) * 0.5f;
+            var buildingIndex = 0;
+
+            for (var row = 0; row < cellsPerSide; row++)
             {
-                SpawnSanitized(streetPrefab, new Vector3(0f, 0f, i * spacing), Quaternion.identity, $"StreetN{i}");
-                SpawnSanitized(streetPrefab, new Vector3(0f, 0f, -i * spacing), Quaternion.identity, $"StreetS{i}");
+                for (var col = 0; col < cellsPerSide; col++)
+                {
+                    var x = (col - halfExtent) * spacing;
+                    var z = (row - halfExtent) * spacing;
+                    var pos = new Vector3(x, 0f, z);
+
+                    var rowIsRoad = row % 2 == 1;
+                    var colIsRoad = col % 2 == 1;
+
+                    if (rowIsRoad && colIsRoad)
+                    {
+                        // Intersection cell — straight tile + 4 traffic lights + controller.
+                        SpawnSanitized(streetPrefab, pos, Quaternion.identity, $"Intersection_{row}_{col}");
+                        if (trafficLightPrefab != null)
+                        {
+                            var intersection = PlaceIntersectionLights(
+                                trafficLightPrefab, pos,
+                                redOff, redOn, yellow, greenOff, greenOn,
+                                $"r{row}_c{col}");
+                            if (intersection != null) controllers.Add(intersection);
+                        }
+                    }
+                    else if (rowIsRoad ^ colIsRoad)
+                    {
+                        // Road cell — straight tile, rotated to align with traffic flow.
+                        var rot = colIsRoad ? Quaternion.identity : Quaternion.Euler(0f, 90f, 0f);
+                        SpawnSanitized(streetPrefab, pos, rot, $"Road_{row}_{col}");
+                    }
+                    else
+                    {
+                        // Building cell — round-robin a building from the pool.
+                        if (buildingPrefabs.Count > 0)
+                        {
+                            var prefab = buildingPrefabs[buildingIndex % buildingPrefabs.Count];
+                            buildingIndex++;
+                            // Random 90° rotation per cell using a deterministic hash for variety.
+                            var rotSteps = ((row * 73 + col * 31) & 3) * 90f;
+                            var rot = Quaternion.Euler(0f, rotSteps, 0f);
+                            var buildingPos = pos + new Vector3(0f, buildingYOffset, 0f);
+                            SpawnSanitized(prefab, buildingPos, rot, $"Building_{row}_{col}");
+                        }
+                    }
+                }
             }
 
-            // East-West arm (along X axis, prefabs rotated 90° around Y).
-            var ewRotation = Quaternion.Euler(0f, 90f, 0f);
-            for (var i = 1; i <= armTileCount; i++)
+            // Decorative lampposts at the four outer corners of the city.
+            if (lampPrefab != null)
             {
-                SpawnSanitized(streetPrefab, new Vector3(i * spacing, 0f, 0f), ewRotation, $"StreetE{i}");
-                SpawnSanitized(streetPrefab, new Vector3(-i * spacing, 0f, 0f), ewRotation, $"StreetW{i}");
+                var corner = halfExtent * spacing + spacing * 0.4f;
+                SpawnSanitized(lampPrefab, new Vector3(+corner, 0f, +corner), Quaternion.identity, "Lamp_NE");
+                SpawnSanitized(lampPrefab, new Vector3(+corner, 0f, -corner), Quaternion.identity, "Lamp_SE");
+                SpawnSanitized(lampPrefab, new Vector3(-corner, 0f, +corner), Quaternion.identity, "Lamp_NW");
+                SpawnSanitized(lampPrefab, new Vector3(-corner, 0f, -corner), Quaternion.identity, "Lamp_SW");
+            }
+
+            // Start all intersection cycles.
+            foreach (var c in controllers)
+            {
+                if (c != null) c.StartCycle();
             }
         }
+
+        private TrafficLightController PlaceIntersectionLights(
+            GameObject trafficLightPrefab,
+            Vector3 center,
+            Material redOff, Material redOn,
+            Material yellow,
+            Material greenOff, Material greenOn,
+            string nameSuffix)
+        {
+            // Four positions, one per intersection corner. Order: N, E, S, W.
+            // NS = {N, S} indices 0, 2; EW = {E, W} indices 1, 3.
+            var offsets = new[]
+            {
+                new Vector3(0f, trafficLightYOffset, +trafficLightOffset), // N
+                new Vector3(+trafficLightOffset, trafficLightYOffset, 0f), // E
+                new Vector3(0f, trafficLightYOffset, -trafficLightOffset), // S
+                new Vector3(-trafficLightOffset, trafficLightYOffset, 0f), // W
+            };
+            var rotations = new[]
+            {
+                Quaternion.Euler(0f, 180f, 0f), // N facing south
+                Quaternion.Euler(0f, 270f, 0f), // E facing west
+                Quaternion.Euler(0f, 0f, 0f),   // S facing north
+                Quaternion.Euler(0f, 90f, 0f),  // W facing east
+            };
+
+            var lights = new List<TrafficLight>(4);
+            for (var i = 0; i < offsets.Length; i++)
+            {
+                var instance = SpawnSanitized(
+                    trafficLightPrefab,
+                    center + offsets[i],
+                    rotations[i],
+                    $"TL_{nameSuffix}_{i}");
+                var renderer = instance.GetComponentInChildren<MeshRenderer>();
+                var fsm = instance.AddComponent<TrafficLight>();
+                var adapter = instance.AddComponent<TrafficLightPolygonAdapter>();
+                adapter.SetMaterials(redOff, redOn, yellow, yellow, greenOff, greenOn);
+                adapter.Bind(fsm, renderer);
+                lights.Add(fsm);
+            }
+
+            if (lights.Count < 4) return null;
+
+            var controllerGo = new GameObject($"TLController_{nameSuffix}");
+            controllerGo.transform.SetParent(transform, false);
+            controllerGo.transform.position = center;
+            var controller = controllerGo.AddComponent<TrafficLightController>();
+            controller.redSeconds = redSeconds;
+            controller.greenSeconds = greenSeconds;
+            controller.yellowSeconds = yellowSeconds;
+            controller.SetNorthSouthLights(new[] { lights[0], lights[2] });
+            controller.SetEastWestLights(new[] { lights[1], lights[3] });
+            return controller;
+        }
+
+        // ───────────── Helpers ─────────────
 
         private GameObject SpawnSanitized(GameObject prefab, Vector3 position, Quaternion rotation, string name)
         {
             var instance = Instantiate(prefab, position, rotation, transform);
             instance.name = name;
             // POLYGON pack ships with Built-in pipeline materials; under URP they
-            // render magenta. RuntimeMaterialCompatibility transparently rebuilds
-            // each material on the URP/Lit shader, preserving textures and colour.
+            // render magenta. Rebuild each material on the URP/Lit shader,
+            // preserving textures and base colour.
             ReplaceIncompatibleMaterials(instance);
             return instance;
         }
@@ -185,79 +314,6 @@ namespace UavSimulator.Tracks
             }
         }
 
-        private List<TrafficLight> PlaceTrafficLights()
-        {
-            var result = new List<TrafficLight>();
-            var trafficLightPrefab = LoadPrefab(TrafficLightPrefabPath);
-            if (trafficLightPrefab == null) return result;
-
-            // Four positions, one per intersection corner. Order: N, E, S, W.
-            // Matches the wiring NS = {N, S} = indices 0, 2; EW = {E, W} = indices 1, 3.
-            var positions = new[]
-            {
-                new Vector3(0f, 0f, +trafficLightOffset),  // N
-                new Vector3(+trafficLightOffset, 0f, 0f),  // E
-                new Vector3(0f, 0f, -trafficLightOffset),  // S
-                new Vector3(-trafficLightOffset, 0f, 0f),  // W
-            };
-
-            // Each light faces the center of the intersection — orient it 180° from its
-            // outward normal so the front (with bulbs visible) looks toward oncoming cars.
-            var rotations = new[]
-            {
-                Quaternion.Euler(0f, 180f, 0f), // N facing south
-                Quaternion.Euler(0f, 270f, 0f), // E facing west
-                Quaternion.Euler(0f, 0f, 0f),   // S facing north
-                Quaternion.Euler(0f, 90f, 0f),  // W facing east
-            };
-
-            // Pre-load the materials used by the adapter (one shared set per track).
-            var redOff = LoadMaterial(MatRedOff);
-            var redOn = LoadMaterial(MatRedOn);
-            var yellow = LoadMaterial(MatYellowAny);
-            var greenOff = LoadMaterial(MatGreenOff);
-            var greenOn = LoadMaterial(MatGreenOn);
-
-            for (var i = 0; i < positions.Length; i++)
-            {
-                var pos = positions[i] + new Vector3(0f, trafficLightYOffset, 0f);
-                var instance = SpawnSanitized(trafficLightPrefab, pos, rotations[i], $"TrafficLight_{i}");
-
-                // Find the renderer on the model — POLYGON pack puts it on the inner
-                // child named like "Traffic_light_N", but checking the children
-                // for any MeshRenderer is robust.
-                var renderer = instance.GetComponentInChildren<MeshRenderer>();
-
-                var fsm = instance.AddComponent<TrafficLight>();
-                var adapter = instance.AddComponent<TrafficLightPolygonAdapter>();
-                adapter.SetMaterials(redOff, redOn, yellow, yellow, greenOff, greenOn);
-                adapter.Bind(fsm, renderer);
-
-                result.Add(fsm);
-            }
-
-            return result;
-        }
-
-        private void PlaceLamps()
-        {
-            var lampPrefab = LoadPrefab(LampPrefabPath);
-            if (lampPrefab == null) return;
-
-            // 4 lamps, one near each intersection corner offset along the street.
-            var lampPositions = new[]
-            {
-                new Vector3(+1.5f, 0f, +1.5f),
-                new Vector3(+1.5f, 0f, -1.5f),
-                new Vector3(-1.5f, 0f, +1.5f),
-                new Vector3(-1.5f, 0f, -1.5f),
-            };
-            for (var i = 0; i < lampPositions.Length; i++)
-            {
-                SpawnSanitized(lampPrefab, lampPositions[i], Quaternion.identity, $"Lamp_{i}");
-            }
-        }
-
         private static GameObject LoadPrefab(string path)
         {
 #if UNITY_EDITOR
@@ -268,10 +324,19 @@ namespace UavSimulator.Tracks
             }
             return prefab;
 #else
-            // POLYGON prefabs are not in Resources/ and are Editor-only via AssetDatabase.
-            // For standalone builds, switch to Addressables or move prefabs into Resources/.
             return null;
 #endif
+        }
+
+        private static List<GameObject> LoadAllPrefabs(string[] paths)
+        {
+            var result = new List<GameObject>(paths.Length);
+            foreach (var p in paths)
+            {
+                var prefab = LoadPrefab(p);
+                if (prefab != null) result.Add(prefab);
+            }
+            return result;
         }
 
         private static Material LoadMaterial(string path)
