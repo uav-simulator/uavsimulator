@@ -63,6 +63,55 @@ namespace UavSimulator.Editor
                 issues == 0 ? "Graph valid." : $"Found {issues} issues, see Console.",
                 "OK");
         }
+
+        [MenuItem("Tools/UavSimulator/City Waypoints/Generate Demo Scaffold")]
+        public static void GenerateDemoScaffold()
+        {
+            var graph = ScriptableObject.CreateInstance<CityWaypointGraph>();
+            graph.graphId = "city.polygon_demo.v1";
+
+            CityWaypointNode N(string id, Vector3 pos, bool isIntersection = false)
+            {
+                var node = new CityWaypointNode
+                {
+                    id = id,
+                    position = pos,
+                    isIntersection = isIntersection,
+                };
+                graph.nodes.Add(node);
+                return node;
+            }
+
+            CityWaypointEdge E(string toNodeId, float speedLimitMps, string maneuverTag) =>
+                new() { toNodeId = toNodeId, speedLimitMps = speedLimitMps, maneuverTag = maneuverTag };
+
+            var northIn = N("n_north_in", new Vector3(0f, 0.2f, +20f));
+            var southIn = N("n_south_in", new Vector3(0f, 0.2f, -20f));
+            var eastIn = N("n_east_in", new Vector3(+20f, 0.2f, 0f));
+            var westIn = N("n_west_in", new Vector3(-20f, 0.2f, 0f));
+            var center = N("n_center", new Vector3(0f, 0.2f, 0f), isIntersection: true);
+            N("n_north_out", new Vector3(0f, 0.2f, +25f));
+            N("n_east_out", new Vector3(+25f, 0.2f, 0f));
+            N("n_west_out", new Vector3(-25f, 0.2f, 0f));
+            N("n_south_out", new Vector3(0f, 0.2f, -25f));
+
+            northIn.outgoingEdges.Add(E("n_center", 5.0f, "straight"));
+            southIn.outgoingEdges.Add(E("n_center", 5.0f, "straight"));
+            eastIn.outgoingEdges.Add(E("n_center", 5.0f, "straight"));
+            westIn.outgoingEdges.Add(E("n_center", 5.0f, "straight"));
+
+            center.outgoingEdges.Add(E("n_north_out", 4.0f, "straight"));
+            center.outgoingEdges.Add(E("n_east_out", 3.0f, "right"));
+            center.outgoingEdges.Add(E("n_west_out", 3.0f, "left"));
+
+            const string dir = "Assets/Resources/UavSimulator/CityWaypoints";
+            const string path = dir + "/city.polygon_demo.v1.asset";
+            System.IO.Directory.CreateDirectory(dir);
+            AssetDatabase.CreateAsset(graph, path);
+            AssetDatabase.SaveAssets();
+            AssetDatabase.Refresh();
+            Debug.Log($"[CityWaypoints] Demo scaffold created at {path}");
+        }
     }
 }
 #endif
