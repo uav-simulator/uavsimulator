@@ -157,11 +157,90 @@ public sealed class SimulatorApiFacade
 
 ### 2.4.1 Backend на ASP.NET Core
 
+Серверная часть операторской поверхности реализована в проекте `src/ks0223-web-mac/backend/` на платформе `.NET 8` с использованием ASP.NET Core minimal APIs. Решение унаследовано от первой версии web-системы управления, разработанной автором в рамках производственной практики, и сохранено в магистерской платформе как рабочая основа: применение стека ASP.NET Core позволило организовать web-сервис с HTTP API, обработкой фоновых задач, средствами журналирования и интеграцией с SignalR для доставки данных в режиме, близком к реальному времени. Точка входа — `Program.cs` (см. [src/ks0223-web-mac/backend/Program.cs](../../src/ks0223-web-mac/backend/Program.cs)) — содержит около 1060 строк и совмещает три обязанности: настройку DI-контейнера, конфигурацию CORS-политики и регистрацию маршрутов minimal API.
+
+```csharp
+builder.Services.AddSignalR();
+builder.Services.AddHttpClient();
+builder.Services.AddSingleton<SessionLogger>();
+builder.Services.AddSingleton<TelemetryParser>();
+builder.Services.AddSingleton<RuntimeSessionManager>();
+builder.Services.AddSingleton<ModelRegistryService>();
+builder.Services.AddSingleton<AutopilotSafetyFilter>(/* ... */);
+builder.Services.AddSingleton<SessionVideoRecorder>();
+builder.Services.AddSingleton<AutopilotService>();
+builder.Services.AddSingleton<DemoReplayService>();
+builder.Services.AddHostedService(sp =>
+    sp.GetRequiredService<RuntimeSessionManager>());
+```
+
+DI-контейнер регистрирует единичные экземпляры (singleton-ы) ключевых сервисов: `SessionLogger` (журналирование команд и событий сессии), `TelemetryParser` (разбор пакетов телеметрии от реального робота), `RuntimeSessionManager` (управление сессиями для двух подложек, описан в подразделе 2.4.2), `ModelRegistryService` (реестр ONNX-моделей), `AutopilotSafetyFilter` и `AutopilotService` (контур автопилота, подраздел 2.4.4), `SessionVideoRecorder` (запись видео сессии) и `DemoReplayService` (повторное проигрывание журнала). `RuntimeSessionManager` дополнительно регистрируется как `IHostedService`, что обеспечивает корректное завершение всех подключённых сессий при остановке приложения. CORS-политика «frontend» допускает запросы только с `localhost` и `127.0.0.1` независимо от порта; это даёт возможность запускать фронтенд на dev-сервере Vite одновременно с production-сборкой backend без правок политики.
+
+Всего в `Program.cs` зарегистрировано около пятидесяти HTTP-маршрутов; в таблице 2.2 приведены ключевые из них, отражающие общую структуру операторской поверхности.
+
+Таблица 2.2 — Ключевые маршруты backend API
+
+| Метод | Путь | Назначение |
+|---|---|---|
+| GET | `/api/status` | Статус сессии для (clientId, runtimeMode) |
+| GET | `/api/health` | Сводное состояние подключения, камеры и сенсоров |
+| POST | `/api/connection/connect` | Подключение к выбранной подложке |
+| POST | `/api/connection/disconnect` | Отключение текущей сессии |
+| POST | `/api/command` | Передача управляющей команды |
+| GET | `/api/camera/snapshot` | Получение последнего кадра камеры |
+| GET | `/api/camera/mjpeg` | MJPEG-поток камеры (для Web UI) |
+| POST | `/api/models/upload` | Загрузка ONNX-артефакта в реестр |
+| GET | `/api/models` | Список зарегистрированных моделей |
+| POST | `/api/models/activate` | Активация модели |
+| POST | `/api/model-bindings` | Привязка модели к (runtimeMode, agentId) |
+| POST | `/api/autopilot/start` | Запуск контура автопилота |
+| POST | `/api/autopilot/stop` | Остановка автопилота |
+| GET | `/api/scenarios` | Список доступных сценариев |
+| POST | `/api/scenarios/load` | Загрузка сценария в Unity-runtime |
+| POST | `/api/demo/start` | Начало записи демо-сессии |
+| POST | `/api/demo/replay/start` | Воспроизведение журнала демо |
+
+DTO для всех маршрутов сосредоточены в файле `src/ks0223-web-mac/backend/Models/Contracts.cs` (см. [Contracts.cs](../../src/ks0223-web-mac/backend/Models/Contracts.cs)) и описаны через `record`-типы C#: `CommandRequest`, `StatusDto`, `HealthDto`, `ModelInfoDto`, `AutopilotStatusDto`, `DemoReplayProgress` и другие. Использование record-типов фиксирует иммутабельность DTO и упрощает их сравнение и сериализацию через `System.Text.Json`.
+
 ### 2.4.2 Слой runtime-провайдеров: unity-sim и real-robot
+
+Ключевой элемент backend — слой runtime-провайдеров, инкапсулированный в классе `RuntimeSessionManager` (см. [src/ks0223-web-mac/backend/Services/RuntimeSessionManager.cs](../../src/ks0223-web-mac/backend/Services/RuntimeSessionManager.cs)). Он реализует интерфейс `IHostedService` и хранит две независимые таблицы сессий: `realSessions` для подключений к физическому KS0223 и `unityWorlds` для подключений к экземплярам Unity-runtime. Каждое подключение характеризуется парой `(clientId, runtimeMode)`, что позволяет одному оператору иметь раздельные сессии для симулятора и реального робота, а нескольким операторам — работать параллельно без взаимного влияния.
+
+Подложка `real-robot` реализована классом `RealKs0223RuntimeProvider`. Транспорт — TCP-соединение к `192.168.1.121:8765` с поддержкой keep-alive, парсингом потока пакетов телеметрии и автоматическим переподключением. Особенности этой подложки наследованы от штатного программного обеспечения KS0223: команды управления передаются как строки по TCP, видеопоток поступает по отдельному UDP-каналу, расширенные сенсоры читаются через дополнительный HTTP-bridge на той же Raspberry Pi. `RealKs0223RuntimeProvider` инкапсулирует все три канала и предоставляет вышестоящему слою единое API, скрывая разнородность транспортов.
+
+Подложка `unity-sim` реализована классом `UnityKs0223RuntimeProvider`. Транспорт — HTTP-запросы к локальному Unity-runtime на адрес из конфигурации (стандартно `127.0.0.1:8000`). Внутри провайдер использует `IHttpClientFactory` для управления пулом соединений и обращается к четырём маршрутам facade-а: `/health`, `/contract`, `/reset`, `/step`. Команды управления, поступающие в backend в формате `CommandRequest`, провайдер преобразует в `ControlCommand` и отправляет в Unity; полученный `StepResult` разбирается обратно в формат, ожидаемый Web UI. Кадры камеры из `StepResult.frame` декодируются и помещаются в буфер фреймов, доступный через `/api/camera/snapshot` и `/api/camera/mjpeg`. Эта симметрия с реальным роботом позволяет Web UI получать видеопоток одинаковым образом независимо от выбранной подложки.
+
+Унификация контрактов на уровне `RuntimeSessionManager` означает, что одна управляющая команда вида `forward` или `left` в обоих режимах обрабатывается единым кодом, и Web UI не получает информации о том, какой runtime активен на самом деле — за исключением метаданных в `StatusDto` (поля `RuntimeMode`, `RuntimeLabel`). Подложки при этом сохраняют возможность специфической адаптации: например, при работе с `unity-sim` команда нормализуется в float-значения throttle/steer, а при работе с `real-robot` — в строки фиксированного словаря; в обоих случаях операция инкапсулирована методом `SendCommandAsync` провайдера.
 
 ### 2.4.3 Web UI на React и SignalR
 
+Web-интерфейс реализован в проекте `src/ks0223-web-mac/frontend/` на стеке Vite + React 18 + TypeScript + MUI. Применение этих инструментов обеспечило достаточно быстрый цикл разработки и позволило реализовать единый экран управления, не разделяя frontend на отдельные приложения для разных режимов работы. Корневой компонент `App.tsx` (см. [src/ks0223-web-mac/frontend/src/App.tsx](../../src/ks0223-web-mac/frontend/src/App.tsx)) реализует layout с верхней панелью и набором вкладок, переключаемых компонентом `Tabs` MUI:
+
+```tsx
+<Tabs value={tab} onChange={(_, value: TabKey) => setTab(value)}>
+  <Tab value="dashboard"   label="Пульт и телеметрия" />
+  <Tab value="scenarios"   label="Сценарии" />
+  <Tab value="sensors"     label="Сенсоры KS0223" />
+  <Tab value="led"         label="LED панель" />
+  <Tab value="models"      label="Model Control" />
+  <Tab value="demoReplay"  label="Demo Replay" />
+  <Tab value="logs"        label="Логи" />
+</Tabs>
+```
+
+Каждая вкладка отображает свою функциональную область. «Пульт и телеметрия» содержит панель управления, видеопоток и индикаторы состояния; «Сценарии» позволяет выбрать и применить YAML-сценарий к Unity-runtime; «Сенсоры KS0223» — отображает показания ультразвукового датчика, линейных сенсоров и положения сервопривода; «LED панель» управляет индикацией; «Model Control» работает с реестром моделей и привязками автопилота; «Demo Replay» проигрывает ранее записанные сессии; «Логи» показывает последние записи.
+
+Доставка телеметрии и кадров камеры построена на двух механизмах. Первый — типизированный HTTP-клиент в `src/ks0223-web-mac/frontend/src/api.ts` (см. [api.ts](../../src/ks0223-web-mac/frontend/src/api.ts)), оборачивающий `fetch`-вызовы и явно типизирующий все DTO через импорт из `./types` (соответствие записям из `Contracts.cs`). Второй — SignalR-хаб `TelemetryHub`, через который backend выталкивает события телеметрии без необходимости polling-а. Это снимает с фронтенда обязанность периодически опрашивать `/api/status` и `/api/sensors/latest` и обеспечивает доставку обновлений с задержкой, ограниченной латентностью сети. Архитектурный принцип, фиксируемый этим разделением, состоит в том, что фронтенд не делает прямых обращений к Unity HTTP API: все взаимодействия идут через backend, что сохраняет единую точку аудита, журналирования и контроля доступа независимо от подложки.
+
 ### 2.4.4 Сервисы model lifecycle и autopilot
+
+Управление жизненным циклом моделей и автопилотом сосредоточено в трёх сервисах backend. `ModelRegistryService` (см. [src/ks0223-web-mac/backend/Services/ModelRegistryService.cs](../../src/ks0223-web-mac/backend/Services/ModelRegistryService.cs)) ведёт каталог зарегистрированных ONNX-артефактов в файле `runtime-data/models/registry.json`. Поверхность сервиса включает методы `UploadAsync` (приём файла и метаданных через `multipart/form-data`), `ListModels`, `ListCatalog` (группировка моделей по имени с упорядочением версий по дате создания), `GetActiveModel`, `Activate`, `GetBinding` и `SetBinding`. Поле `IsActive` в `ModelInfoDto` помечает выбранную модель глобально, а структура `ModelBindingDto` фиксирует, какая модель подключена к конкретной паре `(runtimeMode, agentId)`. Это разделение существенно: одна и та же модель может быть активной глобально, но при этом конкретный агент в `unity-sim` использует другую версию через явную привязку. Поле `CompatibilityHintsDto` хранит подсказки о совместимости — поддерживаемые `runtimeModes`, `vehicleIds` и `robotKinds`, — что используется фронтендом для предупреждения оператора при попытке привязать модель к несовместимой подложке.
+
+`AutopilotService` (см. [src/ks0223-web-mac/backend/Services/AutopilotService.cs](../../src/ks0223-web-mac/backend/Services/AutopilotService.cs)) реализует inference loop: периодически берёт кадр камеры из активной сессии, через `Microsoft.ML.OnnxRuntime` запускает выбранную модель, преобразует выходные логиты в управляющую команду и отправляет её через `RuntimeSessionManager.SendCommandAsync`. Шаги цикла регулируются параметрами `LoopIntervalMs` и `MaxDurationSeconds`, заданными в `StartAutopilotRequest`. Состояние автопилота агрегируется в `AutopilotStatusDto` со счётчиками шагов и команд, последней командой и текстовой причиной остановки.
+
+`AutopilotSafetyFilter` — обязательное звено в цепи `real-robot`. Фильтр читает поток телеметрии (особенно показания фронтального ультразвукового датчика) и блокирует команды, ведущие к столкновению. В коде зафиксированы три порога безопасности: окно автоматической остановки `EStopWindowSeconds = 10` и порог `EStopWindowThreshold = 10` сработавших срабатываний за это окно; верхняя граница повторных одинаковых команд `RepeatedCommandThreshold = 30`, ограничивающая длительность непрерывного выполнения одного действия; таймаут устаревания телеметрии `StaleTelemetryAfterMs = 3000` мс. Каждое из этих значений зафиксировано в коде с комментарием о причине выбора (например, рассчитанным для конкретной геометрии корпуса KS0223 и реальной скорости разворота на месте). Применительно к `unity-sim` эти ограничения ослабляются — в симуляции столкновение не приводит к физическому ущербу, и приоритет отдан непрерывности обучения и эксплуатационных сценариев.
+
+
 
 ## 2.5 CLI rusim
 
