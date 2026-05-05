@@ -475,4 +475,103 @@ public abstract class PluginDescriptorBase : ScriptableObject
 
 ## 6.7 Примеры взаимодействия
 
-(в работе)
+### 6.7.1 Полный цикл reset → step → state на стороне Python
+
+Минимальный тренировочный цикл через `SimClient` ([python/sim_client/http_client.py](../../python/sim_client/http_client.py)) выглядит компактно:
+
+```python
+from sim_client.http_client import SimClient
+
+client = SimClient(base_url="http://127.0.0.1:8000", timeout_s=10.0)
+
+assert client.health()["status"] == "ok"
+
+reset_payload = {
+    "seed": 42,
+    "timeScale": 1.0,
+    "selectedTrackId": "track.cardboard_corridor.v1",
+    "selectedVehicleId": "vehicle.ks0223.v1",
+    "trackParams": [{"key": "obstacle_density", "value": "0.3"}],
+    "vehicleParams": [],
+    "flags": [],
+    "agents": [
+        {"agentId": "ego", "vehicleId": "vehicle.ks0223.v1", "isPrimary": True}
+    ],
+}
+obs = client.reset(reset_payload)
+
+for _ in range(1000):
+    command = {"throttle": 0.5, "steer": 0.0, "brake": 0.0}
+    obs = client.step(command)
+    if obs["done"]:
+        break
+```
+
+`SimClient` под капотом использует `requests.Session()` с настроенным `HTTPAdapter` (`pool_connections=4, pool_maxsize=16`) — это критично для тренировочных запусков на Windows, где per-request соединения быстро исчерпывают пул TCP ephemeral-портов и приводят к ошибкам `WinError 10055` в subprocess-воркерах. Пример использования сессии — комментарий в `http_client.py:14-17`. Метод `_raise_for_status` ([http_client.py:146-156](../../python/sim_client/http_client.py)) разворачивает поле `error` из ответа Unity в осмысленное `requests.HTTPError`, что делает диагностику пять минут потраченных на сценарий с опечаткой в `selectedTrackId` мгновенно понятной.
+
+### 6.7.2 Загрузка ONNX-модели через backend и активация
+
+Полный цикл загрузки и активации ONNX-модели через backend и `SimClient`:
+
+```python
+from pathlib import Path
+from sim_client.http_client import SimClient
+
+client = SimClient(base_url="http://127.0.0.1:5210")
+
+uploaded = client.upload_model(
+    artifact_path=Path("artifacts/policy.onnx"),
+    name="cardboard-corridor",
+    version="rev37",
+    source="train_cardboard_corridor_v9.py",
+    metadata_json='{"frameStack": 4, "imageSize": 96}',
+    metrics_json='{"successRate": 0.83}',
+)
+model_id = uploaded["modelId"]
+
+activated = client.activate_model(model_id)
+assert activated["isActive"] is True
+
+binding = client.set_model_binding(
+    client_id="operator-1",
+    runtime_mode="unity-sim",
+    model_id=model_id,
+    agent_id="ego",
+)
+```
+
+Метод `upload_model` ([http_client.py:94-126](../../python/sim_client/http_client.py)) формирует `multipart/form-data` запрос, читая ONNX-файл потоком — это позволяет загружать артефакты сотни мегабайт без удвоения по памяти. Поле `metadata` принимает произвольный JSON-объект и сохраняется в model registry как часть записи `ModelInfoDto.MetadataPath`; типичное использование — фиксация гиперпараметров обучения и характеристик архитектуры (frame stack, размер входа, encoder type), которые потом нужны при запуске autopilot для соответствующей предобработки кадра.
+
+После активации привязка модели к конкретному оператору и режиму через `POST /api/model-bindings` позволяет системе работать с несколькими активными клиентами одновременно — каждый со своей моделью на своём агенте без конфликтов.
+
+### 6.7.3 Установка пользовательского плагина через CLI
+
+Инсталляция собранного пользовательского плагина выглядит так:
+
+```bash
+$ rusim plugin install ./vehicle.my-robot.v1.rusim-plugin.zip
+[rusim] reading manifest…
+[rusim]   id           = vehicle.my-robot.v1
+[rusim]   version      = 1.0.0
+[rusim]   contract     = 1
+[rusim] verifying compatibility against runtime contract 1 — ok
+[rusim] writing to ~/.rusim/plugins/vehicle.my-robot.v1/
+[rusim] updating ~/.rusim/plugin-registry.json
+[rusim] installed.
+
+$ rusim list vehicles
+vehicle.ks0223.v1                 KS0223 (built-in)
+vehicle.prometeo.sport.v1         Prometeo Sport (built-in)
+vehicle.my-robot.v1               My Robot
+
+$ rusim inspect vehicle.my-robot.v1
+id          : vehicle.my-robot.v1
+displayName : My Robot
+version     : 1.0.0
+sensors     : camera (RGB24, 96x96, 30Hz), ultrasonic (float32, 1, 10Hz)
+actuators   : drive (-1..+1), steer (-1..+1)
+```
+
+CLI выполняет описанные в 6.6.3 проверки совместимости и при успехе обновляет реестр в `~/.rusim/plugin-registry.json`. При следующем запуске Unity `PluginRegistry.Load` читает реестр через папку `Resources/UavSimulator/Plugins`, сливает с встроенным `PluginRegistryAsset` и добавляет новый плагин в каталог. Команды `rusim list vehicles` и `rusim inspect <id>` используют `GET /contract` runtime-API и отображают каталог в человеко-читаемой форме.
+
+Описанные три примера покрывают типовые точки взаимодействия с платформой — тренировочный цикл, операторская работа с моделями и расширение каталога — и одновременно демонстрируют, как три уровня API (Unity HTTP, backend, plugin SDK) работают совместно, не пересекаясь по ответственности.
