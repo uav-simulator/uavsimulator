@@ -65,15 +65,93 @@ flowchart LR
 
 ## 2.3 Unity runtime
 
+Unity-runtime реализован в проекте `src/UnityProject/uav-simulator/` и поставляется в виде standalone-сборки или запускается из Unity Editor. Внутри проекта C#-код организован по поддиректориям `Assets/Scripts/` с разделением на Core (ядро жизненного цикла), Plugins (реестр и дескрипторы плагинов), Api (HTTP-сервер и facade), Vehicles (базовые классы транспортных средств), Tracks (базовые классы трасс) и Contracts (общие сериализуемые типы данных). Архитектурно ядро runtime построено вокруг трёх MonoBehaviour-объектов, инстанцируемых при загрузке любой сцены, и одного facade-объекта в качестве единой поверхности контракта.
+
 ### 2.3.1 Точка входа: RuntimeSceneBootstrap
+
+Точкой входа Unity-runtime служит статический класс `RuntimeSceneBootstrap` (см. [src/UnityProject/uav-simulator/Assets/Scripts/Core/RuntimeSceneBootstrap.cs](../../src/UnityProject/uav-simulator/Assets/Scripts/Core/RuntimeSceneBootstrap.cs)). Метод `EnsureRuntimeObjects`, помеченный атрибутом `[RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]`, выполняется автоматически при старте любой сцены — как в Editor-режиме, так и в standalone-сборке — до того, как сама сцена будет загружена. Это снимает с Unity-сцен обязанность вручную инстанцировать ядерные объекты и обеспечивает идентичное поведение runtime в разных сценах: учебных, тренировочных и демонстрационных.
+
+```csharp
+public static class RuntimeSceneBootstrap
+{
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+    private static void EnsureRuntimeObjects()
+    {
+        ConfigureRuntimeExecution();
+        var manager = EnsureSimulationManager();
+        InstallSceneHooks();
+        OnSceneLoaded(SceneManager.GetActiveScene(), LoadSceneMode.Single);
+        EnsureApiHost();
+        EnsureRos2BridgeHostIfEnabled();
+    }
+}
+```
+
+Bootstrap решает четыре связанные задачи. Во-первых, он настраивает базовые параметры исполнения: устанавливает `Application.runInBackground = true`, чтобы симуляция и API оставались отзывчивыми, когда окно Unity не находится в фокусе (это критично для тренировочных запусков, где обучение идёт фоном). Во-вторых, он гарантирует, что в сцене присутствует ровно один экземпляр `SimulationManager`: при отсутствии — создаётся новый объект, помечаемый как `DontDestroyOnLoad`. В-третьих, через `InstallSceneHooks` подписывается обработчик `SceneManager.sceneLoaded`, который при каждой смене сцены повторно привязывает корни трассы и транспортного средства, а также применяет шаги совместимости рендеринга. Наконец, через `EnsureApiHost` инстанцируется `HttpJsonApiHost` — сетевая оболочка runtime. Опциональная активация ROS 2 bridge-а контролируется переменной окружения `UAVSIM_ENABLE_ROS2_BRIDGE` и используется в исследовательских сценариях; в основной поставке остаётся выключенной.
 
 ### 2.3.2 SimulationManager как ядро жизненного цикла
 
+Ядром жизненного цикла является класс `SimulationManager` (см. [src/UnityProject/uav-simulator/Assets/Scripts/Core/SimulationManager.cs](../../src/UnityProject/uav-simulator/Assets/Scripts/Core/SimulationManager.cs)) — `MonoBehaviour`, объединяющий ссылки на активный реестр плагинов, активную трассу, активный набор транспортных средств и связанные с ними параметры маршрута. Файл содержит около 1240 строк и инкапсулирует семантику двух главных операций — `ResetSimulation` и `Step`. Состав `SimulationManager` выражается через несколько внутренних структур: `PluginRegistrySnapshot registry` хранит каталог доступных роботов и трасс; `TrackBase activeTrack` — текущую активную трассу; список `activeAgents` — все активные транспортные средства, каждое из которых описано записью `ActiveAgentRuntime` с полями `AgentId`, `VehicleId`, `IsPrimary`, `Vehicle`, `TrackParams` и `VehicleParams`; набор полей `activeRouteWaypoints`, `activeRouteWaypointIndex`, `activeRouteReachDistance` и `activeRouteLoop` управляет маршрутным прогрессом основного агента.
+
+Поверхность класса включает несколько публичных методов:
+
+```csharp
+public sealed class SimulationManager : MonoBehaviour
+{
+    public void ConfigureRoots(Transform sceneTrackRoot, Transform sceneVehicleRoot);
+    public void RemoveSceneVehiclePlaceholders();
+    public SimulatorContractDescriptor GetContract();
+    public void ResetSimulation(SimulationConfig config);
+    public SimulationRuntimeDiagnostics GetDiagnostics();
+    public StepResult Step(ControlCommand command);
+    public StepResult ReadSnapshot(string targetAgentId = null,
+        string targetVehicleId = null, bool includeFrame = true);
+    public VehicleState ReadState();
+    public bool TryReadCameraFrame(out CameraFrame frame);
+}
+```
+
+Метод `ResetSimulation` принимает структуру `SimulationConfig` с описанием сцены: seed, масштаб времени, идентификаторы выбранных трассы и транспортного средства, параметры трассы и робота, флаги поведения и список агентов. Реализация сначала прогоняет конфигурацию через статический валидатор `SimulationConfigValidator.Validate(config, registry)`, который сверяет идентификаторы со снимком реестра плагинов и подбирает дескрипторы. Далее `DestroyActiveInstances` уничтожает предыдущую сцену, инстанцируется новая трасса и применяются её параметры через `ApplyTrackParams` и `ResetTrack(seed)`. Затем для каждой записи в `resolvedAgents` создаётся новый экземпляр транспортного средства, ему передаются параметры (`ApplyVehicleConfig`), вызывается `ResetVehicle(seed + index)`, после чего применяется логика спавна с учётом смещений и поворота относительно стартовой точки трассы.
+
+Метод `Step` принимает `ControlCommand` и применяет её к одному из активных агентов, выбираемому по полю `targetAgentId` или `targetVehicleId`. На целевом транспортном средстве последовательно вызываются `ApplyControl(command)`, `TryReadCameraFrame(out var frame)` и `ReadState()`, а для основного агента дополнительно обновляется маршрутный прогресс. Возвращаемый `StepResult` содержит состояние, кадр камеры (если получен), флаг завершения, сводный массив результатов всех агентов и карту вспомогательной информации. Это делает `Step` атомарной операцией, предсказуемой как для тренировочного цикла, так и для операторского запроса.
+
+Многоагентная модель встроена в ядро без выделения в отдельный объект: все активные транспортные средства живут в одном `SimulationManager`, разделяют физический мир и могут быть либо полностью изолированы друг от друга (флаг `agents.isolated`), либо взаимодействовать через общий слой коллизий и видимости. Метод `ApplyAgentInteractions` (`SimulationManager.cs:982-1010`) читает три флага конфигурации — `agents.isolated`, `agents.see_each_other`, `agents.collisions_enabled` — и переключает слои коллизий и видимость каждого агента через `SetLayerRecursively` и `VehicleBase.SetPeerVisibility`. Это позволяет одной и той же сцене обслуживать как сценарии, где агенты не видят друг друга (используется в тренировке для увеличения параллелизма), так и сценарии с физическим взаимодействием.
+
 ### 2.3.3 PluginRegistry и каталог сущностей
+
+Каталог сущностей, доступных runtime, ведётся статическим классом `PluginRegistry` и его иммутабельным снимком `PluginRegistrySnapshot` (см. [src/UnityProject/uav-simulator/Assets/Scripts/Plugins/PluginRegistry.cs](../../src/UnityProject/uav-simulator/Assets/Scripts/Plugins/PluginRegistry.cs)). Метод `Load` собирает снимок из трёх источников и сводит их по правилам приоритета. Первый источник — `PluginRegistryAsset`, представляющий собой `ScriptableObject` с массивами явно указанных дескрипторов (применяется, когда поставляемая сборка содержит curated-набор плагинов). Второй источник — папка `Resources/UavSimulator/Plugins`, в которой ищутся произвольные `VehiclePluginDescriptor` и `TrackPluginDescriptor` (используется при разработке плагинов и для пользовательских установок). Третий источник — `BuiltinPluginFactory.CreateSnapshot`, формирующий встроенный набор плагинов программно (см. [src/UnityProject/uav-simulator/Assets/Scripts/Plugins/BuiltinPluginFactory.cs](../../src/UnityProject/uav-simulator/Assets/Scripts/Plugins/BuiltinPluginFactory.cs)).
+
+Слияние выполняется через `PluginRegistrySnapshot.MergePreferPrimary`, реализующий поведение «primary перекрывает secondary» по полю `id`. На практике это означает, что при наличии конфликта приоритет получает сначала явно указанный `PluginRegistryAsset`, затем дескрипторы из папки `Resources`, и только затем — встроенный fallback от фабрики. Такой порядок гарантирует, что пользовательский плагин с тем же `id`, что и встроенный, корректно его подменяет, а отсутствие пользовательских плагинов оставляет работоспособной поставляемую сборку. Снимок реестра, получаемый методом `Load`, является иммутабельным: после загрузки `SimulationManager` хранит ссылку на него и читает поля `Vehicles`, `Tracks` и `Source` без возможности модификации в runtime. Это делает каталог детерминированным на протяжении всей сессии симуляции.
+
+Описанная двухконтурная модель реестра (build-time `PluginRegistryAsset` плюс runtime `~/.rusim/plugin-registry.json` через `Resources`-папку) подробно разбирается в разделе 5 настоящей работы; здесь она упомянута как архитектурный элемент, обеспечивающий единую точку discovery для всей платформы. На реестр опираются три различных потребителя: `SimulationManager` использует его при `ResetSimulation` для подбора дескрипторов и проверки совместимости; CLI `rusim plugin list` обращается к нему через HTTP-маршрут `/contract` для отображения каталога пользователю; backend `/api/health` использует поле `pluginRegistrySource` диагностики runtime для информирования оператора об источнике каталога. Выделение реестра в самостоятельный модуль с минимальным интерфейсом (один статический метод `Load` и иммутабельный снимок) упрощает рассуждения о состоянии и позволяет писать тесты на детерминированность результата для одного и того же набора входных asset-ов.
 
 ### 2.3.4 HTTP JSON API host
 
+Сетевая оболочка Unity-runtime реализована парой классов `HttpJsonApiHost` и `HttpJsonSimulatorApiServer` (см. [src/UnityProject/uav-simulator/Assets/Scripts/Api/HttpJsonApiHost.cs](../../src/UnityProject/uav-simulator/Assets/Scripts/Api/HttpJsonApiHost.cs) и [HttpJsonSimulatorApiServer.cs](../../src/UnityProject/uav-simulator/Assets/Scripts/Api/HttpJsonSimulatorApiServer.cs)). `HttpJsonApiHost` — `MonoBehaviour`, выступающий обёрткой жизненного цикла: в `Awake` он находит `SimulationManager` в сцене, читает переменные окружения `UAVSIM_API_HOST` и `UAVSIM_API_PORT` (для гибкого выбора адреса в multi-instance тренировочных запусках), создаёт `SimulatorApiFacade` поверх найденного менеджера и передаёт его в `HttpJsonSimulatorApiServer`. Стандартное прослушивание — `127.0.0.1:8000`; при равенстве host-а `127.0.0.1` или `localhost` сервер регистрирует три префикса (`127.0.0.1:port`, `localhost:port` и `*:port`), что гарантирует доступность из любого локального клиента и не требует прав администратора для биндинга `*:port` в обычной пользовательской сессии Windows и macOS.
+
+Сам сервер построен на `System.Net.HttpListener` без сторонних зависимостей: для встроенного транспорта Unity такой выбор обеспечивает минимальный footprint и не вносит в проект внешний пакет. Цикл `AcceptLoopAsync` блокирующе ожидает входящих контекстов и для каждого из них запускает обработку в `HandleContextAsync`. Маршрутизация выполняется в методе `DispatchAsync` и поддерживает в текущей версии четыре маршрута: `GET /health` (диагностика), `GET /contract` (описание поверхности), `POST /reset` (новая симуляция со структурой `SimulationConfig` в теле запроса) и `POST /step` (один шаг с `ControlCommand` в теле). Любой неизвестный путь возвращает `404` со структурированным JSON-ответом `{"error":"not_found"}`. Обработка `ArgumentException` мапируется на код `400 Bad Request`, `InvalidOperationException` — на `500 Internal Server Error`, что упрощает диагностику со стороны Python-клиента и CLI: ошибочный сценарий конфигурации возвращает осмысленный текст в поле `error` и даёт исследователю прямую обратную связь без чтения логов Unity.
+
+Сериализация выполняется через `UnityEngine.JsonUtility.ToJson` и `JsonUtility.FromJson` — встроенный сериализатор Unity, рассчитанный на поля `[Serializable]`-классов из `UavSimulator.Contracts`. Это решение продиктовано совместимостью: классы DTO одновременно используются как поля в инспекторе Unity и как сетевой контракт, и `JsonUtility` обеспечивает единое представление без дополнительной разметки атрибутами. Все вызовы `facade.Reset`, `facade.Step`, `facade.GetHealth` и `facade.GetContract` принудительно ставятся в очередь главного Unity-потока через `UnityMainThreadDispatcher.Instance.Enqueue` — это критично, поскольку взаимодействие с физикой и иерархией сцен в Unity допустимо только из главного потока.
+
 ### 2.3.5 SimulatorApiFacade и поверхность контракта
+
+`SimulatorApiFacade` (см. [src/UnityProject/uav-simulator/Assets/Scripts/Api/SimulatorApiFacade.cs](../../src/UnityProject/uav-simulator/Assets/Scripts/Api/SimulatorApiFacade.cs)) — единственная точка контакта между HTTP-уровнем и парой `SimulationManager` + `PluginRegistry`. Класс невелик — около 70 строк — и реализует четыре операции, образующие поверхность runtime-контракта:
+
+```csharp
+public sealed class SimulatorApiFacade
+{
+    public SimulatorContractDescriptor GetContract();
+    public SimulatorHealthStatus GetHealth();
+    public StepResult Reset(SimulationConfig config);
+    public StepResult Step(ControlCommand command);
+}
+```
+
+Метод `GetContract` возвращает структурное описание runtime: идентификатор симулятора, версию контракта и каталоги доступных трасс и роботов в виде `TrackContractDescriptor` и `DeviceContractDescriptor` соответственно. `GetHealth` агрегирует диагностические показатели — источник каталога плагинов, количество активных и доступных сущностей, идентификаторы текущего активного агента и трассы — и используется как backend-ом, так и CLI для проверки готовности runtime до отправки реальных команд. `Reset` делегирует работу `SimulationManager.ResetSimulation` и сразу же возвращает первое наблюдение через `ReadSnapshot(includeFrame: true)`; такая семантика устраняет race condition между завершением `reset` и первым `step` в тренировочном цикле. `Step` напрямую делегируется одноимённому методу менеджера и возвращает `StepResult` со состоянием, кадром, наградой, флагом завершения и массивом результатов всех агентов.
+
+Архитектурный смысл facade состоит в том, что он фиксирует поверхность контракта в виде четырёх типизированных операций и инкапсулирует все детали внутреннего устройства — структуру `SimulationManager`, наличие или отсутствие multi-agent режима, способ хранения каталога. Все внешние интеграции — CLI `rusim`, backend `UnityKs0223RuntimeProvider`, Python `SimClient` — обращаются исключительно через эти четыре операции. Это даёт два важных следствия. Во-первых, изменения внутренней логики runtime (например, переход от реестра в `Resources` на полностью in-memory каталог, или замена встроенного physics-цикла на детерминированный шаговый) не приводят к изменениям в клиентских интеграциях, пока facade сохраняет signatures. Во-вторых, добавление альтернативного транспорта (например, gRPC- или WebSocket-сервер) сводится к написанию нового сервера поверх того же facade, без модификации Unity-логики; такой механизм уже частично присутствует в виде `Ros2BridgeProcessHost`, активируемого по переменной окружения. Единая поверхность контракта таким образом служит линией изоляции, отделяющей внутреннюю эволюцию runtime от внешних обязательств перед клиентами.
+
+
 
 ## 2.4 Operator stack
 
