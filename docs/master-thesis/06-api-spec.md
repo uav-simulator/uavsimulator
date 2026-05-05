@@ -345,7 +345,69 @@ public sealed class ConfigKeyValue
 
 ## 6.4 Backend HTTP API и SignalR
 
-(в работе)
+### 6.4.1 Группировка маршрутов по доменам
+
+Backend ([Program.cs](../../src/ks0223-web-mac/backend/Program.cs)) в текущей версии публикует около 46 HTTP-маршрутов и один SignalR-хаб. По функциональному назначению маршруты группируются в десять доменов: status/health, connection, models, autopilot, sensors, LED, camera, command, logs, demo, scenarios. Группировка отражает прямые соответствия с разделами Web UI и одновременно служит точкой входа для CLI и автоматизации.
+
+Таблица 6.4 — Сводка backend HTTP-маршрутов по доменам
+
+| Домен | Маршруты | Назначение |
+|---|---|---|
+| Status/health | `GET /api/status`, `GET /api/health` | Сводка о подключениях и текущих сессиях |
+| Connection | `POST /api/connection/connect`, `POST /api/connection/disconnect`, `GET /api/connection/target` | Управление сессией клиента к runtime |
+| Unity discovery | `GET /api/unity/runtime-catalog`, `POST /api/unity/runtime-selection`, `POST /api/unity/client-selection`, `GET /api/unity/discover` | Каталог Unity-runtime и переключение track/vehicle |
+| Models | `POST /api/models/upload`, `GET /api/models`, `GET /api/model-catalog`, `GET /api/models/active`, `POST /api/models/activate`, `GET /api/model-bindings/current`, `POST /api/model-bindings` | Реестр ONNX-моделей и привязка их к клиенту |
+| Autopilot | `POST /api/autopilot/start`, `POST /api/autopilot/stop`, `GET /api/autopilot/preview`, `GET /api/autopilot/status` | Запуск inference loop на активной модели |
+| Sensors | `GET /api/sensors/status`, `GET /api/sensors/latest`, `POST /api/sensors/config`, `POST /api/sensors/ultrasonic/position`, `POST /api/sensors/ultrasonic/auto-scan` | Sensor bridge к Pi и параметры авто-скана |
+| LED | `POST /api/led/pattern`, `POST /api/led/custom`, `POST /api/led/clear` | Управление LED-матрицей робота |
+| Camera | `GET /api/camera/status`, `GET /api/camera/snapshot`, `GET /api/camera/mjpeg` | Доступ к видеопотоку с Pi или Unity |
+| Command | `POST /api/command` | Низкоуровневая команда оператора |
+| Logs/demo | `POST /api/logs/start`, `POST /api/logs/stop`, `GET /api/logs/files`, `POST /api/logs/open-folder`, `POST /api/demo/start`, `POST /api/demo/stop`, `POST /api/demo/replay/start`, `POST /api/demo/replay/stop`, `GET /api/demo/replay/status`, `GET /api/demo/replay/sessions` | Журналирование и запись/воспроизведение демо |
+| Scenarios | `GET /api/scenarios`, `POST /api/scenarios/load` | Список и применение сценарных YAML-файлов |
+| Protocol | `GET /api/protocol` | Описание транспорта для активного режима |
+| SignalR | `MapHub /hub/telemetry` | Push-телеметрия в Web UI |
+
+Полный перечень определён непосредственно в `Program.cs` и привязан к сервисам `RuntimeSessionManager`, `ModelRegistryService`, `AutopilotService`, `SessionLogger`, `SessionVideoRecorder`, `DemoReplayService`. Каждый маршрут реализован как minimal API endpoint без отдельного controller-класса, что отражает компактный размер backend (один файл `Program.cs` объёмом порядка 1060 строк) и сознательный отказ от шаблона `MVC` в пользу плоской декомпозиции.
+
+### 6.4.2 Маршруты сессий (connect, disconnect, status)
+
+Маршрут `POST /api/connection/connect` (`Program.cs:82-93`) принимает структуру `ConnectRequest` ([Models/Contracts.cs:11-15](../../src/ks0223-web-mac/backend/Models/Contracts.cs)) с полями `ClientId`, `RuntimeMode`, `Host`, `Port` и устанавливает сессию указанного клиента к одной из двух подложек — `unity-sim` или `real-robot`. Логика подключения делегирована `RuntimeSessionManager.ConnectAsync`; ответ — `StatusDto` со сводкой о состоянии подключения, включая `DesiredConnection`, `TcpConnected`, `LatencyMs` и `LastError`.
+
+Симметричный маршрут `POST /api/connection/disconnect` (`Program.cs:95-106`) разрывает сессию по тем же ключам. Маршрут `GET /api/status` агрегирует состояние сессии и позволяет Web UI и CLI читать его без отправки запроса в runtime, а `GET /api/health` дополняет его сведениями о состоянии sensor bridge и cameras.
+
+### 6.4.3 Маршруты автопилота и моделей
+
+Реестр моделей и autopilot тесно связаны в платформе и образуют пару доменов с шестью endpoint-ами на каждом. `POST /api/models/upload` (`Program.cs:108-140`) принимает `multipart/form-data` с полями `file` (ONNX-артефакт), `name`, `version`, `source`, `metadata`, `metrics` и возвращает `ModelInfoDto` ([Models/Contracts.cs:151-161](../../src/ks0223-web-mac/backend/Models/Contracts.cs)) — структуру с `ModelId`, `CreatedAtUtc`, `IsActive`, путями к артефакту и метаданным и полем `Compatibility` (`CompatibilityHintsDto`), описывающим совместимые runtime-режимы и идентификаторы транспортных средств. Загрузка через multipart выбрана осознанно: ONNX-файлы могут достигать сотен мегабайт, и stream-загрузка экономит память по сравнению с base64-в-JSON.
+
+Маршрут `GET /api/models` возвращает плоский список моделей; `GET /api/model-catalog` группирует их по полю `Name` в записи `ModelCatalogEntryDto` со списком `Versions` для удобства отображения в Web UI. `POST /api/models/activate` (`Program.cs:162-173`) принимает `ActivateModelRequest` с одним полем `ModelId` и помечает указанную модель как активную в реестре. `GET /api/models/active` возвращает `ModelInfoDto` активной модели или `404 Not Found`, если активация не была выполнена.
+
+Маршруты model bindings (`/api/model-bindings/current` и `/api/model-bindings`) добавляют к простой активации привязку модели к конкретному `(ClientId, RuntimeMode, AgentId)`-ключу — это позволяет в multi-client-сценарии иметь одновременно несколько активных привязок различных клиентов к разным моделям.
+
+Запуск автопилота — `POST /api/autopilot/start` (`Program.cs:206-217`) принимает `StartAutopilotRequest` ([Models/Contracts.cs:209-215](../../src/ks0223-web-mac/backend/Models/Contracts.cs)) с полями `ClientId`, `RuntimeMode`, `AgentId`, `ModelId`, `LoopIntervalMs`, `MaxDurationSeconds`. Backend создаёт inference loop, читающий кадры из активного runtime, запускающий ONNX-модель через `Microsoft.ML.OnnxRuntime` и отправляющий выводимую команду обратно в runtime. Маршрут `POST /api/autopilot/stop` останавливает loop; `GET /api/autopilot/status` возвращает `AutopilotStatusDto` ([Models/Contracts.cs:221-242](../../src/ks0223-web-mac/backend/Models/Contracts.cs)) с сводкой о шагах, командах и времени последней активности; `GET /api/autopilot/preview` сэмплирует одну итерацию inference без отправки команды и возвращает `PreviewSampleDto` с logits и probabilities — это используется Web UI в режиме отладки модели.
+
+### 6.4.4 Маршруты сенсоров и LED
+
+Sensor- и LED-маршруты — наиболее KS0223-специфичная часть API, сопрягающаяся с Pi-овским addon-ом, опубликованным как отдельная HTTP-надстройка над рабочим протоколом контроллера. `GET /api/sensors/status` возвращает `SensorBridgeStatusDto` со сводкой о доступности bridge-а и числе последовательных ошибок; `GET /api/sensors/latest` — последнее принятое сообщение в виде `SensorTelemetryDto`. `POST /api/sensors/config` (`Program.cs:359-386`) принимает `SensorConfigRequest` с опциональными полями `AutoScanEnabled`, `SampleIntervalMs`, `ScanIntervalSec`, `ScanSettleMs`, `DriveSpeedPercent`, `CameraSpeedPercent` и применяет их к bridge-у через addon-овский endpoint.
+
+Маршруты `POST /api/sensors/ultrasonic/position` и `POST /api/sensors/ultrasonic/auto-scan` управляют сервоприводом ультразвукового датчика на физическом роботе. На стороне `unity-sim` те же запросы приводят к смене направления виртуального ультразвука в сцене — это согласовано в обеих подложках через `IKs0223RuntimeProvider`.
+
+LED-маршруты (`/api/led/pattern`, `/api/led/custom`, `/api/led/clear`) принимают `LedPatternRequest` или `LedCustomFrameRequest` со строкой паттерна или hex-кадром и применяют их к LED-матрице робота — на физической стороне напрямую через TCP-команду, на симуляционной — через корневой компонент vehicle-плагина, реализующий соответствующий канал.
+
+### 6.4.5 Маршруты сценариев и плагинов
+
+`GET /api/scenarios` (`Program.cs:648-680`) перечисляет все YAML-файлы из директории `<repo>/configs/scenarios/` и возвращает их с размером, временем последней модификации и отображаемым именем. Поиск директории выполняется через `ResolveScenariosDir` с тремя кандидатами: переменная окружения `SCENARIOS_DIR`, путь `/app/configs/scenarios` для Docker-сборки и относительный путь от рабочего каталога backend для локальной разработки.
+
+`POST /api/scenarios/load` (`Program.cs:682-759`) принимает `LoadScenarioRequest` с полем `FilePath` и применяет сценарий через subprocess-вызов CLI `rusim scenario reset`. Этот выбор архитектурно неочевиден на первый взгляд: backend мог бы парсить YAML и формировать `SimulationConfig` сам. Делегирование в `rusim` решает две задачи. Во-первых, парсер сценариев в `python/sim_client/scenario.py` уже реализует валидацию, разрешение include-ов и применение defaults; дублировать это в `.NET` — лишняя работа. Во-вторых, единая реализация гарантирует, что Web UI и CLI применяют сценарии одинаково. Единственное требование — наличие `rusim` в PATH или в переменной `RUSIM_PATH`.
+
+В текущей версии backend не содержит отдельных маршрутов управления плагинами: установка плагинов происходит через CLI `rusim plugin install`, а runtime читает реестр `~/.rusim/plugin-registry.json` при старте. Backend узнаёт о составе плагинов через `GET /api/unity/runtime-catalog` (`Program.cs:254-269`), который проксирует запрос к Unity `GET /contract` и возвращает Web UI каталог в виде `UnityRuntimeCatalogDto`.
+
+### 6.4.6 SignalR-хаб для push-телеметрии
+
+Telemetry-хаб ([Hubs/TelemetryHub.cs](../../src/ks0223-web-mac/backend/Hubs/TelemetryHub.cs)) — единственный SignalR-хаб платформы, доступный по маршруту `/hub/telemetry` (`Program.cs:816`). Он реализует push-доставку телеметрии в браузер: backend, получая обновления статуса подключения, кадров камеры, sensor telemetry или прогресса демо-реплея, рассылает их подписанным клиентам без необходимости polling-а.
+
+Метод `BindClient(string clientId)` группирует SignalR-соединение с `clientId` через стандартные SignalR Groups; имя группы вычисляется `RuntimeSessionManager.GetClientGroup`. Это позволяет одному backend-процессу обслуживать несколько браузеров, открытых разными операторами, и доставлять каждому только релевантные ему обновления. При обрыве соединения метод `OnDisconnectedAsync` (`TelemetryHub.cs:44-53`) удаляет привязку и снимает регистрацию клиента в `RuntimeSessionManager`.
+
+Выбор SignalR над raw WebSocket мотивирован двумя соображениями. SignalR автоматически выбирает транспорт (WebSocket, Server-Sent Events, long polling) в зависимости от возможностей клиента и сети, что снимает с фронтенда задачу диагностики транспорта. SignalR имеет первоклассную интеграцию с `ASP.NET Core` и DI-контейнером, что позволяет инжектировать `RuntimeSessionManager` в хаб напрямую.
 
 ## 6.5 Plugin SDK API (краткий обзор)
 
