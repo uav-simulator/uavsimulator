@@ -189,7 +189,159 @@ Unity HTTP API поднимается классом `HttpJsonApiHost` ([HttpJso
 
 ## 6.3 Транспортные DTO
 
-(в работе)
+### 6.3.1 ControlCommand
+
+`ControlCommand` ([SimulatorContracts.cs:67-82](../../src/UnityProject/uav-simulator/Assets/Scripts/Contracts/SimulatorContracts.cs)) — структура управляющей команды от клиента к runtime. Минимальная команда задаётся тремя нормализованными скалярами `throttle`, `steer`, `brake`; этого достаточно для большинства colon-style роботов класса KS0223 и универсально работает с встроенными vehicle-плагинами.
+
+```csharp
+[Serializable]
+public sealed class ControlCommand
+{
+    public float throttle;
+    public float steer;
+    public float brake;
+
+    public string targetAgentId;
+    public string targetVehicleId;
+
+    public long timestamp;
+    public string timeBase;
+
+    public ConfigKeyValue[] extensions;
+}
+```
+
+Таблица 6.2 — Поля `ControlCommand`
+
+| Поле | Тип | Единица/диапазон | Обязательно | Описание |
+|---|---|---|---|---|
+| `throttle` | float | [-1, 1] | да | Нормализованная тяга. Положительное — вперёд, отрицательное — назад |
+| `steer` | float | [-1, 1] | да | Нормализованный угол поворота. -1 — крайнее левое, +1 — крайнее правое |
+| `brake` | float | [0, 1] | да | Нормализованное торможение |
+| `targetAgentId` | string | — | нет | Адресация команды конкретному агенту в multi-agent-сцене |
+| `targetVehicleId` | string | — | нет | Альтернатива `targetAgentId` через `vehicleId` плагина |
+| `timestamp` | long | unix_ms | нет | Метка времени отправки. Используется журналом и записью демо |
+| `timeBase` | string | "unix_ms" | нет | База времени метки |
+| `extensions` | ConfigKeyValue[] | — | нет | Device-specific каналы управления (PWM, серво, LED) |
+
+Приоритет адресации — сначала `targetAgentId`, затем `targetVehicleId`, в случае пустых обоих полей — primary-агент сцены. Это позволяет одиночному клиенту обращаться к простой однокамерной сцене без указания идентификаторов и тому же клиенту — управлять конкретным агентом в multi-agent-конфигурации без изменения формата команды.
+
+### 6.3.2 VehicleState
+
+`VehicleState` ([SimulatorContracts.cs:50-64](../../src/UnityProject/uav-simulator/Assets/Scripts/Contracts/SimulatorContracts.cs)) — структура состояния транспортного средства, возвращаемая в каждом `StepResult` и доступная через `VehicleBase.ReadState` ([VehicleBase.cs:17-45](../../packages/com.uav-simulator.plugin-sdk/Runtime/VehicleBase.cs)).
+
+```csharp
+[Serializable]
+public sealed class VehicleState
+{
+    public Posef pose;
+    public Vector3f linearVelocity;
+    public Vector3f angularVelocity;
+    public float speed;
+    public long timestamp;
+    public string timeBase;
+    public ConfigKeyValue[] telemetry;
+}
+```
+
+Поле `pose` содержит позицию и ориентацию через `Posef` (вложенные `Vector3f` и `Quaternionf`). Поле `linearVelocity` — линейная скорость в системе координат сцены, `angularVelocity` — угловая скорость в радианах в секунду. Поле `speed` — скалярная величина скорости, удобная для использования в качестве компонента наблюдения в reinforcement-learning без вычисления нормы вектора на стороне клиента. Поле `telemetry` несёт device-specific скаляры: показания линейных датчиков, ультразвука, заряда батареи; набор ключей задаётся плагином и формально описан в `DeviceContractDescriptor.sensors`.
+
+### 6.3.3 CameraFrame
+
+`CameraFrame` ([SimulatorContracts.cs:30-47](../../src/UnityProject/uav-simulator/Assets/Scripts/Contracts/SimulatorContracts.cs)) описывает кадр с камеры робота, возвращаемой как часть `StepResult.frame` или `AgentStepResult.frame`.
+
+```csharp
+[Serializable]
+public sealed class CameraFrame
+{
+    public string frameId;
+    public int width;
+    public int height;
+    public string format;
+    public string encoding;
+    public long timestamp;
+    public string timeBase;
+    public int bytesLength;
+    public string dataRef;
+    public string dataBase64;
+}
+```
+
+Таблица 6.3 — Поля `CameraFrame`
+
+| Поле | Тип | Описание |
+|---|---|---|
+| `frameId` | string | Уникальный идентификатор кадра, монотонно возрастает |
+| `width`, `height` | int | Размер кадра в пикселях |
+| `format` | string | Формат пикселей: `RGB24`, `RGBA32`, `JPEG` |
+| `encoding` | string | Кодирование payload-а: `base64` для inline или `ref` для внешнего хранилища |
+| `bytesLength` | int | Длина полезных данных в байтах до кодирования |
+| `dataBase64` | string | Inline-данные в base64 (заполняется при `encoding == "base64"`) |
+| `dataRef` | string | Указатель на внешнее хранилище (заполняется при `encoding == "ref"`) |
+
+Двухвариантное кодирование через `dataBase64` или `dataRef` отражает компромисс между простотой и пропускной способностью. Для тренировочных сценариев на одном хосте inline-base64 проще: HTTP-клиенту достаточно прочитать тело и декодировать поле напрямую. Для production-сценариев и удалённого исполнения в дальнейшем планируется добавление транспорта `dataRef`, при котором кадр публикуется в shared memory или по отдельному WebRTC-каналу, а HTTP-ответ несёт только идентификатор.
+
+### 6.3.4 SensorDescriptor + ActuatorDescriptor
+
+Дескрипторы каналов сенсоров и актуаторов формализуют контракт устройства в machine-readable форме и применяются для валидации совместимости плагина и сценария обучения.
+
+```csharp
+[Serializable]
+public sealed class SensorDescriptor
+{
+    public string id;
+    public string sensorType;
+    public string format;
+    public string unit;
+    public int[] shape;
+    public float rateHz;
+}
+
+[Serializable]
+public sealed class ActuatorDescriptor
+{
+    public string id;
+    public string actuatorType;
+    public string unit;
+    public float min;
+    public float max;
+}
+```
+
+В `SensorDescriptor` поле `sensorType` принимает значения `camera`, `ultrasonic`, `line_array`, `imu` и подобные; `format` уточняет тип данных (`RGB24` для камеры, `float32` для ультразвука); `shape` — форма тензора в случае массивных данных; `rateHz` — целевая частота обновления. В `ActuatorDescriptor` поля `min` и `max` задают физические границы канала, что используется obstacle-driven рандомизацией параметров на стороне backend и сценарным валидатором.
+
+Дескрипторы агрегируются в `DeviceContractDescriptor` ([SimulatorContracts.cs:165-175](../../src/UnityProject/uav-simulator/Assets/Scripts/Contracts/SimulatorContracts.cs)), который связывает идентификатор устройства с его типом и наборами сенсоров и актуаторов:
+
+```csharp
+public sealed class DeviceContractDescriptor
+{
+    public string deviceId;
+    public string deviceType;
+    public SensorDescriptor[] sensors;
+    public ActuatorDescriptor[] actuators;
+    public string observationSchemaJson;
+    public string actionSchemaJson;
+}
+```
+
+Поля `observationSchemaJson` и `actionSchemaJson` несут JSON-схему наблюдений и действий в текстовом виде. Это сделано осознанно: schema по своей природе вложенная и динамическая, и попытка её структурного представления через `[Serializable]`-DTO противоречила бы парадигме `JsonUtility`. Хранение схемы как текста позволяет автоматически валидировать наблюдения на стороне Python через `jsonschema` и одновременно сохраняет компактность runtime-DTO.
+
+### 6.3.5 ConfigKeyValue и параметры сценария
+
+Структура `ConfigKeyValue` ([SimulatorContracts.cs:84-89](../../src/UnityProject/uav-simulator/Assets/Scripts/Contracts/SimulatorContracts.cs)) — самая простая в платформе и самая часто встречающаяся в DTO:
+
+```csharp
+[Serializable]
+public sealed class ConfigKeyValue
+{
+    public string key;
+    public string value;
+}
+```
+
+Все «карты ключ-значение» в платформе сериализуются как массивы `ConfigKeyValue[]` — это вынужденная мера, обусловленная отсутствием поддержки `Dictionary` в `JsonUtility`. Структура применяется в шести различных контекстах: `trackParams` и `vehicleParams` в `SimulationConfig` для параметров плагинов, `flags` для логических переключателей сцены, `extensions` в `ControlCommand` для device-specific каналов, `telemetry` в `VehicleState` для скалярных датчиков и `info` в `StepResult` для произвольной диагностической информации. Конвенция значений — все значения хранятся как строки, парсинг в нужный тип — на стороне потребителя.
+
+Соглашения об именовании ключей зафиксированы в плагинах: `agents.isolated`, `agents.see_each_other`, `agents.collisions_enabled` для multi-agent-режима; `drive.left_pwm_norm`, `drive.right_pwm_norm` для дифференциального привода; `camera.pan_norm`, `camera.tilt_norm` для серво-камеры. Точечная нотация используется как пространство имён и упрощает документирование контракта плагина.
 
 ## 6.4 Backend HTTP API и SignalR
 
