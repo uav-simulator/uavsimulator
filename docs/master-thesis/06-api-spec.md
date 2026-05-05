@@ -411,7 +411,47 @@ Telemetry-хаб ([Hubs/TelemetryHub.cs](../../src/ks0223-web-mac/backend/Hubs/T
 
 ## 6.5 Plugin SDK API (краткий обзор)
 
-(в работе)
+Полное руководство по разработке плагинов составляет содержание раздела 5 настоящей работы. В данном подразделе зафиксирован архитектурный обзор API-поверхности SDK с акцентом на её роль в интеграционной модели платформы; детали реализации, lifecycle Editor-валидации и формат архива `.rusim-plugin.zip` рассмотрены в указанном разделе.
+
+### 6.5.1 PluginDescriptorBase и наследники
+
+Корнем иерархии описаний плагинов служит абстрактный класс `PluginDescriptorBase` ([packages/com.uav-simulator.plugin-sdk/Runtime/PluginDescriptorBase.cs](../../packages/com.uav-simulator.plugin-sdk/Runtime/PluginDescriptorBase.cs)):
+
+```csharp
+public abstract class PluginDescriptorBase : ScriptableObject
+{
+    public string id;
+    public string displayName;
+    public ContractVersion version;
+    [TextArea] public string description;
+}
+```
+
+Конкретные типы — `VehiclePluginDescriptor` и `TrackPluginDescriptor` — sealed-наследники, добавляющие специфичные для типа поля (`prefab`, `deviceContract` для vehicle; `prefab`, `parametersSchemaJson` для track). Сама база плагина определяется как `ScriptableObject`, что обеспечивает редактируемость через Unity Editor и сериализацию в asset-файл; внешний код взаимодействует с дескрипторами через стандартные Unity-механизмы загрузки и не требует знания о конкретной реализации плагина.
+
+Таблица 6.5 — Поверхность Plugin SDK API
+
+| Класс | Назначение | Точки расширения |
+|---|---|---|
+| `PluginDescriptorBase` | Общие поля идентификации и версии | Поля `id`, `displayName`, `version`, `description` |
+| `VehiclePluginDescriptor` | Описание робота | Поля `prefab`, `deviceContract` |
+| `TrackPluginDescriptor` | Описание трассы | Поля `prefab`, `parametersSchemaJson` |
+| `VehicleBase` | Логика робота | `ApplyControl`, `ReadState`, `TryReadCameraFrame`, `ApplyVehicleConfig`, `SetPeerVisibility`, `ResetVehicle` |
+| `TrackBase` | Логика трассы | `ResetTrack(int seed)` |
+| `DeviceContractDescriptorAsset` | Контракт устройства как asset | `DeviceContractDescriptor` поле |
+| `ContractVersion` | Семантическое версионирование | `major`, `minor`, `patch`, `IComparable` |
+
+### 6.5.2 VehicleBase и TrackBase: lifecycle hooks
+
+Базовый класс `VehicleBase` ([VehicleBase.cs](../../packages/com.uav-simulator.plugin-sdk/Runtime/VehicleBase.cs)) задаёт шесть точек расширения, которые runtime вызывает в определённые моменты lifecycle симуляции. `ApplyControl(ControlCommand command)` — горячий путь, вызывается каждый шаг, должен быть безаллокационным; `ReadState()` возвращает `VehicleState` и вызывается также каждый шаг; `TryReadCameraFrame(out CameraFrame frame)` — опциональный метод для роботов с камерой, по умолчанию возвращает `false`; `ApplyVehicleConfig(ConfigKeyValue[] vehicleParams)` вызывается один раз при reset для применения параметров domain randomization; `SetPeerVisibility(bool visible)` управляет видимостью робота для других агентов в multi-agent-сцене; `ResetVehicle(int seed)` сбрасывает робот в начальное состояние с заданным seed.
+
+Базовый класс `TrackBase` ([TrackBase.cs](../../packages/com.uav-simulator.plugin-sdk/Runtime/TrackBase.cs)) минимален и содержит единственную точку расширения — `ResetTrack(int seed)`. Это отражает асимметрию между транспортными средствами и трассами: робот участвует в каждом шаге симуляции и активно реагирует на команды, тогда как трасса в большинстве сценариев пассивна и нуждается лишь в инициализации с заданным seed.
+
+### 6.5.3 DeviceContractDescriptor
+
+`DeviceContractDescriptor` (структура из `UavSimulator.Contracts`, упомянутая в 6.3.4) дублируется в SDK как обёртка `DeviceContractDescriptorAsset`. Asset-вариант — `ScriptableObject`, на который ссылается `VehiclePluginDescriptor.deviceContract`, и который Editor-валидатор `PluginValidator` ([packages/com.uav-simulator.plugin-sdk/Editor/PluginValidator.cs](../../packages/com.uav-simulator.plugin-sdk/Editor/PluginValidator.cs)) проверяет на соответствие реальной конфигурации префаба перед экспортом плагина в архив.
+
+Дублирование контрактных типов в SDK — мера осознанная. SDK-проект не имеет ссылки на runtime-проект Unity напрямую; идентичные `[Serializable]`-классы в двух местах гарантируют совпадение бинарного представления при сериализации и одновременно позволяют разработчику плагина не таскать за собой полную иерархию runtime. Согласованность поддерживается тем, что обе копии классов формально объявлены идентично и любое расхождение немедленно проявляется при экспорте плагина — через ошибку валидации.
 
 ## 6.6 Стабильность и совместимость API
 
