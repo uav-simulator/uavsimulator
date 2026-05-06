@@ -28,11 +28,104 @@ Unity-контур опирается на две существенно раз�
 
 ### 3.2.1 Состояния и переходы
 
+`SimulationManager` (см. `src/UnityProject/uav-simulator/Assets/Scripts/Core/SimulationManager.cs`, 1244 строки) — центральный `MonoBehaviour` Unity-контура, проводящий через себя все запросы на изменение и чтение состояния симуляции. С точки зрения внешнего наблюдателя класс имеет четыре наблюдаемых состояния: непроинициализированное (после `Awake`, но до первого `ResetSimulation`), активное (трасса и хотя бы один агент инстанцированы), пустое (трасса инстанцирована, агентов нет — допустимо, если сценарий установил флаг `agents.allow_empty`) и пересобираемое (внутри `ResetSimulation` старые экземпляры уничтожены, новые ещё не созданы). Переходы между состояниями детерминированы и инициируются исключительно публичными методами: `ResetSimulation(SimulationConfig)`, `Step(ControlCommand)`, `ReadSnapshot`, `GetContract`, `GetDiagnostics`. Внутренние таймеры и колбэки Unity ничего не меняют в этой классификации; единственный фоновый шаг — `FixedUpdate` у `Ks0223Vehicle` — действует уже над инстанцированным агентом и не переводит сам менеджер в новое состояние.
+
+```mermaid
+stateDiagram-v2
+    [*] --> Uninitialized: Awake (PluginRegistry.Load)
+    Uninitialized --> Rebuilding: ResetSimulation(config)
+    Active --> Rebuilding: ResetSimulation(config)
+    Empty --> Rebuilding: ResetSimulation(config)
+    Rebuilding --> Active: primary agent != null
+    Rebuilding --> Empty: agents.allow_empty && no agents
+    Active --> Active: Step / ReadSnapshot
+    Empty --> Empty: ReadSnapshot
+    Active --> [*]: OnDestroy
+    Empty --> [*]: OnDestroy
+```
+
+Рисунок 3.1 — Состояния `SimulationManager` и переходы между ними
+
+Поведение в каждом состоянии задано контрактом. В непроинициализированном состоянии `Step` выбрасывает `InvalidOperationException` с сообщением «Active vehicle is not initialized. Call ResetSimulation first.», но `GetContract` и `GetDiagnostics` отрабатывают штатно — они опираются только на загруженный реестр плагинов, который доступен сразу после `Awake`. В активном состоянии полный набор операций исполнен. В пустом состоянии `ReadSnapshot` возвращает «нулевой» `StepResult` с пустыми массивами агентов, чтобы клиент мог отличить ситуацию «сцена есть, но агентов нет» от ошибки. В пересобираемом состоянии методы недоступны: `ResetSimulation` синхронен и возвращает управление только после полного завершения пересборки.
+
 ### 3.2.2 ResetWithConfig: применение сценария
+
+Метод `ResetSimulation` — наиболее сложная процедура в `SimulationManager`. Он принимает `SimulationConfig`, содержащий идентификаторы трассы и агентов, параметры трассы, параметры каждого агента, флаги и seed, и за один вызов приводит сцену в состояние, соответствующее этому описанию. Высокоуровневая последовательность шагов закреплена кодом и важна для понимания последующих частей главы.
+
+```csharp
+public void ResetSimulation(SimulationConfig config)
+{
+    var validation = SimulationConfigValidator.Validate(config, registry);
+    var allowEmptyAgents = TryReadFlag(config.flags, AllowEmptyAgentsKey, out var allowEmptyValue) && allowEmptyValue;
+    var resolvedAgents = ResolveAgentConfigs(config, validation.Vehicle, allowEmptyAgents);
+    var qualityProfile = ReadConfigValue(config.flags, RenderQualityProfileKey);
+    ApplyRuntimeGraphicsProfile(string.IsNullOrWhiteSpace(qualityProfile) ? "high" : qualityProfile);
+
+    DestroyActiveInstances();
+
+    activeTrack = InstantiateTrack(validation.Track);
+    activeTrackId = validation.Track != null ? validation.Track.id ?? string.Empty : string.Empty;
+    activeTrack.ApplyTrackParams(config.trackParams ?? Array.Empty<ConfigKeyValue>());
+    activeTrack.ResetTrack(config.seed);
+    Time.timeScale = validation.TimeScale;
+    ConfigureRoute(config.trackParams);
+
+    for (var index = 0; index < resolvedAgents.Count; index++)
+    {
+        var agent = resolvedAgents[index];
+        var vehicle = InstantiateVehicle(agent.Descriptor);
+        vehicle.ApplyVehicleConfig(agent.VehicleParams);
+        vehicle.ResetVehicle(config.seed + index);
+        ApplyVehicleSpawn(vehicle, agent.TrackParams, index, config.seed);
+        // ...
+    }
+
+    var primary = activeAgents.FirstOrDefault(agent => agent.IsPrimary) ?? activeAgents.FirstOrDefault();
+    // ...
+    ApplyAgentInteractions(config.flags);
+}
+```
+
+Алгоритм состоит из четырёх логических фаз. Первая — валидация конфигурации через отдельный класс `SimulationConfigValidator`. Этот класс проверяет, что заявленные идентификаторы трассы и транспортных средств присутствуют в загруженном реестре, и возвращает разрешённые дескрипторы вместе с производным `TimeScale`. Вторая — уничтожение активных экземпляров (`DestroyActiveInstances`), которое перебирает текущие агенты, удаляет их `GameObject` через `Destroy`, обнуляет идентификаторы и сбрасывает `Time.timeScale` к значению, запомненному в `Awake`. Третья — инстанцирование трассы и применение её параметров. Здесь сначала вызывается `InstantiateTrack`, затем `ApplyTrackParams` и `ResetTrack(seed)` — этот порядок важен, поскольку процедурные трассы (например, `CardboardMazeTrack`) используют параметры именно при сбросе для построения сетки коридоров. Четвёртая — инстанцирование агентов, применение конфигурации каждого, размещение в spawn-позиции и запись их в `activeAgents`.
+
+Заключительный шаг — применение взаимодействий между агентами через `ApplyAgentInteractions`. Метод читает три флага: `agents.isolated`, `agents.see_each_other`, `agents.collisions_enabled` и выставляет соответствующие layer-маски и пары `Physics.IgnoreCollision`. Это решает практически встречающуюся задачу: при обучении одной модели в присутствии скриптовых агентов основное транспортное средство не должно ни видеть их в кадре, ни сталкиваться с ними. Без `ApplyAgentInteractions` второй агент в сцене либо создавал бы ложные сигналы для зрительной модели, либо мешал движению.
+
+Параметры маршрута извлекаются отдельно через `ConfigureRoute`. Метод парсит ключи `route.waypoints`, `route.reach_distance_m`, `route.loop` из `trackParams` и при их отсутствии запрашивает у трассы её собственный список waypoint-ов через `activeTrack.GetDefaultWaypoints()`. Такая логика позволяет процедурным трассам (`CardboardMazeTrack`) поставлять путь самостоятельно, а ручным сценариям — переопределять путь конфигурацией. Заглушек на этом пути нет: если ни сценарий, ни трасса waypoint-ы не предоставили, `activeRouteWaypoints` остаётся пустым массивом, и поле `route.completed` в `info` всегда сообщает `false`.
 
 ### 3.2.3 Step: цикл управления и наблюдения
 
+Метод `Step(ControlCommand)` — основная горячая точка симулятора. Он вызывается на каждом шаге training loop, операторского пульта или autopilot inference loop с частотой до 30 Hz и образует единственный путь, через который внешний клиент применяет команду и получает наблюдение. Реализация компактна:
+
+```csharp
+public StepResult Step(ControlCommand command)
+{
+    var target = ResolveTargetAgent(command?.targetAgentId, command?.targetVehicleId);
+    if (target == null)
+    {
+        throw new InvalidOperationException("Active vehicle is not initialized. Call ResetSimulation first.");
+    }
+
+    target.Vehicle.ApplyControl(command);
+    target.Vehicle.TryReadCameraFrame(out var frame);
+    var state = target.Vehicle.ReadState();
+    var routeCompleted = target.IsPrimary && UpdateRouteProgress(state);
+    return BuildStepResult(target, state, frame, routeCompleted);
+}
+```
+
+Семантика шага следующая. Сначала команда направляется конкретному агенту через `ResolveTargetAgent`. Этот резолвер допускает три способа адресации: явное указание `targetAgentId`, явное указание `targetVehicleId` (если он уникален), и неявная привязка к primary-агенту в случае отсутствия адресной информации. Адресация по `targetVehicleId` реализована честно: если идентификатор транспортного средства встречается в нескольких агентах (например, обе ученические машины — это `vehicle.ks0223.v1`), резолвер выбрасывает `InvalidOperationException` с сообщением о неоднозначности. Так делается потому, что неявное приведение «возьми первого» в этой ситуации — источник трудно отлавливаемых ошибок при работе с двумя агентами одинакового типа.
+
+После применения команды менеджер последовательно собирает наблюдение. `TryReadCameraFrame` возвращает кадр в формате JPEG в base64 (формат закреплён контрактом `CameraFrame`), `ReadState` — численное состояние с полями скорости, угловой скорости и массивом телеметрии, в который `Ks0223Vehicle` укладывает значения PWM, ультразвука, line tracker и оценок мощности. Затем — обновление прогресса по маршруту через `UpdateRouteProgress`, причём только для primary-агента: вторичные агенты не имеют собственного маршрута, и сигнал `done` для них не имеет смысла. На выходе формируется `StepResult` с текущим целевым агентом в качестве «головы» и массивом `agents` — состояниями всех остальных активных агентов. Кадр камеры передаётся только для целевого агента, поскольку JPEG-кодирование одного кадра 1280×720 уже обходится в несколько миллисекунд, и кодировать кадры для всех агентов одновременно нецелесообразно.
+
+Кроме `Step`, существует менее нагруженный путь — `ReadSnapshot`. Он отличается тем, что не применяет команду и не продвигает прогресс маршрута. Его назначение — получить состояние сцены без вмешательства, например для веб-интерфейса, обновляющего показатели сенсоров между управляющими действиями. Возможность отказаться от кодирования кадра (флаг `includeFrame = false`) сохраняет ресурсы при частых обращениях.
+
 ### 3.2.4 Управление множеством агентов
+
+В первоначальной версии симулятора сцена содержала ровно одно транспортное средство. В текущей реализации `SimulationManager` поддерживает произвольное число одновременных агентов, при этом ровно один из них помечается как primary — именно к нему привязаны маршрут, основной канал управления оператором и кадр камеры по умолчанию. Внутреннее представление — список `activeAgents` элементов `ActiveAgentRuntime`, каждый из которых хранит идентификатор агента, идентификатор `VehicleBase`-инстанса, флаг primary, ссылку на `VehicleBase` и применённые параметры трассы и транспортного средства.
+
+Многоагентность потребовала уточнить два места: адресацию команды (см. выше) и взаимодействия между агентами. Последнее реализовано в `ApplyAgentInteractions` через комбинацию двух механизмов Unity: layer-масок и `Physics.IgnoreCollision`. Если флаг `agents.see_each_other` равен `false`, то все агенты, кроме целевого, переводятся на отдельный layer `VehicleBase.PeerVehicleLayer`, а сенсорная камера маскирует этот layer через `cullingMask`. Если флаг `agents.collisions_enabled` равен `false`, попарно для всех активных агентов выставляется `Physics.IgnoreCollision`. Эти два флага независимы: возможны конфигурации «вижу, но не сталкиваюсь» (демонстрационный режим) и «сталкиваюсь, но не вижу» (обучение в присутствии слепой опасности).
+
+Многоагентный сценарий использовался при разработке демо «город» — сцена `CityPolygonTrack` могла содержать обучаемого робота KS0223 и дополнительный скриптовый автомобиль на тех же дорогах. На стороне обучения многоагентный режим пока не задействован: тренировочные среды (`python/training/`) запрашивают по одному агенту на сцену. Но контракт `SimulationConfig` уже допускает массив `agents`, и backend-сторона `RuntimeSessionManager` маршрутизирует команды с указанием `targetAgentId`, что делает дальнейшее расширение в сторону multi-agent training шагом без структурной перестройки.
 
 ## 3.3 PluginRegistry и BuiltinPluginFactory
 
