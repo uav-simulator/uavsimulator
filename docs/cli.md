@@ -82,6 +82,8 @@ rusim inspect vehicle vehicle.prometeo.sport.v1 --base-url http://127.0.0.1:8000
 ```bash
 rusim reset --base-url http://127.0.0.1:8000 --track-id track.roadsystem_arena.v1 --vehicle-id vehicle.prometeo.sport.v1
 rusim step --base-url http://127.0.0.1:8000 --throttle 0.3 --steer 0.1
+rusim scenario list
+rusim scenario list --json
 rusim scenario validate configs/scenarios/ab-corridor-v1.yaml
 rusim scenario print-reset configs/scenarios/ab-corridor-v1.yaml
 rusim scenario reset configs/scenarios/ab-corridor-v1.yaml --base-url http://127.0.0.1:8000
@@ -90,7 +92,8 @@ rusim scenario reset configs/scenarios/ab-corridor-v1.yaml --base-url http://127
 Назначение:
 - переключать активный track и vehicle;
 - отправлять один шаг управления;
-- валидировать и применять YAML-сценарии.
+- валидировать и применять YAML-сценарии;
+- получать список доступных сценариев из `configs/scenarios/` (паритет с Web UI scenario picker и backend `/api/scenarios`).
 
 ## 5. Управление моделями
 
