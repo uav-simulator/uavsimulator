@@ -254,11 +254,103 @@ def _wrap_env(base_env, *, enable_aug, enable_anti_spin,
 
 ### 6.3.1 PPO как основной алгоритм
 
+В качестве основного RL-алгоритма выбран PPO (Proximal Policy Optimization) в реализации Stable-Baselines3. Выбор обоснован тремя соображениями. Первое — устойчивость к гиперпараметрам: в отличие от off-policy методов вроде SAC или TD3, PPO предполагает on-policy буфер, лимитирующий длину rollout-а одной итерации; такой буфер не накапливает stale-данные и не порождает эффектов, требующих тонкой настройки таргет-сетей и priority replay. Второе — наличие реализации `MultiInputPolicy`, поддерживающей обсервации в виде словаря; именно такая форма используется во всех env-обёртках платформы (`{image, ultrasonic}`). Третье — поддержка `RecurrentPPO` через `sb3-contrib`: при необходимости перейти на LSTM-policy для non-Markovian задач (см. подраздел 6.4.2) переключение делается одной CLI-опцией без переписывания training-loop.
+
+Альтернативой рассматривался DQN — он естественно ложится на дискретный action-space из пяти команд KS0223, и его off-policy характер позволял бы использовать prioritized replay для редких terminal-эпизодов. От DQN отказались из-за того, что для CNN-policy с словарным observation space SB3 нужна была бы заметная адаптация `QNetwork`, тогда как PPO работал «из коробки». Оба алгоритма проверены на ранних спайках (rev1-rev4 в `python/training/artifacts/ab_corridor_*`); PPO давал более стабильную кривую обучения на одних и тех же 200 тысячах шагов.
+
+Дискретное действие, подаваемое в env, превращается на стороне PPO в `Categorical(5)`-распределение. Соответствующий action_dist класс — `CategoricalDistribution`; он построен поверх логитов размерности 5, выходящих из `action_net` policy. Этот факт явно проверяется ассертом в тренировочном скрипте, чтобы исключить ситуацию, когда `MultiInputPolicy` ошибочно соберёт `DiagGaussianDistribution` (что произошло бы, если бы env-обёртки оставили continuous action space):
+
+```python
+print(f"  Action dist: {type(model.policy.action_dist).__name__}")
+assert "Categorical" in type(model.policy.action_dist).__name__, \
+    f"Expected Categorical action dist for Discrete action_space, got {type(model.policy.action_dist)}"
+```
+
 ### 6.3.2 train_cardboard_corridor_v9.py: общий поток
+
+Главный тренировочный скрипт — `python/training/train_cardboard_corridor_v9.py` (978 строк). Его «v9» в названии указывает на ревизию набора wrapper-ов: версии v6-v8 (continuous-action, без latency, без anti-spin) сохранены в репозитории как `train_cardboard_corridor.py` для воспроизводимости старых результатов; v9 — текущая основная.
+
+Поток исполнения скрипта идёт в одной функции `main` и состоит из шести фаз. Первая — парсинг CLI-аргументов и подготовка путей к артефактам и логам (`resolve_artifact_dir` собирает `python/training/artifacts/<model-name>/<version>/` по умолчанию). Вторая — построение тренировочной среды: в зависимости от флагов `--meta-multi-agent`, `--multi-agent` и `--num-envs` выбирается одна из четырёх описанных в 6.2 реализаций. Третья — оборачивание среды в дополнительные SB3-обёртки: `VecFrameStack` для frame stacking при `--frame-stack > 1`, `VecNormalize` для нормализации reward при `--normalize-rewards`. Четвёртая — построение модели PPO: либо `PPO.load(args.resume, ...)` для resume, либо новый экземпляр с явно собранным `policy_kwargs`. Пятая — сборка списка callback-ов и запуск `model.learn`. Шестая — сохранение SB3-чекпоинта, ONNX-экспорт и запись `metadata.json`.
+
+```python
+def main() -> int:
+    args = parse_args()
+    output_dir = resolve_artifact_dir(ROOT, args.output_dir,
+                                      args.model_name, args.model_version)
+    log_dir = Path(args.log_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    log_dir.mkdir(parents=True, exist_ok=True)
+    ...
+    model = ppo_cls(policy_id, train_env,
+                   learning_rate=args.learning_rate,
+                   n_steps=args.n_steps, batch_size=args.batch_size,
+                   n_epochs=args.n_epochs, gamma=args.gamma,
+                   clip_range=args.clip_range, ent_coef=ent_coef_value,
+                   target_kl=target_kl, verbose=1, seed=args.seed,
+                   device=args.device, tensorboard_log=tensorboard_log,
+                   policy_kwargs=policy_kwargs)
+    ...
+    model.learn(total_timesteps=args.total_timesteps,
+                callback=callbacks, progress_bar=False)
+    model.save(str(model_path))
+    export_to_onnx_discrete(model, onnx_path, img_size=args.img_size)
+    write_json(output_dir / "metadata.json", metadata)
+```
+
+Флаг `--resume` предусматривает важный для исследовательской работы сценарий: продолжение обучения с прошлого чекпоинта с обновлёнными гиперпараметрами. Когда он указан, `PPO.load` восстанавливает policy и optimizer из `.zip`-файла, а затем поверх восстановленных значений ставятся `learning_rate`, `clip_range`, `ent_coef` и `target_kl` из новых CLI-аргументов. `num_timesteps` сохраняется автоматически — это позволяет продолжать обучение, не сбрасывая total-счётчик и сохраняя прогресс curriculum-стейджей.
 
 ### 6.3.3 Гиперпараметры и их обоснование
 
+Дефолты гиперпараметров выбраны по итогам последовательности ревизий rev1-rev42, зафиксированных в `python/training/artifacts/cardboard-corridor-ppo-v9-rev*`. Каждый rev-ID соответствует одному прогону с фиксированной комбинацией параметров; их изменение явно прописано в commit message и в комментариях `parse_args`. Текущие defaults и их назначение приведены в таблице 6.1.
+
+Таблица 6.1 — Гиперпараметры PPO в `train_cardboard_corridor_v9.py`
+
+| Параметр | Default | Назначение | Когда менять |
+|---|---|---|---|
+| `learning_rate` | 3e-4 | Стандартный SB3 PPO LR | На R3M-extractor: понижают до 1e-4 |
+| `n_steps` | 512 | Длина rollout-а | rev38: подняли с 256 — мало transitions/update на vision RL |
+| `batch_size` | 64 | Mini-batch GAE | На GPU с большой памятью повышают до 256 |
+| `n_epochs` | 10 | PPO update epochs | rev38: подняли с 4 — стандарт для vision RL |
+| `gamma` | 0.99 | Discount factor | Длинные эпизоды (>400 шагов) на 0.995 |
+| `clip_range` | 0.2 | PPO clip ratio | Не трогать без оснований |
+| `ent_coef` | 0.1 | Entropy bonus | rev29: явно зафиксирован 0.1 после drift на 0.02 |
+| `target_kl` | 0.02 | Anti-collapse early stop | rev30: введён, по умолчанию активен |
+| `frame_stack` | 1 | Stacking k frames | rev38: рекомендуется 4 для maze |
+| `seed` | 42 | RNG seed | Sweep-ы: 42, 1337, 7, 11, 23 |
+
+Несколько пунктов требуют пояснения. `ent_coef = 0.1` зафиксирован после неприятного открытия: ревизии rev24-rev28 наследовали значение 0.02 от ранних экспериментов (rev10-rev18 обучались с 0.1), что в пять раз снижало entropy-бонус и приводило к ранней схлопыванию policy в degenerate-режим на тяжёлой доменной рандомизации. Default был явно поднят в коммите 4c46ef8 с комментарием в коде, фиксирующим инвариант. Это пример случая, когда «молчаливое наследование» дефолтов из чужого скрипта оказалось хрупкой точкой; в дальнейшем все hyperparameter-инварианты дублируются в `metadata.json` под ключом `hyperparameters`.
+
+`target_kl = 0.02` — стандартное anti-collapse-значение из литературы по PPO. Параметр заставляет SB3-implementation досрочно прервать update, если KL-divergence между старой и новой policy превысила порог за один epoch. До rev30 параметр был отключён (`None`), что в комбинации с большими `ent_coef` иногда давало catastrophic update — единичный rollout с экстремальным advantage сдвигал policy так сильно, что она теряла сходимость. Включение `target_kl` устранило эти эпизодические провалы.
+
+`n_steps = 512` и `n_epochs = 10` подняты в rev38 после анализа PPO-литературы для vision RL. До rev37 значения были `n_steps = 256, n_epochs = 4` — это давало 1024 transitions per update при четырёх агентах, что в стандартных vision-бенчмарках (Procgen, Atari) считается недостаточным. Подъём до 4096 transitions per update при восьми агентах (`512 × 8`) выровнял условия с эталонными конфигами.
+
+Параметр `--ent-coef-schedule linear` включает линейную интерполяцию `ent_coef` от стартового значения до `--ent-coef-end`. Реализация — в виде callback `EntCoefScheduleCallback`, переписывающего `model.ent_coef` на каждом шаге; SB3 нативно умеет планировать только `learning_rate`. Высокий entropy в начале обучения предотвращает раннее схлопывание в неправильный basin, низкий в конце даёт sharp-policy с детерминированными решениями.
+
 ### 6.3.4 Курикулум и мониторинг через EvalCallback
+
+Тренировочный цикл оснащён четырьмя стандартными callback-ами и двумя авторскими. Стандартные — `ProgressCallback` (печатает процент и FPS), `CheckpointCallback` (сохраняет SB3-чекпоинт каждые `--checkpoint-freq` шагов), `EvalCallback` (запускает policy на отдельной clean-DR-среде и сохраняет лучшую модель), и `MazeCurriculumCallback` (см. ниже). Авторские — `ActionStatsCallback` и `RewardBreakdownCallback`.
+
+`ActionStatsCallback` ведёт скользящее окно из последних N действий и публикует доли каждого из пяти дискретных действий в TensorBoard как scalar-метрики `actions/frac_DirStop`, `actions/frac_DirForward`, …, `actions/top_idx`, `actions/top_frac`. Цель — раннее обнаружение degenerate-collapse: если за первые 50 тысяч шагов 95% действий — это `DirRight`, дальше учить бесполезно, и тренировку лучше прервать вручную. Формат scalar-серий вместо `Histogram` выбран из-за того, что в TensorBoard scalar-серии лучше группируются и допускают сравнение между прогонами — критично для исследовательской работы с десятками ревизий.
+
+`RewardBreakdownCallback` агрегирует разложенные компоненты reward, возвращаемые env-обёртками в `info["reward_breakdown"]`. Каждые `--reward-log-freq` шагов средние значения (`progress_mean`, `lateral_penalty_mean`, `goal_bonus_mean`, …) публикуются в TensorBoard. Это даёт возможность отвечать на вопросы вида «Почему reward не растёт — penalty душит progress, или progress сам по себе мал?» без перезапуска тренировки.
+
+`MazeCurriculumCallback` (`python/training/maze_curriculum.py`) реализует staged-difficulty для процедурного maze-track-а. Конфигурация по умолчанию состоит из четырёх стадий: `stage-A-easy` (5 клеток, 1 поворот направо), `stage-B-medium` (5-7 клеток, до одного поворота налево, 1-2 направо), `stage-C-hard` (6-8 клеток, 1-2 налево, 1-3 направо) и `stage-D-full` (6-10 клеток, 1-3 в обе стороны). Стадии переключаются по числу total timesteps: 0, 25 000, 60 000, 100 000.
+
+```python
+DEFAULT_STAGES: List[CurriculumStage] = [
+    CurriculumStage(name="stage-A-easy", start_step=0,
+                    ranges={"length_cells": (5, 5), "left_turns": (0, 0),
+                            "right_turns": (1, 1),
+                            "corridor_width_m": (0.58, 0.62), ...}),
+    CurriculumStage(name="stage-B-medium", start_step=25_000, ranges={...}),
+    CurriculumStage(name="stage-C-hard", start_step=60_000, ranges={...}),
+    CurriculumStage(name="stage-D-full", start_step=100_000, ranges={...}),
+]
+```
+
+Выбор пороговых значений зафиксирован эмпирически: на rev2-rev5 наивная полнодиапазонная maze-рандомизация с первого шага не сходилась — policy не получала ни одного успешного эпизода и optimizer не имел сигнала, поверх которого можно было бы строить градиент. Стадия `stage-A-easy` гарантирует положительный reward на первой же попытке и даёт PPO стабильный градиент. Дальнейшие стадии расширяют распределение по одному параметру за раз. Такая схема — стандартный приём curriculum learning, описанный, например, у Bengio (2009), и здесь применена в чистом виде.
+
+`EvalCallback` использует отдельную Unity-инстанцию, поднимаемую оператором на отдельном порту перед запуском тренировки (`./rusim server up --count 4` плюс `--eval-base-url http://127.0.0.1:8003`). Среда оценки строится тем же `_build_eval_env`, но с отключёнными аугментациями и anti-spin-штрафом — на eval policy должна работать на «чистом» дистрибуции, а не на том, что она видела в training. Параметр `latency` оставлен включённым: это часть симулируемой реальности, а не часть рандомизации.
 
 ## 6.4 Domain randomization и подготовка к sim-to-real
 
