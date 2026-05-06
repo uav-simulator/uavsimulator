@@ -59,6 +59,7 @@ nav:
   - О продукте: about-simulator.md
   - Установка: installation.md
   - Использование: usage.md
+  - City sample autonomy: sample-city-autonomy.md
   - CLI: cli.md
   - Архитектура: architecture.md
   - API: api.md
