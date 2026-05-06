@@ -320,3 +320,34 @@ ros-stop:
 clean-pyc:
 	find python -type f -name '*.pyc' -delete
 	find python -type d -name '__pycache__' -empty -delete
+
+# ---------------------------------------------------------------------------
+# City sample one-command stack
+# ---------------------------------------------------------------------------
+# See docker-compose.city-demo.yml for the full description. Unity Editor
+# must be in PlayMode on the host with track.city_polygon.v1 + arcade
+# vehicles already loaded; these targets only manage the containerised parts
+# (backend + ROS2 multi-agent bridge).
+# ---------------------------------------------------------------------------
+
+CITY_DEMO_COMPOSE ?= docker-compose.city-demo.yml
+
+.PHONY: city-demo-up city-demo-down city-demo-logs city-demo-status
+
+city-demo-up:
+	@docker compose -f $(CITY_DEMO_COMPOSE) up -d
+	@echo ""
+	@echo "City demo stack is up."
+	@echo "  Web UI:        http://localhost:5058"
+	@echo "  Scenarios:     configs/scenarios/demo-city-polygon.yaml"
+	@echo "  Required: Unity Editor in PlayMode with track.city_polygon.v1"
+	@echo "            and vehicle.arcade.{blue,red,gray,purple}.v1 spawned."
+
+city-demo-down:
+	@docker compose -f $(CITY_DEMO_COMPOSE) down
+
+city-demo-logs:
+	@docker compose -f $(CITY_DEMO_COMPOSE) logs -f --tail=50
+
+city-demo-status:
+	@docker compose -f $(CITY_DEMO_COMPOSE) ps
