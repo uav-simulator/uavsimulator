@@ -266,6 +266,15 @@ def build_parser() -> argparse.ArgumentParser:
     print_reset_cmd.set_defaults(_parser=print_reset_cmd)
     print_reset_cmd.add_argument("file")
 
+    list_cmd = scenario_sub.add_parser("list", help="List scenario YAML files from configs/scenarios.")
+    list_cmd.set_defaults(_parser=list_cmd)
+    list_cmd.add_argument(
+        "--dir",
+        default=None,
+        help="Override scenarios directory (default: <repo>/configs/scenarios).",
+    )
+    list_cmd.add_argument("--json", action="store_true", help="Output as JSON.")
+
     plugin = subparsers.add_parser("plugin", help="Manage simulator plugins (install, list, remove).")
     plugin.set_defaults(_parser=plugin)
     plugin_sub = plugin.add_subparsers(dest="plugin_command")
@@ -709,10 +718,60 @@ def _server(args: argparse.Namespace) -> int:
     raise ValueError(f"Unknown server command: {args.server_command}")
 
 
+def _scenario_list(args: argparse.Namespace) -> int:
+    scenarios_dir = Path(args.dir).expanduser().resolve() if args.dir else REPO_ROOT / "configs" / "scenarios"
+    if not scenarios_dir.is_dir():
+        print(
+            json.dumps(
+                {"scenariosDir": str(scenarios_dir), "count": 0, "items": [], "warning": "scenarios directory not found"},
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+        return 1
+
+    items: List[Dict[str, Any]] = []
+    for path in sorted(scenarios_dir.glob("*.yaml"), key=lambda p: p.name.lower()):
+        try:
+            payload = load_scenario_file(str(path))
+            scenario_id = payload.get("scenarioId")
+            track_id = (payload.get("world") or payload.get("track") or {}).get("trackId")
+            vehicle_id = (payload.get("vehicle") or {}).get("vehicleId")
+        except Exception as exc:
+            scenario_id = None
+            track_id = None
+            vehicle_id = None
+            payload = {"_loadError": str(exc)}
+        items.append(
+            {
+                "fileName": path.name,
+                "filePath": str(path),
+                "scenarioId": scenario_id,
+                "trackId": track_id,
+                "vehicleId": vehicle_id,
+                "sizeBytes": path.stat().st_size,
+            }
+        )
+
+    if getattr(args, "json", False):
+        print(json.dumps({"scenariosDir": str(scenarios_dir), "count": len(items), "items": items}, ensure_ascii=False, indent=2))
+    else:
+        print(f"  scenarios dir: {scenarios_dir}")
+        print(f"  count: {len(items)}")
+        for item in items:
+            label = item["scenarioId"] or "(no scenarioId)"
+            track = item["trackId"] or "-"
+            vehicle = item["vehicleId"] or "-"
+            print(f"    {item['fileName']:<38} scenarioId={label:<32} track={track:<28} vehicle={vehicle}")
+    return 0
+
+
 def _scenario(args: argparse.Namespace) -> int:
     if not args.scenario_command:
         args._parser.print_help()
         return 0
+    if args.scenario_command == "list":
+        return _scenario_list(args)
     payload = load_scenario_file(args.file)
     ok, errors = validate_scenario(payload)
     if args.scenario_command == "validate":
