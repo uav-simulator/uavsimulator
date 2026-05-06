@@ -131,11 +131,97 @@ public StepResult Step(ControlCommand command)
 
 ### 3.3.1 Two-tier реестр и merge-логика
 
+`PluginRegistry` (см. `src/UnityProject/uav-simulator/Assets/Scripts/Plugins/PluginRegistry.cs`, 129 строк) — статический фасад над загрузчиком плагинов. На вход внешнего наблюдателя класс предоставляет единственный метод `Load`, возвращающий `PluginRegistrySnapshot` — неизменяемый снапшот доступных в текущем процессе плагинов. Внутри `Load` собирает реестр из трёх источников и склеивает их по приоритету.
+
+```csharp
+public static PluginRegistrySnapshot Load()
+{
+    var registryAsset = Resources.Load<PluginRegistryAsset>(RegistryAssetPath);
+    var vehicles = Resources.LoadAll<VehiclePluginDescriptor>(DescriptorsFolderPath) ?? new VehiclePluginDescriptor[0];
+    var tracks = Resources.LoadAll<TrackPluginDescriptor>(DescriptorsFolderPath) ?? new TrackPluginDescriptor[0];
+    var builtinSnapshot = BuiltinPluginFactory.CreateSnapshot(PluginRegistrySource.BuiltinFactory);
+    var resourceSnapshot = new PluginRegistrySnapshot(...);
+    resourceSnapshot = PluginRegistrySnapshot.MergePreferPrimary(
+        resourceSnapshot,
+        builtinSnapshot,
+        PluginRegistrySource.ResourcesDescriptorsFolder);
+
+    if (registryAsset != null)
+    {
+        var registrySnapshot = PluginRegistrySnapshot.FromAsset(registryAsset, PluginRegistrySource.RegistryAsset);
+        return PluginRegistrySnapshot.MergePreferPrimary(registrySnapshot, resourceSnapshot, PluginRegistrySource.RegistryAsset);
+    }
+
+    return resourceSnapshot;
+}
+```
+
+Иерархия источников в порядке убывания приоритета: явный `PluginRegistryAsset` (если он положен в `Resources/UavSimulator/PluginRegistry`), отдельные дескрипторы из папки `Resources/UavSimulator/Plugins`, встроенный каталог `BuiltinPluginFactory`. Слияние выполняется попарно через `PluginRegistrySnapshot.MergePreferPrimary`, который проходит сначала по primary-источнику, затем по secondary, и при совпадении идентификаторов оставляет primary. Идентификаторы — поле `id` дескриптора — играют здесь роль ключа: если разработчик плагина положил собственный `VehiclePluginDescriptor` с `id = "vehicle.ks0223.v1"` в `Resources/UavSimulator/Plugins/`, он переопределит встроенный KS0223 без необходимости править исходники платформы.
+
+Такое разделение на «жёсткие» (registry asset), «мягкие» (descriptors folder) и «встроенные» (factory) источники отражает три практических способа доставки плагина: централизованный — поддерживаемый куратором проекта список; индивидуальный — drop-in одного дескриптора без модификации общего списка; платформенный — то, что доступно «из коробки» в любой сборке. Все три уживаются одновременно, что упрощает эволюцию каталога.
+
 ### 3.3.2 BuiltinPluginFactory как декларативный каталог
+
+`BuiltinPluginFactory` (см. `src/UnityProject/uav-simulator/Assets/Scripts/Plugins/BuiltinPluginFactory.cs`, 926 строк) — статический класс, выполняющий две функции. Первая — создание снапшота `PluginRegistrySnapshot` со встроенными дескрипторами (метод `CreateSnapshot`). Вторая — runtime-инстанцирование объекта плагина по идентификатору без необходимости иметь собранный prefab (`TryCreateVehicleInstance`, `TryCreateTrackInstance`).
+
+В части декларативного каталога `BuiltinPluginFactory` хранит идентификаторы как константы-литералы и формирует `ScriptableObject`-дескрипторы поштучно. В таблице 3.1 приведён актуальный список встроенных идентификаторов транспортных средств и трасс на момент написания работы.
+
+Таблица 3.1 — Встроенные плагины из `BuiltinPluginFactory`
+
+| Категория | Идентификатор | Назначение |
+|---|---|---|
+| Vehicle | `vehicle.ks0223.v1` | Основной обучаемый робот; differential-drive, размеры 0,15×0,12×0,25 м |
+| Vehicle | `vehicle.prometeo.sport.v1` | Спортивная машинка из пакета PROMETEO; визуальная модель только |
+| Vehicle | `vehicle.arcade.blue.v1` … `arcade.purple.v1` | Четыре расцветки Arcade Free Racing Car как презентационные машинки |
+| Vehicle | `vehicle.drone.simple.v1` | Простой квадрокоптер с упрощённой динамикой |
+| Track | `track.basic_arena.v1` | Procedural S-образный коридор для базовой навигации |
+| Track | `track.roadsystem_arena.v1` | RoadSystem-сплайны, арена с разметкой |
+| Track | `track.roadsystem_realistic.v2` | Реалистичная сцена на RoadSystem с бордюрами и стартовой меткой |
+| Track | `track.cardboard_corridor.v1` | L-образный картонный коридор, повторяющий реальный sim-to-real стенд |
+| Track | `track.cardboard_maze.v1` | Процедурный лабиринт, параметризуется через `parametersSchemaJson` |
+| Track | `track.city_polygon.v1` | Город из POLYGON City Pack с четырьмя светофорами на центральном перекрёстке |
+
+Для каждого транспортного средства фабрика конструирует `VehiclePluginDescriptor` с прикреплённым `DeviceContractDescriptorAsset`. Контракт описывает доступные сенсоры — для наземного робота это камера 480×640 RGB, спидометр, передний ультразвук и пятиточечный line tracker, частотные характеристики и единицы измерения. Контракт публикуется в API `/contract` и позволяет внешним клиентам (training-обвязке, операторскому пульту) автоматически адаптироваться к набору сенсоров без жёсткой привязки к модели робота.
+
+Декларативный стиль `BuiltinPluginFactory` сознательно выбран взамен ScriptableObject-ассетов из проекта: ассеты на диске были бы более гибки, но сложнее в поддержке и тяжелее в ревью, особенно при множественной параметризации. В коде же все идентификаторы и параметры по умолчанию находятся в одном файле и проверяются компилятором.
 
 ### 3.3.3 Procedural-fallback для отсутствующих ассетов
 
+Принципиальная ситуация в платформе — ассеты, на которые ссылаются плагины, могут отсутствовать. Это связано с тем, что часть визуальных моделей берётся из сторонних пакетов Unity Asset Store (PROMETEO Car Controller, Arcade Free Racing Car, Simple Drone, POLYGON City Pack), которые не входят в репозиторий, требуют отдельной установки и могут отсутствовать в чистом клоне. Без фоллбэка такая ситуация привела бы к падению на старте симулятора и невозможности обучать или демонстрировать что-либо до выполнения дополнительных шагов установки.
+
+Фоллбэк построен в два уровня. Первый — в `BuiltinPluginFactory.TryCreateVehicleInstance`: при невозможности загрузить prefab визуальной модели через `AssetDatabase.LoadAssetAtPath` фабрика создаёт «fallback shell» — простой составной объект из примитивов с цветовой акцентной палитрой. Этот объект не претендует на эстетику, но обеспечивает три практических качества — корректную физическую коробку (`BoxCollider`), назначенный `Rigidbody` и `Ks0223Vehicle` как поведенческий компонент. Робот при этом полностью функционален: он применяет команды, отдаёт телеметрию и кадр сенсорной камеры; меняется только то, что видно постороннему наблюдателю в spectator-камере.
+
+Второй уровень — в трассах. `CityPolygonTrack` при отсутствии `Assets/POLYGON city pack/scene/DemoScene.unity` падает обратно в процедурную сборку через `BuildProcedural` — собирает (2N+1)×(2N+1) сетку из остальных доступных prefab-ов или, если и они отсутствуют, оставляет пустую трассу с одним перекрёстком и четырьмя процедурно созданными светофорами. `BasicArenaTrack` вообще не зависит от сторонних ассетов — собирает свой коридор из примитивов.
+
+Архитектурно фоллбэк обеспечивает свойство «всё всегда запускается». Чистый клон репозитория без сторонних пакетов даёт работоспособный simulator: тренировка KS0223 на `track.basic_arena.v1` проходит без участия внешних ассетов, а демонстрационные сценарии деградируют до процедурных версий с лог-предупреждением, явно указывающим, что используется fallback и какой prefab отсутствует.
+
 ### 3.3.4 RuntimeMaterialCompatibility: конверсия Built-in в URP
+
+При интеграции сторонних ассетов возникает ещё одна осложняющая ситуация — несовместимость render pipeline. POLYGON City Pack, PROMETEO и часть других пакетов поставляются с материалами, рассчитанными на Built-in render pipeline; платформа же использует Universal Render Pipeline (URP). Без преобразования такие материалы рендерятся как пурпурные «броken-shader» поверхности, что делает визуальное сопоставление обучаемой политики сцене невозможным.
+
+`RuntimeMaterialCompatibility` (см. одноимённый файл, 323 строки) реализует runtime-конверсию материалов. Класс предоставляет три ключевых метода. `IsUrpActive` определяет активный pipeline через `GraphicsSettings.currentRenderPipeline` и сравнивает имя типа с подстроками «UniversalRenderPipeline» или «URP». `NeedsReplacement(Material)` проверяет, нужно ли менять материал: если у источника отсутствует shader, либо shader не поддерживается на текущем оборудовании, либо имя shader-а не подходит активному pipeline. `CreateReplacementMaterial(Material)` создаёт новый материал на совместимом shader-е, копируя цвет, текстуру и smoothness из источника.
+
+Логика разрешения совместимого shader-а сделана многоступенчатой, чтобы корректно работать в разных конфигурациях сборки.
+
+```csharp
+public static Shader ResolveCompatibleLitShader()
+{
+    var seededUrpLit = LoadShaderFromMaterialResource(UrpLitResourcePath);
+    if (seededUrpLit != null) return seededUrpLit;
+
+    var configuredShader = ResolveConfiguredDefaultLitShader();
+    if (configuredShader != null) return configuredShader;
+
+    var urpLit = Shader.Find("Universal Render Pipeline/Lit");
+    if (urpLit != null) return urpLit;
+    // ... ещё четыре fallback-шага через Standard, Unlit/Texture, Unlit/Color, Legacy/Diffuse
+    throw new MissingReferenceException(...);
+}
+```
+
+Первый шаг — попытка загрузить материал-«seed» из `Resources/UavSimulator/RuntimeShaders/`. Это сделано потому, что `Shader.Find("Universal Render Pipeline/Lit")` в IL2CPP-сборке для standalone-плеера возвращает `null` для shader-ов, не упомянутых ни в одном материале сцены — они вырезаются stripping-ом. Положенный в `Resources/` материал гарантированно сохраняет ссылку на shader. Дальнейшие шаги — попытка использовать defaultMaterial pipeline-asset, прямой `Shader.Find`, fallback на Standard, на Unlit, и в крайнем случае — на Legacy/Diffuse. Только если ни один из шагов не успешен, метод выбрасывает `MissingReferenceException`.
+
+`CityPolygonTrack` интегрируется с `RuntimeMaterialCompatibility` напрямую: после загрузки DemoScene класс рекурсивно обходит все `Renderer`-ы, проверяет каждый материал через `NeedsReplacement` и заменяет несовместимые на новые через `CreateReplacementMaterial`. Без этого шага городская сцена POLYGON-а под URP отрисовывалась бы как сплошное розовое пятно.
 
 ## 3.4 Реализация Vehicle: Ks0223Vehicle
 
