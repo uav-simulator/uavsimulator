@@ -351,3 +351,17 @@ city-demo-logs:
 
 city-demo-status:
 	@docker compose -f $(CITY_DEMO_COMPOSE) ps
+
+# ----------------------------------------------------------------------------
+# Plugin workflow smoke test
+# ----------------------------------------------------------------------------
+
+# Прогоняет new → install → list → remove → list поверх CLI-реестра без Unity.
+# Не требует поднятого backend'а или Unity Editor. Полезно в CI и при ревью PR
+# плагинной поверхности.
+plugin-smoke:
+	@bash scripts/validate_plugin_workflow.sh
+
+# То же самое для track-плагина.
+plugin-smoke-track:
+	@PLUGIN_ID=track.smoke.test.v1 PLUGIN_TYPE=track bash scripts/validate_plugin_workflow.sh
