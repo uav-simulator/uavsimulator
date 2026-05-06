@@ -1,0 +1,68 @@
+version: "3.9"
+
+# City sample one-command stack
+# ---------------------------------------------------------------------------
+# Brings up the ASP.NET Core backend + frontend (one container) and a ROS2
+# Humble container running the multi-agent bridge against Unity Editor on
+# the host. Unity Editor itself stays on the host (Asset Store assets,
+# license, GPU rendering — nothing of that lives well inside a container).
+#
+# Usage:
+#   make city-demo-up        # start backend + ros2-bridge
+#   make city-demo-logs      # follow combined logs
+#   make city-demo-down      # stop and remove containers
+#
+# Pre-flight on host:
+#   1. Open Unity Editor in PlayMode with the scenario configs/scenarios/demo-city-polygon.yaml
+#      (track.city_polygon.v1 + N x vehicle.arcade.<color>.v1).
+#   2. Make sure rusim sim API is reachable on host port 8000 (default Unity port).
+# ---------------------------------------------------------------------------
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: src/ks0223-web-mac/Dockerfile
+    image: ks0223-web-mac:latest
+    container_name: city-demo-backend
+    ports:
+      - "5058:5058"
+    volumes:
+      - ./configs/scenarios:/app/configs/scenarios:ro
+      - ./.rusim/runtime/logs:/app/logs
+    environment:
+      - ASPNETCORE_URLS=http://0.0.0.0:5058
+      - RUSIM_BASE_URL=http://host.docker.internal:8000
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:5058/api/health?clientId=health&runtimeMode=real-robot"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+    restart: unless-stopped
+
+  ros2-bridge:
+    image: osrf/ros:humble-desktop
+    container_name: city-demo-ros2-bridge
+    network_mode: host
+    volumes:
+      - ./python:/workspace/python:ro
+    environment:
+      - ROS_DOMAIN_ID=42
+      - PYTHONPATH=/workspace/python
+    command: >
+      bash -lc "
+        source /opt/ros/humble/setup.bash &&
+        pip3 install --break-system-packages requests pyyaml >/dev/null 2>&1 || true &&
+        python3 /workspace/python/bridges/ros2_bridge_multi.py
+          --base-url http://host.docker.internal:8000
+          --agents auto
+          --rate-hz 30
+          --reset-on-start
+      "
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - backend
+    restart: unless-stopped
