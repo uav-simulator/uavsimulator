@@ -204,9 +204,92 @@ concurrency:
 
 ### 8.3.1 Многоэтапный Dockerfile
 
+Backend и Web UI поставляются как единый Docker-образ `ks0223-web-mac:latest`, собираемый из `src/ks0223-web-mac/Dockerfile`. Сборка организована в три стадии — `frontend-build`, `backend-build`, `runtime` — и использует docker buildkit-синтаксис `# syntax=docker/dockerfile:1.7`. Build-context намеренно установлен на корень репозитория, а не на каталог `src/ks0223-web-mac/`: Dockerfile копирует в образ как backend и frontend, так и Python-исходники `python/sim_client/` (CLI `rusim`) — все три модуля живут в разных каталогах, и единый context упрощает координацию между ними.
+
+Стадия `frontend-build` использует образ `node:22-alpine`. Сначала копируются только `package.json` и `package-lock.json`, выполняется `npm ci` (детерминистическая установка из lock-файла). Лишь после этого копируется остальной фронт и запускается `npm run build`. Такой порядок обеспечивает кэширование npm-слоя при изменении исходников без правки зависимостей — типовой шаблон для Node-сборок.
+
+Стадия `backend-build` использует образ `mcr.microsoft.com/dotnet/sdk:8.0`. Сначала копируется только `backend.csproj` и выполняется `dotnet restore`, что даёт кэширование NuGet-зависимостей. После этого копируется код backend и собранный `dist/` фронта в `wwwroot/`, после чего исполняется `dotnet publish backend.csproj -c Release -o /app/publish --no-restore`. ASP.NET Core-сервер таким образом отдаёт статику фронта сам — без необходимости в отдельном nginx-контейнере, что упрощает развёртывание на ноутбуке оператора.
+
+Стадия `runtime` использует более лёгкий образ `mcr.microsoft.com/dotnet/aspnet:8.0` (без SDK). В неё копируется опубликованный backend и устанавливается дополнительный набор Python-зависимостей: `python3-venv`, после чего создаётся изолированный venv `/opt/rusim-venv`, в который через `pip install -e /app/sim_client --no-deps` ставится CLI `rusim` из локальных исходников. Symlink `/usr/local/bin/rusim` указывает на entry-point этого venv. Backend при выполнении endpoint-а `/api/scenarios/load` делает `Process.Start(rusim, scenario reset <yaml>)`, и этот endpoint должен работать независимо от того, установлен ли `rusim` на хосте.
+
+```dockerfile
+FROM node:22-alpine AS frontend-build
+WORKDIR /src/frontend
+COPY src/ks0223-web-mac/frontend/package*.json ./
+RUN npm ci
+COPY src/ks0223-web-mac/frontend/ ./
+RUN npm run build
+
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS backend-build
+WORKDIR /src
+COPY src/ks0223-web-mac/backend/backend.csproj backend/
+RUN dotnet restore backend/backend.csproj
+COPY src/ks0223-web-mac/backend/ backend/
+COPY --from=frontend-build /src/frontend/dist/ backend/wwwroot/
+RUN dotnet publish backend/backend.csproj -c Release -o /app/publish --no-restore
+
+FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
+WORKDIR /app
+COPY --from=backend-build /app/publish/ ./
+RUN python3 -m venv /opt/rusim-venv \
+    && /opt/rusim-venv/bin/pip install -e /app/sim_client --no-deps \
+    && ln -s /opt/rusim-venv/bin/rusim /usr/local/bin/rusim
+
+EXPOSE 5058
+EXPOSE 5051/udp
+HEALTHCHECK --interval=10s --timeout=3s --start-period=15s --retries=6 \
+  CMD curl -fsS "http://localhost:5058/api/health?clientId=hc&runtimeMode=real-robot" >/dev/null || exit 1
+CMD ["dotnet", "backend.dll"]
+```
+
+Открыты два порта: `5058/tcp` для HTTP API и Web UI и `5051/udp` для приёма телеметрии напрямую от платформы KS0223 в reverse-канале. Healthcheck с интервалом десять секунд опрашивает `/api/health` с фиктивными `clientId=healthcheck` и `runtimeMode=real-robot`; вид параметров здесь продиктован контрактом backend — он требует обязательной идентификации сессии и режима работы для всех endpoint-ов.
+
 ### 8.3.2 Makefile цели: docker-build, docker-run, docker-update
 
+Файл `src/ks0223-web-mac/Makefile` оформляет операторский интерфейс над контейнером. Семь основных целей, перечисленных в таблице 8.3, покрывают сценарий полной перенастройки локального стенда оператора без необходимости запоминать длинные команды `docker run` с правильным набором bind-mount-ов.
+
+Таблица 8.3 — Основные цели Makefile
+
+| Цель | Назначение |
+|---|---|
+| `docker-pull-base` | Скачать базовые образы (`node:22-alpine`, `dotnet/sdk:8.0`, `dotnet/aspnet:8.0`) |
+| `docker-build` | Собрать образ `ks0223-web-mac:latest` из repo-root context |
+| `docker-rebuild` | То же с `--pull --no-cache` для гарантии чистого состояния |
+| `docker-run` | Запустить контейнер с bind-mount-ами `logs/` и `configs/scenarios/` |
+| `docker-stop` | Удалить запущенный контейнер (idempotent) |
+| `docker-wait` | Опрос `/api/health` до получения положительного ответа |
+| `docker-update` | Композитная цель: build + run + wait |
+
+Цель `docker-update` представляет основной операторский путь. Она исполняется как `make docker-update` после правки backend или frontend и за одну команду пересобирает образ, перезапускает контейнер и дожидается готовности healthcheck. Это исключает класс ошибок «оператор перезапустил контейнер, но забыл пересобрать образ»: цель всегда исходит из текущего состояния исходников.
+
+```makefile
+REPO_ROOT ?= $(CURDIR)/../..
+SCENARIOS_DIR ?= $(REPO_ROOT)/configs/scenarios
+
+docker-build:
+	docker build -t $(IMAGE) -f $(CURDIR)/Dockerfile $(REPO_ROOT)
+
+docker-run: docker-stop
+	mkdir -p $(LOGS_DIR)
+	docker run -d --name $(CONTAINER) \
+		-p $(PORT):5058 -p $(UDP_PORT):5051/udp \
+		-v $(LOGS_DIR):/app/logs \
+		-v $(SCENARIOS_DIR):/app/configs/scenarios:ro \
+		--add-host host.docker.internal:host-gateway \
+		$(IMAGE)
+
+docker-update: docker-build docker-run docker-wait
+```
+
+Параметризация через `?=` позволяет переопределять имя образа, имя контейнера, порты и путь логов через переменные окружения без правки Makefile. Это необходимо для одновременного запуска нескольких контейнеров — например, для shadow-mode-сценария (раздел 7.5.3), когда параллельно работают экземпляры sim-mode и real-robot-mode на разных портах.
+
 ### 8.3.3 Bind-mount configs/scenarios для динамической перезагрузки
+
+Каталог `configs/scenarios/` в репозитории хранит YAML-описания сценариев — наборов параметров `rusim scenario reset <yaml>`, фиксирующих сцену, агента, режим управления, доменные параметры и параметры eval. Два архитектурных свойства этого каталога заметно влияют на поставку. Во-первых, сценарии — данные, а не код: правка YAML не требует пересборки. Во-вторых, оператор работает со сценариями из хост-системы (через любой текстовый редактор), а исполняется reset уже на стороне backend, который живёт в контейнере.
+
+Чтобы соединить эти свойства, в `docker-run` задан bind-mount `-v $(SCENARIOS_DIR):/app/configs/scenarios:ro`, отображающий хостовый каталог `configs/scenarios/` в read-only-режиме внутрь контейнера по пути `/app/configs/scenarios`. Backend читает YAML из контейнерного пути через WebUI scenario-picker (выпадающий список доступных сценариев), но физически файлы остаются на хосте — оператор редактирует их любым редактором, и следующий вызов `rusim scenario reset` подхватывает новую версию без перезапуска контейнера.
+
+Read-only-флаг `:ro` исключает класс ошибок, при которых контейнерный backend случайно записал бы в каталог сценариев, нарушив их git-state. Каталог логов наоборот монтируется в read-write-режим: `SessionLogs__Directory` в backend настроена на `/app/logs`, и контейнер пишет туда журналы сессий, доступные оператору на хосте. Соответствующая переменная среды `RUSIM_BASE_URL=http://host.docker.internal:8000` указывает контейнерному backend, как достучаться до Unity-runtime, работающего в Editor на хост-системе через bridge-алиас `host.docker.internal`. Альтернативный путь — запуск Unity в headless-режиме внутри отдельного контейнера — рассмотрен в разделе 8.4.2 как направление расширения.
 
 ## 8.4 Сборка Unity runtime
 
