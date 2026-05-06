@@ -405,9 +405,85 @@ if args.frame_stack > 1:
 
 ### 6.5.1 evaluate_ab_policy.py: 20-эпизодный success rate
 
+Финальная оценка обученной модели вынесена в отдельный скрипт `python/training/evaluate_ab_policy.py` (524 строки). Он не использует Stable-Baselines3 и не зависит от тренировочной обвязки: загружает ONNX-артефакт через `onnxruntime`, поднимается к Unity-серверу через `SimClient`, выполняет фиксированное число эпизодов (по умолчанию двадцать) и сохраняет KPI-отчёт в JSON и SVG-формате.
+
+```python
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(...)
+    parser.add_argument("--base-url", default="http://127.0.0.1:8000")
+    parser.add_argument("--scenario", default=str(ROOT / "configs/scenarios/ab-corridor-v1.yaml"))
+    parser.add_argument("--model", default=str(ROOT / "python/training/artifacts/.../ab_corridor_policy_v1.onnx"))
+    parser.add_argument("--episodes", type=int, default=20)
+    parser.add_argument("--max-steps", type=int, default=220)
+    parser.add_argument("--seed-offset", type=int, default=0)
+    parser.add_argument("--target-agent-id", default="ego")
+    parser.add_argument("--include-trajectories", action="store_true")
+    parser.add_argument("--output-json", default="")
+    parser.add_argument("--output-svg", default="")
+    return parser.parse_args()
+```
+
+Принципиальный момент — eval использует ONNX-runtime, а не SB3. Это нужно для двух целей сразу. Первая — eval должен запускаться на той же среде, что и реальный backend, и проверять именно тот артефакт, который окажется в backend в продакшен-конфигурации; SB3-чекпоинт для этого не подходит (backend ONNX-модель ожидает). Вторая — eval не должен унаследовать никаких артефактов SB3-стека (нормализаций, рандомизаций, exploration noise); ONNX-модель — это «чистая» функция от observation к action_logits, и аргмакс по логитам даёт детерминированное действие.
+
+Каждый эпизод считается успешным по двум условиям одновременно: агент должен достичь финального waypoint в пределах `goal_radius_m`, и он не должен выйти за пределы коридора (`oob_threshold_m`). Из 20 эпизодов вычисляются три метрики: success rate (доля успешных эпизодов), mean steps to goal (средняя длина успешных эпизодов в шагах), max distance from corridor centerline (максимальное боковое отклонение). Метрики сохраняются в `<output_dir>/metrics.json`. SVG-отчёт визуализирует траектории всех 20 эпизодов на одной плоскости с раскраской по успеху или неудаче.
+
 ### 6.5.2 Структура evidence-папки и воспроизводимость
 
+Каждая ревизия модели сохраняется в отдельной директории `python/training/artifacts/<model-name>/<version>/`. Содержимое такой директории формирует самодостаточный «паспорт ревизии», по которому она однозначно идентифицируется и воспроизводится. Структура зафиксирована в `model_artifacts.py`:
+
+- `cardboard-corridor-ppo-v9-rev16_sb3.zip` — SB3-чекпоинт (policy + optimizer + replay-state);
+- `cardboard-corridor-ppo-v9-rev16.onnx` — экспортированная ONNX-модель;
+- `metadata.json` — паспорт ревизии: гиперпараметры, сценарий, путь к чекпоинту, runtime/vehicle compatibility;
+- `metrics.json` — KPI после прогона `evaluate_ab_policy.py`;
+- `checkpoints/` — промежуточные SB3-чекпоинты с шагом `--checkpoint-freq`;
+- `best_model/` — лучший чекпоинт, сохранённый `EvalCallback` (если eval включён);
+- `tb_v9/` — TensorBoard-логи прогона.
+
+`metadata.json` достаточно подробен, чтобы по нему можно было воссоздать тот же прогон. Он содержит секции `name/version`, `compatibility`, `observationSchema`, `actionSchema`, `wrappers`, `hyperparameters` и `monitoring`. Пример секции из реальной ревизии:
+
+```json
+{
+  "name": "cardboard-corridor-ppo-v9-rev16",
+  "version": "1.0.0",
+  "policyId": "cardboard-corridor-ppo-v9-rev16:1.0.0",
+  "format": "sb3",
+  "compatibility": {
+    "runtimeModes": ["unity-sim", "real-robot"],
+    "vehicleIds": ["vehicle.prometeo.sport.v1", "vehicle.ks0223.arcade.blue.v1"],
+    "robotKinds": ["ks0223"]
+  },
+  "wrappers": {"discreteAction": true, "delayedAction": false,
+               "antiSpinReward": false, "imageAug": true, "latencySteps": 1},
+  "hyperparameters": {"learningRate": 0.0003, "nSteps": 256, "batchSize": 64,
+                      "nEpochs": 4, "gamma": 0.99, "clipRange": 0.2, "entCoef": 0.1}
+}
+```
+
+Значимая часть — поле `compatibility`. Оно перечисляет, к каким runtime-модам, transport-vehicle-идам и robot-kind-семействам model применима. Backend при загрузке сверяет `compatibility` с текущей сессией и отказывается активировать модель, не подходящую для контекста (например, модель `vehicle.prometeo.sport.v1` для KS0223-сессии). Это fail-safe: оператор не сможет случайно подать в реального робота policy, обученную на гоночной машине.
+
 ### 6.5.3 Сравнение revisions (rev16 → rev30+)
+
+Полный список revisions для cardboard-corridor-PPO-v9 на момент написания работы насчитывает примерно 25 успешных прогонов. В таблице 6.2 представлены ключевые ревизии и их особенности, иллюстрирующие траекторию исследовательской работы.
+
+Таблица 6.2 — Сравнительная таблица ревизий cardboard-corridor-ppo-v9
+
+| Revision | Изменения | KPI (sim-eval) | Заметка |
+|---|---|---|---|
+| rev10 | Базовая v9: discrete action, image aug, latency=0 | success≈55% | Первая стабильная ревизия |
+| rev16 | Добавлен latency=1, ent_coef=0.1 | success≈60% | Эталон для дальнейших сравнений |
+| rev18 | Multi-agent (1 Unity x N), real_cam_postprocess | success≈58% | Performance-rev, KPI без регрессии |
+| rev24 | Resume с rev18, новый scenario | success≈45% | Молчаливый ent_coef=0.02 — degraded |
+| rev29 | Default ent_coef поднят до 0.1, fix | success≈62% | Восстановление эталона |
+| rev30 | Heavy-DR: spawn jitter, ultrasonic noise | success=0% | Первый провал на heavy-DR |
+| rev31-rev35 | Bisect heavy-DR, 6/6 seed-ов = 0% | 0% | Подтверждена variance, не bug |
+| rev37 | Frame stack k=4, n_steps=512, n_epochs=10 | в исследовании | Plan 2 |
+| rev39 | Latency randomization, ultrasonic noise 0.02 | в исследовании | Plan 4 |
+| rev40 | R3M frozen feature extractor, 256-d | в исследовании | Plan 5 |
+| rev42 | RecurrentPPO с LSTM hidden_size=128 | в исследовании | Plan 5 alt |
+
+Ревизии rev30-rev35 заслуживают отдельного комментария. Шесть прогонов на разных seed-ах (42, 1337, 7, 11, 23, плюс ещё один) под одной и той же конфигурацией heavy-DR показали 0% success rate в каждом случае. Это не было локальным сбоем: env-revert bisect (откат к ровно тому же env-коду, что был на rev16) с rev16-ными гиперпараметрами восстанавливал KPI в 60% диапазон. Вывод: проблема — в дисперсии PPO под heavy-DR, а не в коде среды.
+
+Зафиксированный вывод повлиял на дальнейшую стратегию исследования. После rev35 reward-шейпинг как направление был отвергнут (изменение весов компонентов не лечит дисперсию обучения), и фокус сместился на архитектурные изменения: frame stacking (rev37+), pretrained feature extractor (rev40), recurrent policy (rev42). Эти изменения — стандартные приёмы для повышения семплоэффективности vision RL, описанные в литературе; их применение к данной задаче — открытая исследовательская часть, не претендующая на завершённость в рамках магистерской работы. Сама же программная обвязка (CLI-флаги, callbacks, ONNX-export) одинаково обслуживает все варианты.
 
 ## 6.6 Экспорт ONNX-артефакта и связь с backend
 
