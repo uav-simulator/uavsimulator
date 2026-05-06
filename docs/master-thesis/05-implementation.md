@@ -227,11 +227,106 @@ public static Shader ResolveCompatibleLitShader()
 
 ### 3.4.1 Физический контур: Rigidbody и интегрирование скоростей
 
+`Ks0223Vehicle` (см. `src/UnityProject/uav-simulator/Assets/Scripts/Vehicles/Ks0223Vehicle.cs`, 1057 строк) — реализация транспортного средства, отражающая физические и сенсорные характеристики реального робота Keyestudio KS0223. Класс наследует `VehicleBase` и реализует контракт, определённый в главе 4: `ApplyControl`, `ReadState`, `TryReadCameraFrame`, `ResetVehicle`, `ApplyVehicleConfig`. Внутри класса физика, сенсоры и презентация разделены на отдельные смысловые блоки, что позволяет работать с каждым из них независимо.
+
+Физический контур построен на `Rigidbody` с фиксированными вращениями вокруг X и Z (`RigidbodyConstraints.FreezeRotationX | FreezeRotationZ`), массой 1,0 кг, линейным затуханием 0,2 и угловым затуханием 1,5. Эти значения отражают реальный робот: измеренная масса KS0223 составляет около 1 кг с батареей, а затухания подобраны так, чтобы при отпущенном газе движение прекращалось за приблизительно один корпус. Дополнительно вокруг указанных значений добавляется per-episode jitter в ±20 % при включённом флаге `randomizeDynamics`, что повышает робастность обучаемой политики к разбросу реального оборудования.
+
+Калибровочные параметры скорости и угловой скорости подобраны экспериментально на реальном устройстве и закреплены в коде явными комментариями.
+
+```csharp
+// Calibrated against real Keyestudio KS0223 (4x 4.5V 200 RPM motors,
+// ~65 mm wheels, ~150 mm wheelbase).
+//
+// Linear: ruler-measured 0.73 m/s steady state (Apr 25 calibration).
+// Yaw: 3-point calibration Apr 26
+//   90deg burst (238ms) -> 50deg actual = 210 deg/s avg (spinup)
+//   180deg burst (466ms) -> 180deg actual = 386 deg/s avg
+//   360deg burst (927ms) -> 350deg actual = 378 deg/s avg
+[SerializeField] private float maxSpeedMps = 0.73f;
+[SerializeField] private float accelerationMps2 = 4.0f;
+[SerializeField] private float brakeDecelerationMps2 = 6.5f;
+[SerializeField] private float maxYawRateDegPerSec = 380f;
+[SerializeField] private float yawAccelerationDegPerSec2 = 1900f;
+```
+
+Интегрирование происходит в `FixedUpdate` через `Mathf.MoveTowards`: целевая скорость и угловая скорость не достигаются мгновенно, а приближаются за фиксированное время разгона. Это важно: реальный KS0223 не реверсирует мгновенно, ему требуется около 200 мс на смену направления, и без аналогичного inertial-поведения политика, обученная в идеализированном симуляторе, на реальном железе совершала бы перерегулирование. Сама позиция при этом обновляется через `body.linearVelocity = forward * currentSpeed`, что заставляет Unity-физику честно проверять коллизии с препятствиями. Альтернативный путь через `MovePosition` отвергнут потому, что он кинематический и проходит сквозь стены — для обучения избеганию столкновений это неприемлемо.
+
 ### 3.4.2 Сенсоры: камера, ультразвук, line tracker
+
+Класс предоставляет три типа сенсорных данных: фронтальную камеру, передний ультразвуковой дальномер и пятиточечный line tracker. Все три формируются в момент `ReadState` и `TryReadCameraFrame` и упаковываются в стандартизованные поля `VehicleState.telemetry` и `CameraFrame`.
+
+Камера — отдельный `GameObject` с `Camera`-компонентом, прикреплённый к корпусу робота на высоте 0,09 м со смещением 0,12 м вперёд и наклоном 6 градусов вниз. Угол обзора 68 градусов соответствует объективу штатной камеры KS0223. Размеры кадра по умолчанию — 1280×720 RGB, JPEG-кодирование с качеством 95. Размеры и качество настраиваются через профиль `camera.profile` (поддерживаются варианты `performance`, `balanced`, `high`, `ultra`) или через явные параметры в `ApplyVehicleConfig`. Сам процесс получения кадра идёт через off-screen `RenderTexture`: `Camera.targetTexture` устанавливается в собственный `frontCameraRt`, выполняется `Camera.Render()`, активный `RenderTexture.active` указывается на этот же `frontCameraRt`, и `Texture2D.ReadPixels` копирует пиксели обратно в управляемую память. Завершающий `EncodeToJPG` отдаёт массив байт, который затем кодируется в base64 для транспорта.
+
+```csharp
+public override bool TryReadCameraFrame(out CameraFrame frame)
+{
+    // ...
+    frontCamera.targetTexture = frontCameraRt;
+    frontCamera.Render();
+    RenderTexture.active = frontCameraRt;
+    frontCameraTexture.ReadPixels(new Rect(0f, 0f, cameraImageWidth, cameraImageHeight), 0, 0, false);
+    frontCameraTexture.Apply(false, false);
+    var bytes = frontCameraTexture.EncodeToJPG(cameraJpegQuality);
+    // ...
+    frame = new CameraFrame { ... encoding = "base64", dataBase64 = Convert.ToBase64String(bytes) };
+    return true;
+}
+```
+
+Ультразвуковой дальномер реализован через `Physics.Raycast` из позиции переднего сенсора в направлении вперёд с максимальной дистанцией `ultrasonicMaxDistanceM = 3,5` м. Возвращаемое значение в метрах укладывается в телеметрию под ключом `sensor.ultrasonic.front.m`. Сценарий «нет эха» (луч не попал ни в один collider) представляется значением 0, что соответствует поведению реального HC-SR04 — при отсутствии эха драйвер возвращает 0 или null. На стороне `AutopilotSafetyFilter` этот случай явно интерпретируется как «датчик не дал валидного отсчёта» и приводит к E-stop, чтобы политика не приняла отсутствие сигнала за свободный путь.
+
+Line tracker реализован через пять позиционных проб: пять точек вдоль фронтальной поперечной оси на высоте над поверхностью, в каждой выполняется raycast вниз и проверяется попадание в коллайдер с тегом «road line». Возвращаются нормализованные значения 0..1 в полях `sensor.line_tracker.s1_norm` … `s5_norm`. Эта схема упрощена по отношению к реальному ИК-датчику, но достаточна для обучения политик, опирающихся на разметку.
+
+Помимо сенсорных значений, телеметрия включает производные оценки энергопотребления — напряжение батареи, ток и расчётную мощность, которые вычисляются из текущих PWM-команд по эмпирической линейной модели. Эти поля используются индикаторной панелью операторского пульта и не несут физического смысла на уровне модели; они нужны лишь для визуальной согласованности симуляции с реальным роботом, у которого аналогичные показатели читает сенсорный мост.
+
+Таблица 3.2 — Состав телеметрии в `VehicleState.telemetry`, формируемой `Ks0223Vehicle.ReadState`
+
+| Ключ | Источник | Семантика |
+|---|---|---|
+| `drive.left_pwm_norm`, `drive.right_pwm_norm` | Поля команды | Нормированный PWM на левую и правую стороны, [-1; 1] |
+| `sensor.speedometer.mps` | `body.linearVelocity` | Модуль линейной скорости в плоскости XZ, м/с |
+| `sensor.ultrasonic.front.m` | `Physics.Raycast` вперёд | Расстояние до препятствия, 0 при отсутствии эха |
+| `sensor.line_tracker.s1_norm` … `s5_norm` | Пять raycast-ов вниз | Нормированные значения пяти проб line tracker |
+| `power.battery.voltage_v` | Эмпирическая модель | Оценка напряжения, В |
+| `power.battery.current_a` | Производная от мощности и напряжения | Оценка тока, А |
+| `power.motor.estimated_w` | Эмпирическая модель | Расчётная мощность мотора, Вт |
 
 ### 3.4.3 Применение ControlCommand: маппинг на физические каналы
 
+Метод `ApplyControl` принимает `ControlCommand` и переводит его в три внутренних канала: `speedCmd`, `yawCmd`, `brakeCmd`. Метод поддерживает два эквивалентных способа задания команды. Первый — через высокоуровневые поля `throttle` и `steer`: они напрямую интерпретируются как нормированные продольная и поперечная команды, а левый и правый PWM выводятся как `speedCmd ± yawCmd`. Второй — через расширения команды (`extensions`) с ключами `drive.left_pwm_norm` и `drive.right_pwm_norm`: это путь нативного PWM-управления, при котором клиент задаёт PWM-каналы напрямую, а `speedCmd` и `yawCmd` восстанавливаются обратной формулой `(left + right)/2` и `(right - left)/2`.
+
+```csharp
+if (TryGetExtension(command.extensions, LeftPwmKey, out var left) &&
+    TryGetExtension(command.extensions, RightPwmKey, out var right))
+{
+    leftPwmCmd = Mathf.Clamp(left, -1f, 1f);
+    rightPwmCmd = Mathf.Clamp(right, -1f, 1f);
+    var effLeft = leftPwmCmd * leftMotorMult;
+    var effRight = rightPwmCmd * rightMotorMult;
+    speedCmd = Mathf.Clamp((effLeft + effRight) * 0.5f, -1f, 1f);
+    yawCmd = Mathf.Clamp((effRight - effLeft) * 0.5f, -1f, 1f);
+    brakeCmd = Mathf.Clamp01(command.brake);
+    return;
+}
+
+speedCmd = Mathf.Clamp(command.throttle, -1f, 1f);
+yawCmd = Mathf.Clamp(command.steer, -1f, 1f);
+brakeCmd = Mathf.Clamp01(command.brake);
+leftPwmCmd = Mathf.Clamp(speedCmd - yawCmd, -1f, 1f);
+rightPwmCmd = Mathf.Clamp(speedCmd + yawCmd, -1f, 1f);
+```
+
+В обоих путях применяется per-episode мультипликатор асимметрии моторов `leftMotorMult` и `rightMotorMult`, выбираемый в `ResetVehicle` из per-seed RNG в диапазоне ±10 %. Без этой асимметрии команда `DirForward` (`throttle=1`, `steer=0`) приводила бы к идеально прямому движению, тогда как у реального KS0223 моторы не идентичны и при максимальном forward-throttle прослеживается слабое смещение влево или вправо. Воспроизведение этого эффекта в симуляторе оказывается необходимым: политика, обученная без асимметрии, не вырабатывает коррекции и на реальном устройстве отклоняется от заданного курса.
+
+Тормоз (`brakeCmd`) применяется в `FixedUpdate` через дополнительный вызов `Mathf.MoveTowards(currentSpeed, 0, brakeCmd * brakeDecelerationMps2 * dt)`, который суперпонируется на изменение скорости от двигателя. Это позволяет одновременно задать throttle и brake, что используется адаптивным контролем светофоров (`TrafficLightAwareController` отдаёт `brakeIntensity` отдельно от throttle).
+
 ### 3.4.4 Презентационные visual-режимы
+
+Сенсорная камера может работать в нескольких режимах, выбираемых параметром `camera.mode` в `ApplyVehicleConfig`. Поддерживаются режимы `driver` (дефолт, камера в глазной точке робота), `bumper` (низко на бампере, широкий FOV), `chase` (третье лицо сзади-сверху), `spectator` (изометрия с разворотом), `top_down` (вертикально вниз с FOV 90°). Каждый режим — это набор `localPosition`, `localEuler` и `fieldOfView`; переключение производит метод `ApplyCameraMode`.
+
+В `chase`, `bumper` и `spectator` режимах камера может видеть собственный корпус робота, что в задачах обучения политики мешало бы — модель училась бы по видимости корпуса, а не по сцене. Поэтому в `TryReadCameraFrame` перед рендерингом для этих режимов все `Renderer`-ы дочерних объектов транспортного средства временно отключаются (с восстановлением после `Camera.Render()`). В режимах `driver` и `top_down` отключение не требуется, поскольку корпус всё равно за пределами кадра.
+
+Презентационная визуальная оболочка строится в `EnsurePresentationVisuals` и применяется только в случае, когда у машины нет импортированной визуальной модели (например, для KS0223, у которого собственная маленькая визуальная модель из примитивов с акцентным цветом). Метод `SetPresentationAccentColor`, доступный извне, используется фабрикой при инстанцировании Arcade-варианта: акцентный цвет берётся из идентификатора (синий, красный, серый, фиолетовый), что позволяет различать машинки в multi-agent-сценарии при использовании fallback-shell.
 
 ## 3.5 Реализация Track: BasicArenaTrack и CityPolygonTrack
 
