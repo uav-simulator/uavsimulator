@@ -489,9 +489,74 @@ def parse_args() -> argparse.Namespace:
 
 ### 6.6.1 torch.onnx.export: тонкие места
 
+После завершения тренировки SB3-чекпоинт превращается в ONNX-артефакт через функцию `export_to_onnx_discrete` из тренировочного скрипта. ONNX-формат выбран по той причине, что backend на стороне `AutopilotService` использует `Microsoft.ML.OnnxRuntime` для inference, и единственным форматом, который backend умеет загружать, является ONNX. SB3-чекпоинт `.zip` для backend-а не пригоден — он содержит torch-pickle-данные, требующие интерпретатора Python.
+
+Реализация экспорта решает три тонких проблемы. Первая — SB3 хранит policy как сложный объект с features extractor, mlp extractor, action net и optionally value net. Прямой `torch.onnx.export(policy)` не работает, потому что forward-сигнатура `MultiInputPolicy` принимает Dict-обсервацию, которая ONNX-export-ом не поддерживается напрямую. Решение — обёртка `DiscretePolicyWrapper`, представляющая policy как обычный `torch.nn.Module` с двумя именованными tensor-входами (`image` и `ultrasonic`):
+
+```python
+class DiscretePolicyWrapper(torch.nn.Module):
+    def __init__(self, sb3_policy):
+        super().__init__()
+        self.features_extractor = sb3_policy.features_extractor
+        self.mlp_extractor = sb3_policy.mlp_extractor
+        self.action_net = sb3_policy.action_net
+
+    def forward(self, image: torch.Tensor, ultrasonic: torch.Tensor):
+        image_chw = image.permute(0, 3, 1, 2).contiguous()
+        obs = {"image": image_chw, "ultrasonic": ultrasonic}
+        features = self.features_extractor(obs)
+        latent_pi, _ = self.mlp_extractor(features)
+        return self.action_net(latent_pi)
+```
+
+Вторая проблема — формат image-tensor. Тренировочный код использует layout `(batch, H, W, C)` (channels-last) — это native-формат для Unity JPEG-кадра и для observation_space. NatureCNN внутри SB3, напротив, ожидает `(batch, C, H, W)` (channels-first) — стандарт PyTorch. Перестановка через `permute` внутри обёртки гарантирует, что внешний интерфейс ONNX-модели получает channels-last (то, что отдаёт backend без дополнительных преобразований), а внутренние слои получают channels-first. Без этой перестановки backend пришлось бы дополнительно транспонировать тензор, что неудобно с точки зрения интерфейса.
+
+Третья проблема — выходной формат. PPO-policy возвращает `Categorical` distribution; ONNX не поддерживает sampling-операции. Решение — экспортировать только raw action_logits размерности `(batch, 5)`, без softmax и без sampling. Backend выполняет `argmax` по логитам и получает дискретное действие. Это не теряет вероятности (если бы они были нужны для exploration на реальном роботе), но в текущей конфигурации backend всегда работает в детерминированном режиме, и `argmax` достаточен.
+
+```python
+torch.onnx.export(
+    wrapper,
+    (dummy_img, dummy_ultra),
+    str(output_path),
+    input_names=["image", "ultrasonic"],
+    output_names=["action_logits"],
+    external_data=False,
+    dynamic_axes={
+        "image": {0: "batch"},
+        "ultrasonic": {0: "batch"},
+        "action_logits": {0: "batch"},
+    },
+    opset_version=11,
+)
+```
+
+`opset_version=11` — минимальная версия, поддерживающая все используемые операторы (`Permute`, `Conv2d`, `Linear`); более новые версии не дают преимуществ для CNN такой архитектуры. `dynamic_axes` оставляет batch-размерность изменяемой, чтобы backend мог при желании прогонять inference на нескольких кадрах одновременно — для текущей конфигурации это не используется (backend всегда подаёт batch=1), но позволяет в будущем переключиться на batched-inference без переэкспорта.
+
 ### 6.6.2 metadata.json и metrics.json: формат
 
+ONNX-артефакт сам по себе не содержит достаточно информации для интеграции в backend. Backend нужны: имя модели, версия, поддерживаемые runtime-моды и vehicle-id (для compatibility-проверки), а также формат observation и action (для выбора правильного преобразования на стороне `AutopilotService`). Эта информация хранится рядом с моделью в файле `metadata.json`, формируемом функцией `build_model_metadata`.
+
+Основные секции уже показаны в разделе 6.5.2; здесь рассматриваются их роли с точки зрения backend-интеграции. Поле `policyId = "<slugified-name>:<version>"` — первичный ключ модели в registry; backend хранит модели по этому ключу. Поле `format` указывает, какой именно файл загружать: `"onnx"` направляет backend в `OnnxRuntime`, `"sb3"` — в legacy-путь, который сохранён только для совместимости со старыми моделями. Поле `artifactFileName` указывает имя файла внутри загружаемого пакета: backend разбирает upload как ZIP/GZIP-архив или одиночный файл и ищет указанное имя.
+
+Поле `observationSchema` критично для корректной подачи данных на инференс. Оно описывает форму и dtype каждого входа (`image: shape=[84,84,3] dtype=uint8`, `ultrasonic: shape=[1] dtype=float32`). Backend сверяет схему с собственной конфигурацией камеры: если backend настроен на 64×64 grayscale-кадр, а модель ожидает 84×84 RGB, попытка активации завершится ошибкой со сравнительной диагностикой. Аналогично `actionSchema` описывает выходы модели: `size=5, type=discrete-categorical, mapping={0: "DirStop", 1: "DirForward", ...}`. Backend по этому маппингу преобразует `argmax`-индекс в текстовую команду, отправляемую на реальный робот через TCP-канал `5051`.
+
+Файл `metrics.json` рядом с моделью содержит результаты `evaluate_ab_policy.py`. Он не используется backend-ом в runtime, но публикуется в Web UI как «паспорт качества модели» — оператор видит success rate, среднюю длину эпизодов и максимальное боковое отклонение перед тем, как активировать модель. Это поведенческий контроль: оператор не активирует модель с success rate 10%, даже если её compatibility формально подходит.
+
 ### 6.6.3 rusim model install / activate / bind
+
+Доставка ONNX-артефакта в backend выполняется через CLI-инструмент `rusim model install` (subcommand в `python/sim_client/cli.py`). Команда принимает путь к ONNX-файлу, автоматически находит рядом `metadata.json` и `metrics.json`, и загружает всё это в backend через эндпоинт `/api/models/upload`.
+
+```bash
+$ rusim model install python/training/artifacts/cardboard-corridor-ppo-v9-rev16/1.0.0/cardboard-corridor-ppo-v9-rev16.onnx
+```
+
+Внутри команды `_model_install` использует `SimClient.upload_model`, передающий артефакт как `multipart/form-data` с тремя полями: `file` (бинарный), `metadata` (JSON-строка), `metrics` (JSON-строка). Backend парсит эти поля, валидирует metadata, регистрирует модель в БД и возвращает её `policyId`. Опциональный флаг `--activate` дополнительно делает свежую модель активной для дефолтного binding-а.
+
+`rusim model activate <model_id>` отдельно вызывает `/api/models/activate` — это нужно, когда модель уже была загружена ранее, и оператор хочет переключить активную ревизию. Активная модель используется backend-ом для всех клиентов, у которых нет персонального binding-а.
+
+Персональные bindings создаются командой не через CLI, а через Web UI оператора: он выбирает свою клиентскую сессию (`clientId`), runtime-mode (`unity-sim` или `real-robot`) и модель из реестра. Соответствующий backend-эндпоинт `/api/model-bindings` сохраняет тройку `(clientId, runtimeMode, modelId)` в БД. При следующем запросе на инференс `AutopilotService` сначала ищет binding по `(clientId, runtimeMode)`, и только при его отсутствии откатывается к активной по умолчанию модели. Этот механизм позволяет в одном backend-инстансе держать несколько активных моделей одновременно — например, одну для Unity-сессии оператора, другую для реального робота.
+
+С точки зрения тренировочной обвязки это означает, что цикл «обучить — экспортировать — поставить в backend» выполняется без пересборки backend-а или Unity-runtime: всё взаимодействие идёт через один HTTP-эндпоинт `/api/models/upload` и один CLI-инструмент. Это упрощает iteration-time исследовательской работы — типичная итерация «изменить гиперпараметр, запустить тренировку, проверить на eval» не требует никаких ручных шагов помимо собственно запуска тренировочного скрипта.
 
 ## 6.7 Тестовое покрытие
 
