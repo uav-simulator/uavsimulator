@@ -560,8 +560,75 @@ $ rusim model install python/training/artifacts/cardboard-corridor-ppo-v9-rev16/
 
 ## 6.7 Тестовое покрытие
 
-### 6.7.1 Wrapper-тесты (DiscreteAction, image augmentation, latency, anti-spin reward)
+Python-обвязка обучения покрыта набором pytest-тестов в `python/tests/training/`. Тесты разделены на две группы: чистые unit-тесты, не требующие ни Unity-runtime, ни GPU (`test_discrete_action_wrapper.py`, `test_image_aug_wrapper.py`, `test_latency_wrapper.py`, `test_anti_spin_reward.py`, `test_resume_curriculum.py`), и интеграционные тесты, требующие живых Unity-инстанций и активируемые переменной окружения (`test_multi_runtime_launch.py`). Совокупный размер test-suite составляет около 570 строк — на порядок меньше, чем сама обвязка, но покрывает критические инварианты, разрушение которых тихо ломает обучение.
+
+Таблица 6.3 — Тестовое покрытие Python-обвязки
+
+| Файл | LOC | Тип | Что проверяет |
+|---|---|---|---|
+| `test_discrete_action_wrapper.py` | 130 | unit | Маппинг 5 дискретных действий → (throttle, steer); ошибки на out-of-range |
+| `test_image_aug_wrapper.py` | 138 | unit | Сохранение dtype/shape obs["image"]; eval=True отключает рандомизацию |
+| `test_latency_wrapper.py` | 102 | unit | Action queue, neutral action на первых N шагах, randomize delay |
+| `test_anti_spin_reward.py` | 105 | unit | Штраф только после порога повторений; сброс при смене действия |
+| `test_resume_curriculum.py` | 37 | unit | Curriculum stage по `num_timesteps` после resume; CLI-флаг `--start-timestep` |
+| `test_multi_runtime_launch.py` | 59 | integration | 3 Unity-инстанции отвечают на `/health`; принимают `/reset` |
+
+### 6.7.1 Wrapper-тесты
+
+Тесты на четыре env-обёртки фиксируют их поведенческие инварианты. Самый важный из них — соответствие таблицы `ACTION_TABLE` ожидаемым действиям. В `test_discrete_action_wrapper.py` используется минимальный mock-окружение:
+
+```python
+class _ContinuousActionStub(gym.Env):
+    def __init__(self):
+        self.action_space = spaces.Box(-1.0, 1.0, (2,), dtype=np.float32)
+        self.observation_space = spaces.Box(0, 1, (4,), dtype=np.float32)
+        self.last_action: np.ndarray | None = None
+
+    def step(self, action):
+        self.last_action = np.asarray(action, dtype=np.float32).copy()
+        return np.zeros(4, dtype=np.float32), 0.0, False, False, {}
+```
+
+Через mock вокруг `DiscreteActionWrapper` подаётся каждое из пяти действий, и тест проверяет, что `last_action` совпадает в точности с ожидаемой парой `(throttle, steer)` из `ACTION_TABLE`. Дополнительно проверяется, что `action_space` обёрнутой среды — `Discrete(5)`, а не `Box`. Тест существует именно потому, что `ACTION_TABLE` за время разработки изменялась дважды: первый раз — при попытке использовать `(0.5, ±1.0)` для `DirLeft/Right`, второй — при возврате к `(0, ±1)` после открытия, что `Ks0223Vehicle` корректно реализует чистый дифференциальный привод. Без теста любая последующая правка таблицы тихо нарушила бы соответствие между sim-policy и backend-командами.
+
+`test_image_aug_wrapper.py` проверяет три ключевых свойства. Первое — сохранение типа: после применения wrapper `obs["image"].dtype` остаётся `uint8`, а `obs["image"].shape` остаётся `(84, 84, 3)`. Второе — eval-режим: при `enable=False` все аугментации детерминированно отключаются, и obs возвращается без изменений. Третье — статистическая проверка: на серии шагов средняя яркость должна оставаться в разумных пределах от исходного значения, иначе аугментация ломала бы распределение настолько, что policy не имела бы шансов на обучение.
+
+`test_latency_wrapper.py` проверяет очередь действий: при `delay_steps=2` первые два шага возвращают neutral-action (нулевое действие — `DirStop` для дискретного, `(0, 0)` для непрерывного), а с третьего шага среда получает первое поданное действие. Также проверяется randomize-режим: при `delay_max=4` фактический lag варьируется в `[delay_steps, delay_max]` и в среднем по большому числу шагов сходится к ожидаемому диапазону.
+
+`test_anti_spin_reward.py` проверяет два инварианта: штраф не применяется до достижения порога (по умолчанию пять повторений одного действия), и счётчик повторений сбрасывается при смене действия. Эти проверки гарантируют, что wrapper не «душит» policy случайными штрафами на самых первых шагах эпизода, когда повторение естественно (например, `DirForward` в начале коридора).
 
 ### 6.7.2 Multi-runtime launch test
 
+Один интеграционный тест — `test_multi_runtime_launch.py` — проверяет, что три Unity-инстанции, поднятые `./rusim server up --count 3`, корректно отвечают на `/health` и принимают `/reset`. Тест активируется только при выставленной переменной окружения `RUSIM_MULTI_RUNTIME_TEST=1`; без неё `pytest.skip` пропускает его, что нужно для CI, в котором Unity недоступен.
+
+```python
+@pytest.mark.skipif(
+    os.environ.get("RUSIM_MULTI_RUNTIME_TEST") != "1",
+    reason="requires 3 live Unity runtimes on :8000-:8002",
+)
+def test_three_runtimes_healthy():
+    for port in (8000, 8001, 8002):
+        r = requests.get(f"http://127.0.0.1:{port}/health", timeout=5)
+        assert r.ok, f"port {port} returned {r.status_code}"
+        body = r.json()
+        assert body.get("status") == "ok", f"port {port} unhealthy: {body}"
+```
+
+Тест короткий, но он закрывает важный практический кейс: оператор хочет запустить meta-multi-agent-обучение и сначала проверить, что три параллельных Unity-инстанции живы и принимают reset с теми же `trackParams`, что и ожидаются в реальной тренировке. Запуск теста занимает порядка 15 секунд и не требует никакого тренировочного оборудования; перед длительным прогоном (несколько часов) это разумный smoke-test.
+
 ### 6.7.3 Resume curriculum test
+
+`test_resume_curriculum.py` фиксирует тонкий инвариант, обнаруженный после неудачной попытки resume-обучения. Сценарий: тренировка останавливается на 30 000 шагов; оператор перезапускает её с `--resume <checkpoint>`. Без специальной обработки `MazeCurriculumCallback` интерпретирует `num_timesteps=0` (значение в свежеподнятом callback-объекте) как «начало обучения» и переключается в `stage-A-easy`, хотя реальный `num_timesteps` модели уже равен 30 000 и должен соответствовать `stage-B-medium`.
+
+```python
+def test_resume_with_start_timestep_sets_num_timesteps():
+    cb = MazeCurriculumCallback(stages=DEFAULT_STAGES, verbose=0)
+    idx_at_30k = cb._current_stage(30_000)
+    assert DEFAULT_STAGES[idx_at_30k].name == "stage-B-medium"
+    idx_at_5k = cb._current_stage(5_000)
+    assert DEFAULT_STAGES[idx_at_5k].name == "stage-A-easy"
+```
+
+Тест проверяет, что внутренняя функция `_current_stage` возвращает правильный stage при заданном `num_timesteps`. Кроме того, отдельная проверка убеждается, что CLI-флаг `--start-timestep` присутствует в argparse-схеме старого тренировочного скрипта `train_cardboard_corridor.py`. Этот флаг — критичная часть resume-механизма, и его удаление при рефакторинге сломало бы curriculum-resume для всех ревизий, использующих старую тренировочную обвязку. Закрепление инварианта в тесте предотвращает такие регрессии.
+
+Совокупно набор тестов покрывает четыре wrapper-инварианта, два инварианта resume-механизма и два кейса multi-runtime-запуска. Это не полное покрытие — env-классы (`ABCorridorVisionEnv`, `MultiAgentVisionVecEnv`, `MetaMultiAgentVecEnv`) тестируются только косвенно через тренировочные прогоны, потому что построить корректный mock Unity-runtime с реалистичными observation-кадрами оказывается непрактично. Этот компромисс принят сознательно: тесты ловят наиболее частые регрессии в wrapper-стеке (где они и наблюдались), а корректность env-классов проверяется fact-of-training — несходимость PPO в первых 5000 шагов даёт быстрый сигнал о поломке.
