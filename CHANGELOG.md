@@ -27,6 +27,9 @@
 - **WebUI Scenario Picker**:
   - Новая вкладка «Сценарии» в Web UI: dropdown сценариев из `configs/scenarios/`, кнопка Load с отображением выбранных track/vehicle/agents.
   - Backend endpoints `GET /api/scenarios` и `POST /api/scenarios/load` (форвард в `rusim scenario reset`).
+  - CLI-паритет: `rusim scenario list [--json]` показывает те же файлы, что и backend, без необходимости поднимать веб-сервер.
+- **Plugin workflow smoke test**:
+  - `scripts/validate_plugin_workflow.sh` (+ Makefile-цели `plugin-smoke`, `plugin-smoke-track`) — end-to-end проверка цикла `new → install → list → remove` на CLI-реестре без необходимости в Unity Editor или backend'е.
 - **WebUI Demo Replay**:
   - `DemoReplayPanel` для воспроизведения сохранённых JSONL session-логов на реальном роботе.
   - Backend `DemoReplayService` с timestamp-точным воспроизведением `command.outgoing` событий и поддержкой speed multiplier.
@@ -48,6 +51,9 @@
 
 - POLYGON DemoScene magenta materials под URP — конвертируются на URP/Lit at runtime.
 - Auto-detect tile spacing в `CityPolygonTrack` (вместо hardcoded 12 м), чтобы город собирался корректно вне зависимости от scale-параметров POLYGON префабов.
+- Дублирующийся скаффолд раздела 7.7 в `docs/master-thesis/07-plugin-development.md` (оставшийся от ранней разметки) удалён.
+- Текст 7.6.3 диссертации скорректирован: ранее ошибочно утверждалось, что Unity-сторона runtime читает `~/.rusim/plugin-registry.json`. На самом деле `PluginRegistry.Load()` читает только Resources + `BuiltinPluginFactory`. Раздел 7.6.4 описывает known limitation runtime-side-loading и что именно нужно сделать в `v0.3.0`.
+- Frontend Vite build больше не выдаёт «chunks larger than 500 kB» — введено разделение на `react`, `mui`, `signalr` и основной чанк через `manualChunks`.
 
 ## [v0.1.2] — 2026-04
 
