@@ -295,9 +295,60 @@ Read-only-флаг `:ro` исключает класс ошибок, при ко
 
 ### 8.4.1 Build pipeline и target платформы
 
+Сборка standalone-runtime реализована классом `RuntimeBuildPipeline` в `Assets/Editor/RuntimeBuildPipeline.cs`. Класс предоставляет три статических entry-point — `BuildMacOsRuntime`, `BuildWindowsRuntime`, `BuildLinuxRuntime` — соответствующих трём целевым платформам: `BuildTarget.StandaloneOSX`, `BuildTarget.StandaloneWindows64`, `BuildTarget.StandaloneLinux64`. Точки вызываются из CI или с командной строки через `Unity -batchmode -nographics -executeMethod UavSimulator.EditorTools.RuntimeBuildPipeline.BuildMacOsRuntime`.
+
+Перед собственно `BuildPipeline.BuildPlayer` исполняются два preprocessor-шага. `RuntimeShaderAssetSeeder.EnsureRuntimeShaderAssets` фиксирует список шейдеров, которые должны попасть в build (включая шейдеры, используемые только в runtime-материалах через `RuntimeMaterialCompatibility`). Без явного включения Unity вырезает их по graph-анализу как неиспользуемые. `PluginCatalogSeeder.SyncBuiltinPluginCatalog` синхронизирует `BuiltinPluginCatalog`-asset со списком встроенных плагинов — раздел 5 настоящей работы описывает соответствующий механизм; для сборки важно, что ассет каталога должен быть актуальным на момент `BuildPipeline.BuildPlayer`.
+
+```csharp
+private static void BuildRuntime(BuildTarget target, string defaultOutput)
+{
+    RuntimeShaderAssetSeeder.EnsureRuntimeShaderAssets();
+    PluginCatalogSeeder.SyncBuiltinPluginCatalog();
+
+    var outputPath = Environment.GetEnvironmentVariable("RUSIM_BUILD_OUTPUT")
+                     ?? defaultOutput;
+    var scenePath  = Environment.GetEnvironmentVariable("RUSIM_BUILD_SCENE")
+                     ?? "Assets/Scenes/TrackScence.unity";
+
+    var options = new BuildPlayerOptions
+    {
+        scenes           = new[] { scenePath },
+        locationPathName = Path.GetFullPath(outputPath),
+        target           = target,
+        options          = BuildOptions.None,
+    };
+    var report = BuildPipeline.BuildPlayer(options);
+    if (report.summary.result != BuildResult.Succeeded)
+        throw new InvalidOperationException($"Runtime build failed for {target}");
+}
+```
+
+Параметры `RUSIM_BUILD_OUTPUT` и `RUSIM_BUILD_SCENE` через переменные среды позволяют CI задавать нестандартный путь вывода и нестандартную стартовую сцену без правки исходников. По умолчанию сборка идёт в `build/runtime/<platform>/` со сценой `Assets/Scenes/TrackScence.unity`. После завершения build summary попадает в `Debug.Log`, что облегчает анализ в консольных логах GameCI.
+
 ### 8.4.2 Headless mode для тренировок
 
+Тренировочный сценарий запускает Unity-runtime в режиме без активного Game-View и аудио. На macOS и Linux это достигается флагами `-batchmode -nographics` при запуске исполняемого файла; для тренировок на Windows-машине автора используется тот же набор флагов через WSL2-подсистему — это соответствует основному паттерну запуска, описанному в разделе 6.1.2.
+
+В headless-режиме Unity не создаёт окно и не выполняет рендер в primary-buffer, но `Camera.targetTexture` и off-screen render через `RenderTexture` продолжают работать корректно. Это критично для платформы: тренировочная среда не видит «играбельной» сцены, но получает RGB-кадры через `CameraFrameProvider`, который рендерит в `RenderTexture` 84×84, читает её через `AsyncGPUReadback` и отдаёт обвязке через HTTP API (раздел 6.1). Описанная схема позволяет одной и той же сборке runtime обслуживать как интерактивный сценарий оператора (с активным Game-View), так и тренировочный multi-runtime-пул из трёх–четырёх инстансов headless-режима.
+
+Параллельный запуск нескольких runtime-инстансов на одной машине требует разнесения портов HTTP-сервера: переменная среды `UAVSIM_API_PORT` принимает значение 8000–8003 и определяет, на каком порту runtime будет слушать reset/step-команды. Multi-runtime-launch-helper `python/training/multi_runtime_launch.py` (раздел 6.3.4) запускает три headless-копии одной и той же сборки с разными портами и проверяет их healthcheck через тест `test_multi_runtime_launch.py`. На GPU GeForce RTX 3070 четыре одновременных headless-инстанса дают эффективную скорость порядка ста двадцати environment-шагов в секунду на инстанс, что соответствует профилю PPO-обучения с `n_envs = 4`.
+
 ### 8.4.3 Editor-only ограничения POLYGON DemoScene
+
+Часть содержимого Unity-проекта остаётся доступной только в Editor-режиме. Наиболее заметный пример — встроенная демо-сцена POLYGON City Pack (`Assets/POLYGON city pack/scene/DemoScene.unity`), используемая трассой `track.city.polygon.v1` через `CityPolygonTrack`. В режиме `useDemoScene = true` (по умолчанию) трасса аддитивно загружает сцену, переподписывает её корневые GameObject-ы под себя и заменяет встроенные камеры и источники света. Это даёт визуально полноценный city-blocks-стенд из примерно девятисот девяноста девяти GameObject-ов, но привязывает сцену к Editor-only-механизму `EditorSceneManager.OpenScene`.
+
+```csharp
+// Editor-only — for standalone builds, the POLYGON pack would need
+// Addressables / Resources/ migration.
+public sealed class CityPolygonTrack : TrackBase
+{
+    private const string DemoScenePath =
+        "Assets/POLYGON city pack/scene/DemoScene.unity";
+    ...
+}
+```
+
+Соответствующие методы в `CityPolygonTrack`, `BuiltinPluginFactory` и `RoadSystemRealisticTrack` обёрнуты `#if UNITY_EDITOR` — это исключает попадание Editor-only-API в standalone-build, но одновременно делает указанные сцены недоступными в собранном `.app`/`.exe`. Альтернативное решение — миграция POLYGON-пакета на Addressables или `Resources/` — потребует пересборки prefab-структуры пакета и не соответствует условиям лицензии POLYGON City Pack, требующим распространения исходных prefab-ов через Asset Store. По состоянию на текущий релиз city-demo-сцена работает только в Unity Editor, и cardboard-corridor- и cardboard-maze-сцены, лишённые этой зависимости, остаются основным сценарием для тренировок и операторских демонстраций. Этот компромисс зафиксирован в разделе 4.6 настоящей работы как известное ограничение и не препятствует выполнению ключевого sim-to-real-сценария (главы 6 и 7).
 
 ## 8.5 Поставка плагинов
 
