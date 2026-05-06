@@ -1,54 +1,116 @@
 # Changelog
 
-## Purpose
-Фиксировать изменения по версиям (что добавлено/изменено/исправлено) без привязки к экспериментальным результатам.
-
-## Assumptions
-- Версионирование будет уточнено после стабилизации MVP.
-
-## Decisions
-- Формат секций: Added / Changed / Fixed / Removed.
-
-## Next steps
-- Начать заполнять с первого релевантного релиза MVP.
+История изменений платформы `uav-simulator`. Формат секций: Added (новое) / Changed (изменено) / Fixed (исправлено) / Removed (удалено). Версии следуют семантическому версионированию `major.minor.patch`.
 
 ## [Unreleased]
-### Sprint 1 (Преддипломная практика, 2026-03-21 — 2026-04-04)
-Статус: промежуточный срез на 2026-03-28. Период спринта продолжается до 2026-04-04.
 
-#### Added
-- Добавлен отдельный журнал изменений спринта: `docs/report/prediploma-practice/sprint-1-changelog.md`.
-- Добавлена задача `docs/tasks/task-64-sprint-1-product-hardening-and-evidence.md` для доведения продуктового контура до следующей контрольной точки практики.
-- Добавлен backend model lifecycle v1: реестр моделей (`upload/list/activate/active`) и autopilot API (`start/stop/status`).
-- Добавлена frontend вкладка `Model Control` для загрузки/активации моделей и управления автопилотом.
-- Добавлен baseline training builder: `python/training/build_ab_policy_artifact.py`.
-- Добавлены материалы преддипломной практики для следующего этапа: `sprint-2/3 changelog`, черновики `interim/final` и генераторы `build_interim_report_2.py`, `build_final_report.py`.
-
-#### Changed
-- Зафиксированы и систематизированы выполненные работы по преддипломной практике за период 2026-03-21 — 2026-03-28 в формате, пригодном для отправки в электронный курс.
-- Уточнен приоритет фокуса до 2026-04-04: воспроизводимый e2e smoke (`Unity API + runtime + docs`) и подготовка доказательной базы для Спринта 1.
+Текущее состояние ветки `develop`. Изменения войдут в `v0.2.0`.
 
 ### Added
-- Root `Makefile` with separated operator flows for simulator and ROS2 tooling.
-- Extended architecture documentation with component and sequence diagrams.
-- Simplified `make demo-*` workflow (`demo-up`, `demo-reset`, `demo-status`, `demo-down`, `demo-restart`) for one-pass ROS demo operations.
-- Added ROS2 control helpers in `Makefile`: `ros-install-control-ui`, `ros-control-ui-container`, `ros-cmd-vel`, `ros-stop`.
-- Added `make demo-control` for one-command startup of demo stack with ROS2 steering UI.
-- Added second notebook `output/jupyter-notebook/ks0223-ros2-training-demo.ipynb` for ROS2-based mini-training and rollout demo.
+
+- **City Sample — учебный стенд для autonomous driving**:
+  - `track.city_polygon.v1` — track-плагин на основе POLYGON City Pack (Unity Asset Store id 107224), загружает встроенную DemoScene аддитивно с runtime-конверсией материалов в URP.
+  - `CityWaypointGraph` — ScriptableObject для графа путевых точек, с Editor-меню Export/Import/Validate JSON, генератором демо-скаффолда (9-узловой крест-перекрёсток) и Scene-view gizmo'ами.
+  - `WaypointFollowerVehicle` — AI-контроллер для NPC-машин: PD-steering к целевому waypoint, cruise control с замедлением на перекрёстке, интеграция с `TrafficLightAwareController` для остановки на красный сигнал.
+  - `NpcTrafficSpawner` — компонент трассы, спавнит N NPC-машин на случайных стартовых waypoint'ах с round-robin цветов arcade-машин.
+  - `TrafficLight`, `TrafficLightController`, `TrafficLightTriggerZone`, `TrafficLightAwareController` — конечный автомат светофора с координацией NS/EW пар на перекрёстке и raycast-детектором у машин.
+  - `TrafficLightPolygonAdapter` — адаптер для single-mesh POLYGON traffic-light prefab с переключением material slots на цикле.
+  - Учебный гайд `docs/sample-city-autonomy.md` (~3000 слов) с тремя уроками для студентов и преподавателей.
+- **Multi-agent ROS2 bridge**:
+  - `python/bridges/ros2_bridge_multi.py` — расширение существующего bridge на N агентов, namespace `/uavsim/<agent_id>` per car.
+  - 11 pytest-тестов с rclpy-моком (arg parsing, agent discovery, namespace construction, step routing, cmd_vel→PWM конверсия).
+  - Документация в `python/bridges/README.md` с разделом про multi-agent режим.
+- **Docker compose city-demo**:
+  - `docker-compose.city-demo.yml` — backend + ros2-bridge сервисы.
+  - Makefile-цели `city-demo-up`, `city-demo-down`, `city-demo-logs`, `city-demo-status`.
+  - Backend Dockerfile дополнен Python venv + `rusim` CLI для `/api/scenarios/load`, bind-mount каталога сценариев в `/app/configs/scenarios`.
+- **WebUI Scenario Picker**:
+  - Новая вкладка «Сценарии» в Web UI: dropdown сценариев из `configs/scenarios/`, кнопка Load с отображением выбранных track/vehicle/agents.
+  - Backend endpoints `GET /api/scenarios` и `POST /api/scenarios/load` (форвард в `rusim scenario reset`).
+- **WebUI Demo Replay**:
+  - `DemoReplayPanel` для воспроизведения сохранённых JSONL session-логов на реальном роботе.
+  - Backend `DemoReplayService` с timestamp-точным воспроизведением `command.outgoing` событий и поддержкой speed multiplier.
+- **Магистерская диссертация (auxiliary content)**:
+  - 11 разделов общим объёмом более 50 000 слов в `docs/master-thesis/`.
+  - Структурные элементы: реферат, введение, заключение, список источников по ГОСТ Р 7.0.100-2018, список сокращений.
+  - Соответствие СТУ СФУ 7.5-07-2021.
+- **Plugin SDK Editor**:
+  - `Tools > UavSimulator > City Waypoints > Generate Demo Scaffold/Validate Selected/Export to JSON/Import from JSON` — менюшный набор для работы с waypoint-графом.
+  - `UavSimulator.Editor` asmdef для editor-only кода.
+
 ### Changed
-- `HttpJsonApiHost` now supports `UAVSIM_API_HOST` and `UAVSIM_API_PORT` environment overrides.
-- Main run/readme documentation updated to match actual runtime flow and ROS2 integration.
-- `ros-ui-container` now opens `rqt_image_view` with default camera topic and restarts ROS UI windows more predictably.
-- ROS container flows now restart ROS2 daemon for `ubuntu` user to avoid stale discovery state in long sessions.
-- Camera publishers in ROS2 bridge now use sensor-data QoS (`BEST_EFFORT`) for RViz/rqt compatibility.
-- Moved task archive from root `tasks/` to `docs/tasks/` and updated documentation links.
-- Refactored `output/jupyter-notebook/ks0223-presentation-demo.ipynb` for current API contract and resilient runtime checks.
+
+- `BuiltinPluginFactory` дополнен фабриками для `track.city_polygon.v1` и арсадных машинок Arcade Free Racing Car (Blue/Red/Gray/Purple).
+- `RuntimeMaterialCompatibility` теперь автоматически конвертирует Built-in pipeline материалы на URP/Lit в момент загрузки сторонних ассетов (POLYGON City Pack).
+- `CityPolygonTrack` переключён на дефолтный режим load DemoScene аддитивно через `EditorSceneManager.LoadSceneAsyncInPlayMode`. Procedural-grid режим сохранён как fallback.
+
 ### Fixed
-- Presentation auto-drive is disabled by default (`autoDrive = false`) to prevent unexpected robot motion on Play start.
-- ROS2 bridge now auto-recovers from `Active vehicle is not initialized` by retrying reset in runtime loop.
-- ROS demo now defaults to raw image topic to avoid missing `compressed_sub` plugin errors in `rqt_image_view`.
-- Fixed broken RGB decode path in `ros2_bridge.py` that prevented `sensor_msgs/Image` publishing.
-- Fixed RViz camera display config (`Topic` key) so RViz actually subscribes to `/uavsim/ks0223/camera/front/image_raw`.
-- Fixed generated track boundaries to remove collision gaps and reduce invisible boundary overlap with the drivable lane.
-- Improved runtime fallback KS0223 visual mesh composition (mustang-like silhouette with cabin/hood/windows).
+
+- POLYGON DemoScene magenta materials под URP — конвертируются на URP/Lit at runtime.
+- Auto-detect tile spacing в `CityPolygonTrack` (вместо hardcoded 12 м), чтобы город собирался корректно вне зависимости от scale-параметров POLYGON префабов.
+
+## [v0.1.2] — 2026-04
+
+### Added
+
+- Релиз: `dist/v0.1.2/uav-simulator-macos-v0.1.2.zip`.
+- Workflow `release-rusim.yml` для автоматической публикации `rusim` CLI.
+- Workflow `release-manifest.yml` для манифестов плагинов.
+
+## [v0.1.1] — 2026-04
+
+### Added
+
+- Релиз: `dist/v0.1.1/`.
+- Стабилизация HTTP JSON API после спринта 2.
+
+## [v0.1.0] — 2026-04
+
+Первый релиз платформы по итогам спринта 1 преддипломной практики.
+
+### Added
+
+- Unity runtime: `RuntimeSceneBootstrap`, `SimulationManager`, `PluginRegistry`, `HttpJsonApiHost`, `HttpJsonSimulatorApiServer`, `SimulatorApiFacade`.
+- Plugin SDK: `VehiclePluginDescriptor`, `TrackPluginDescriptor`, `PluginDescriptorBase`, `DeviceContractDescriptor`, `ContractVersion`, `VehicleBase`, `TrackBase`.
+- Editor-инструменты: `Tools > UavSimulator > Validate Plugins`, `Export Plugin (.zip)`.
+- CLI `rusim`: подкоманды `server`, `scenario`, `plugin`, `model`, `runtime`, `step`, `reset`, `doctor`, `version`, `contract`, `inspect`, `list`, `install`, `upgrade`.
+- Backend на ASP.NET Core: `RuntimeSessionManager`, `ModelRegistryService`, `AutopilotService`, `AutopilotSafetyFilter`, `SessionLogger`, `SessionVideoRecorder`, `DemoReplayService`. Около 50 HTTP-маршрутов и SignalR-хаб для телеметрии.
+- Web UI на React + TypeScript + Vite + MUI с вкладками управления, сенсоров, индикации, моделей, повтора демо и логов.
+- Python training pipeline: `SimClient` (HTTP-клиент Unity API), `ABCorridorVisionEnv`, `MultiAgentVisionVecEnv`, `MetaMultiAgentVecEnv`, `CorridorGenesisVecEnv`, тренировочный скрипт на Stable-Baselines3 PPO.
+- Тесты: Unity EditMode (5 файлов) для контрактов, конфига, recorder и FSM светофоров; backend xUnit (1 файл) для AutopilotSafetyFilter; Python pytest (6 файлов) для wrappers и launch-логики.
+- ROS2 bridge для одиночного агента: одометрия, телеметрия, кадр камеры, `cmd_vel`.
+- CI/CD: GitHub Actions `ci.yml` (lint+build), `pages.yml` (mkdocs deploy), `release-manifest.yml`, `release-rusim.yml`.
+- Документация на mkdocs material: разделы по архитектуре, API, CLI, использованию, обучению, sim-to-real.
+- Каталог встроенных плагинов: KS0223, Prometeo Sport, Arcade (Blue/Red/Gray/Purple), Simple Drone, Basic Arena, RoadSystem (Arena/Realistic), Cardboard Corridor, Cardboard Maze.
+
+### Changed
+
+- `HttpJsonApiHost` поддерживает переменные среды `UAVSIM_API_HOST` и `UAVSIM_API_PORT` для параллельных запусков на одной машине.
+- ROS2-bridge переведён на sensor-data QoS (`BEST_EFFORT`) для совместимости с RViz и rqt-инструментами.
+
+### Fixed
+
+- Presentation auto-drive отключён по умолчанию (`autoDrive = false`), чтобы предотвратить непреднамеренное движение робота при нажатии Play.
+- ROS2-bridge восстанавливается после ошибки `Active vehicle is not initialized` через повторный reset в runtime loop.
+
+## Формат изменений
+
+При добавлении новой записи использовать формат:
+
+```markdown
+## [Unreleased]
+
+### Added
+- Краткое описание нового функционала с одним-двумя предложениями объяснения.
+
+### Changed
+- Описание изменения существующего поведения.
+
+### Fixed
+- Описание исправления с упоминанием симптома и контекста, без подробной отладочной истории.
+
 ### Removed
+- Описание удалённого функционала с указанием причины и альтернативы.
+```
+
+При выпуске релиза `[Unreleased]` переименовывается в новую версию с датой. Тэг проставляется через `git tag -a vX.Y.Z`.
