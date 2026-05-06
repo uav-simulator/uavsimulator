@@ -102,11 +102,103 @@ def test_penalty_kicks_in_at_threshold():
 
 ## 8.2 Непрерывная интеграция
 
+Платформа использует GitHub Actions как единственное средство непрерывной интеграции. На момент написания работы в каталоге `.github/workflows/` находятся четыре workflow-файла, разделённых по ответственности: `ci.yml` (сборка и тестирование при каждом push), `pages.yml` (деплой документации), `release-rusim.yml` (публикация Python-пакета `rusim`), `release-manifest.yml` (генерация JSON-манифеста релиза для plugin SDK). Логическая структура CI/CD-конвейера показана на рисунке 8.1.
+
+```mermaid
+flowchart LR
+    Dev[git push develop] --> Trig{Trigger router}
+    Trig -- "any push" --> CI[ci.yml]
+    Trig -- "docs/**" --> Pages[pages.yml]
+    Trig -- "tag v*" --> Rel1[release-rusim.yml]
+    Trig -- "manual dispatch" --> Rel2[release-manifest.yml]
+
+    CI --> Backend[Backend build]
+    CI --> Frontend[Frontend build]
+    CI --> Unity[Unity tests]
+    CI --> PyLint[Python import check]
+    CI --> Demo[Demo proof CI]
+
+    Pages --> Build[mkdocs build --strict]
+    Build --> Deploy[Deploy to GitHub Pages]
+
+    Rel1 --> Wheel[Build whl + sdist]
+    Wheel --> Upload1[Upload to GH Release]
+
+    Rel2 --> Manifest[generate_release_manifest.py]
+    Manifest --> Upload2[Attach manifest to Release]
+```
+
+Рисунок 8.1 — Логическая структура CI/CD-конвейера
+
 ### 8.2.1 Workflow ci.yml: триггеры и шаги
+
+Workflow `ci.yml` запускается на каждое событие `push` и `pull_request` без фильтрации по веткам и путям. Это упрощает контракт: любая правка в любой ветке обязана пройти базовый набор проверок. Workflow декомпозирован на пять параллельных job-ов; явные зависимости установлены только между `unity-license-gate` и `unity-tests`.
+
+Таблица 8.2 — Состав job-ов workflow ci.yml
+
+| Job | Назначение | Стек | Условие выполнения |
+|---|---|---|---|
+| `unity-license-gate` | Проверка наличия Unity-лицензии в secrets | bash | всегда |
+| `backend-build` | Сборка `backend.csproj` | `actions/setup-dotnet@v5`, .NET 8 | всегда |
+| `frontend-build` | Сборка Vite-фронта | `actions/setup-node@v6`, Node 20 | всегда |
+| `unity-tests` | EditMode/PlayMode тесты через GameCI | `game-ci/unity-test-runner@v4` | при наличии лицензии |
+| `python-lint` | Импорт-чек `sim_client.http_client` | `actions/setup-python@v6`, Python 3.11 | всегда |
+| `demo-proof-ci` | Smoke-цель `make demo-proof-ci` | bash + Makefile | всегда |
+
+Job `unity-license-gate` решает практическую проблему: интеграционные тесты Unity требуют активированной professional-лицензии, передаваемой через secrets; в публичных pull-request-ах от внешних контрибьюторов secrets недоступны, и попытка запуска `unity-test-runner` без лицензии завершается ошибкой. Gate-job проверяет, заполнен ли секрет `UNITY_LICENSE`, и записывает признак в output `has_license`. Job `unity-tests` стартует условно — `if: needs.unity-license-gate.outputs.has_license == 'true'` — что делает CI зелёным на чужих PR без потери способности запускать Unity-тесты на push-ах в `develop`.
+
+Job `python-lint` намеренно ограничен импорт-чеком: он устанавливает зависимости из `python/requirements.txt` и пытается импортировать `from sim_client.http_client import SimClient`. Основная цель — поймать регрессии установки пакета (нарушения `pyproject.toml`, конфликты зависимостей), не запуская полный pytest-набор в CI. Полноценный pytest-запуск Python-обвязки требует Stable-Baselines3 и PyTorch, общий объём установки которых превышает гигабайт — для каждого push это неоправданная нагрузка на CI-минуты. Тесты `python/tests/training/` запускаются вручную на машине разработчика.
+
+Job `demo-proof-ci` исполняет цель `make demo-proof-ci`, реализующую graceful-skip-сценарий: если в окружении CI отсутствует Docker-демон или Unity-проект, цель не падает, а печатает диагностическое сообщение и возвращает код нуля. Назначение цели — зафиксировать наличие Makefile-точки входа в demo-flow, без претензии на запуск полной end-to-end-проверки в headless-CI.
+
+```yaml
+unity-tests:
+  name: Unity Tests (GameCI)
+  needs: unity-license-gate
+  if: ${{ needs.unity-license-gate.outputs.has_license == 'true' }}
+  runs-on: ubuntu-latest
+  steps:
+    - uses: actions/checkout@v6
+    - uses: game-ci/unity-test-runner@v4
+      env:
+        UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+      with:
+        projectPath: src/UnityProject/uav-simulator
+        unityVersion: 6000.1.8f1
+        testMode: all
+        artifactsPath: artifacts
+```
 
 ### 8.2.2 Workflow pages.yml: деплой документации
 
+Workflow `pages.yml` отвечает за публикацию проектной документации на GitHub Pages по адресу `https://nmgorovenko.github.io/uav-simulator/`. Триггер сужен до случаев, когда правки касаются именно документации: события `push` на ветки `main` и `develop`, ограниченные путями `docs/**`, `mkdocs.yml` и сам `pages.yml`. Это исключает повторные деплои при правке кода, не влияющего на документационный сайт.
+
+Workflow собран из двух job-ов: `build` и `deploy`. `build` ставит Python 3.11, устанавливает `mkdocs`, `mkdocs-material` и `pymdown-extensions` из `docs/requirements-pages.txt`, исполняет `mkdocs build --strict` (флаг `--strict` превращает любые предупреждения mkdocs в ошибки) и публикует получившийся `.mkdocs-site` как pages-artifact. `deploy` использует `actions/deploy-pages@v4` и берёт собранный artifact, запуская публикацию в окружение `github-pages`. Concurrency-группа `pages` с `cancel-in-progress: true` гарантирует, что параллельные push-ы документации не приводят к конкурирующему деплою.
+
+```yaml
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'docs/**'
+      - 'mkdocs.yml'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+```
+
+Опция `workflow_dispatch` позволяет вручную перевыпустить документацию из UI Actions без необходимости создавать новый коммит — это удобно для перезапуска после правки секретов или после исправления внешних ссылок на ассеты, кэшируемые Pages.
+
 ### 8.2.3 Release workflows: rusim CLI и plugin SDK manifests
+
+Релизный конвейер разделён на два workflow по типу артефакта. `release-rusim.yml` срабатывает на push тэга вида `v*` (а также по ручному `workflow_dispatch` с явно заданным тэгом) и собирает Python-пакет `rusim` из `python/pyproject.toml`. Перед сборкой workflow синхронизирует поле `version` в `pyproject.toml` со значением тэга — это исключает рассинхронизацию версии в метаданных пакета и в git-тэге, которая в случае ручной публикации часто становится источником багов. Сборка выполняется командой `python -m build python --outdir dist/rusim/<tag>`, после чего `python -m twine check` валидирует README/long-description-метаданные, и `softprops/action-gh-release@v2` прикладывает `.whl` и `.tar.gz` к существующему GitHub Release.
+
+`release-manifest.yml` запускается только вручную через `workflow_dispatch` с входным параметром `tag`. Workflow исполняет утилиту `scripts/generate_release_manifest.py github-release`, которая по тэгу собирает машиночитаемый JSON с описанием состава релиза: список приложенных к релизу файлов, их размеров, sha-256-сумм, ссылок на скачивание и сопоставление с конвенциями имени (`uav-simulator-macos-<tag>.zip`, `<plugin>.rusim-plugin.zip`). Сгенерированный манифест прикладывается к тому же GitHub Release под именем `rusim-release-manifest.json` и одновременно сохраняется как workflow-artifact.
+
+Манифест предназначен для двух потребителей. Первый — CLI `rusim plugin install`, который при отсутствии локального файла запрашивает манифест по конвенциональному URL и определяет, какие плагины вообще доступны для установки в данной версии. Второй — Web UI и инсталлеры, которые при первом запуске обращаются к манифесту последнего релиза для проверки актуальности установленной версии и предложения обновления. Разделение на два workflow связано с тем, что `release-rusim.yml` исполняется автоматически на каждый тэг, тогда как `release-manifest.yml` запускается после того, как все артефакты — Python-пакет, Unity-builds, plugin-архивы — уже опубликованы как assets в Release; манифест должен описывать финальный состав, а не промежуточный.
 
 ## 8.3 Сборка backend и Web UI
 
