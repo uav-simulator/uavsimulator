@@ -137,14 +137,16 @@ jobs:
         run: rusim --help
       - name: rusim scenario list
         run: rusim scenario list || true  # tolerate empty registry on a clean checkout
-      - name: Validate every shipped scenario
+      - name: Validate every shipped scenario (top-level + robustness/)
         run: |
           set -e
-          for f in configs/scenarios/*.yaml; do
+          shopt -s nullglob globstar
+          for f in configs/scenarios/**/*.yaml; do
             echo "::group::validate $f"
             rusim scenario validate "$f"
             echo "::endgroup::"
           done
+        shell: bash
 
   demo-proof-ci:
     # Smoke that runs without a live Unity Editor: validates plugin SDK packaging
