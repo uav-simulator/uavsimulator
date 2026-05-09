@@ -2,10 +2,15 @@
 from __future__ import annotations
 
 import sys
-from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[3]
-sys.path.insert(0, str(ROOT / "python"))
+import pytest
+
+# Both tests in this module exercise code that transitively imports torch /
+# stable_baselines3. Those are part of the heavyweight ``training`` extra
+# and are intentionally NOT installed by the lightweight ``test`` extra
+# used in CI. Skip cleanly when they are unavailable.
+pytest.importorskip("stable_baselines3")
+pytest.importorskip("torch")
 
 
 def test_resume_with_start_timestep_sets_num_timesteps():

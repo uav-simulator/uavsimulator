@@ -5,24 +5,56 @@ from typing import Any
 
 import requests
 from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 
 class SimClient:
     """HTTP client for Unity simulator runtime API.
 
-    Uses a persistent requests.Session() for keep-alive connection pooling.
-    Critical on Windows: per-request connections quickly exhaust the
-    TCP ephemeral port pool (TIME_WAIT) under high training fps,
-    triggering WinError 10055 / EOFError in subprocess workers.
+    Uses a persistent ``requests.Session()`` for keep-alive connection pooling.
+    Critical on Windows: per-request connections quickly exhaust the TCP
+    ephemeral port pool (TIME_WAIT) under high training fps, triggering
+    ``WinError 10055`` / ``EOFError`` in subprocess workers.
+
+    Retry semantics:
+      * GET/HEAD requests retry up to ``retries`` times on transient
+        connection errors and HTTP 502/503/504 with exponential backoff.
+        Used to bridge short Unity GC pauses without killing a training run.
+      * POST requests (``/reset``, ``/step``, control commands) are
+        intentionally NOT retried after the request leaves the wire — the
+        simulator is not idempotent on side-effecting calls.
     """
 
-    def __init__(self, base_url: str, timeout_s: float = 10.0):
+    def __init__(
+        self,
+        base_url: str,
+        timeout_s: float = 10.0,
+        *,
+        retries: int = 3,
+        backoff_factor: float = 0.3,
+    ):
         self.base_url = base_url
         self.timeout_s = timeout_s
         self.session = requests.Session()
         # 1 host (the Unity instance) — keep up to 16 idle connections,
-        # match expected env worker concurrency
-        adapter = HTTPAdapter(pool_connections=4, pool_maxsize=16, max_retries=0)
+        # match expected env worker concurrency.
+        retry_policy = Retry(
+            total=retries,
+            connect=retries,
+            read=retries,
+            status=retries,
+            backoff_factor=backoff_factor,
+            status_forcelist=(502, 503, 504),
+            # urllib3's default already excludes POST/PUT/DELETE, but we list
+            # the safe methods explicitly to make the intent unmistakable.
+            allowed_methods=frozenset({"GET", "HEAD", "OPTIONS"}),
+            raise_on_status=False,
+        )
+        adapter = HTTPAdapter(
+            pool_connections=4,
+            pool_maxsize=16,
+            max_retries=retry_policy,
+        )
         self.session.mount("http://", adapter)
         self.session.mount("https://", adapter)
 
