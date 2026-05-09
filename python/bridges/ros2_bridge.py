@@ -10,8 +10,9 @@ import os
 import re
 import sys
 import time
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any, Dict, Mapping
+from typing import Any
 
 import requests
 
@@ -29,7 +30,7 @@ except ModuleNotFoundError as exc:
     SimClient = Any  # type: ignore[assignment,misc]
     Ks0223Command = Any  # type: ignore[assignment,misc]
 
-    def parse_telemetry(step_result: Mapping[str, Any]) -> Dict[str, str]:  # type: ignore[no-redef]
+    def parse_telemetry(step_result: Mapping[str, Any]) -> dict[str, str]:  # type: ignore[no-redef]
         _ = step_result
         return {}
 
@@ -47,13 +48,9 @@ try:
     from nav_msgs.msg import Odometry
     from rclpy.node import Node
     from rclpy.qos import qos_profile_sensor_data
-    from sensor_msgs.msg import BatteryState
-    from sensor_msgs.msg import CompressedImage
+    from sensor_msgs.msg import BatteryState, CompressedImage, Range
     from sensor_msgs.msg import Image as RosImage
-    from sensor_msgs.msg import Range
-    from std_msgs.msg import Float32
-    from std_msgs.msg import Float32MultiArray
-    from std_msgs.msg import String
+    from std_msgs.msg import Float32, Float32MultiArray, String
 except ModuleNotFoundError as exc:
     _ROS2_IMPORT_ERROR = exc
     rclpy = None  # type: ignore[assignment]

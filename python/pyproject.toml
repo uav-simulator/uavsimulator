@@ -13,8 +13,114 @@ dependencies = [
   "PyYAML>=6.0",
 ]
 
+[project.optional-dependencies]
+# Minimum deps to run the test suite (no torch/SB3 — tests only exercise wrappers)
+test = [
+  "pytest>=8.0",
+  "pytest-cov>=5.0",
+  "gymnasium>=0.29",
+  "numpy>=1.26",
+  "Pillow>=10.0",
+]
+# Full training stack (PPO, ONNX export, vision augmentations)
+training = [
+  "gymnasium>=0.29",
+  "numpy>=1.26",
+  "Pillow>=10.0",
+  "stable-baselines3>=2.3",
+  "sb3-contrib>=2.3",
+  "torch>=2.2",
+  "tensorboard>=2.16",
+  "opencv-python>=4.9",
+  "onnx>=1.15",
+  "onnxruntime>=1.17",
+]
+# Linting / typing tooling for local + CI
+dev = [
+  "ruff>=0.6",
+  "mypy>=1.10",
+]
+
 [project.scripts]
 rusim = "sim_client.cli:main"
 
 [tool.setuptools]
 packages = ["sim_client"]
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+# Make `from training.X import ...` and `from bridges.X import ...` work
+# without requiring the training and bridges trees to be installed as packages.
+pythonpath = ["."]
+addopts = [
+  "-ra",
+  "--strict-markers",
+  "--strict-config",
+]
+markers = [
+  "integration: tests that require a running Unity HTTP server (deselect with '-m \"not integration\"')",
+  "slow: long-running tests (deselect with '-m \"not slow\"')",
+]
+filterwarnings = [
+  "ignore::DeprecationWarning:google.*",
+  "ignore::DeprecationWarning:gymnasium.*",
+]
+
+[tool.ruff]
+line-length = 110
+target-version = "py310"
+extend-exclude = [
+  ".venv",
+  "build",
+  "dist",
+  "tests/fixtures",
+]
+
+[tool.ruff.lint]
+# Start lenient — discipline first, then ratchet up.
+select = [
+  "E",    # pycodestyle errors
+  "F",    # pyflakes
+  "W",    # pycodestyle warnings
+  "I",    # isort
+  "UP",   # pyupgrade
+  "B",    # flake8-bugbear
+  "PL",   # pylint subset
+]
+ignore = [
+  "E501",    # line-too-long (covered by formatter)
+  "E402",    # module-level import not at top — sys.path hacks pervasive (planned cleanup)
+  "E701",    # multiple statements on one line: colon (research-grade compact code)
+  "E702",    # multiple statements on one line: semicolon (research-grade compact code)
+  "PLC0415", # lazy imports of heavy ML libs (torch, sb3) are intentional
+  "PLR2004", # magic value comparison — too noisy in training code
+  "PLR0913", # too many arguments — RL hyperparam constructors are unavoidable
+  "PLR0915", # too many statements — training scripts are linear by nature
+  "PLR0912", # too many branches — argparse handlers
+  "PLR0911", # too many return statements — reward shaping has many short-circuits
+  "B008",    # function call in default argument — common gym pattern
+  "B007",    # unused loop variable — common in iteration patterns
+  "B905",    # zip without explicit strict — would need backfill across many sites
+  "PLW0603", # global statement — used in CLI singletons; refactor planned
+  "PLW1510", # subprocess.run without check=True — many call sites
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["PLR2004", "B011"]  # asserts / magic numbers fine in tests
+"sim_client/cli.py" = ["PLR0911", "PLR0912", "PLR0915"]  # known god-file, refactor planned
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = false
+warn_unused_configs = true
+ignore_missing_imports = true
+# Strict only on sim_client; training/ and bridges/ are research-grade
+[[tool.mypy.overrides]]
+module = "sim_client.*"
+disallow_untyped_defs = false
+warn_unused_ignores = true

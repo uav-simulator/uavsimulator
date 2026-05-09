@@ -251,7 +251,8 @@ class ABCorridorVisionEnv(gym.Env):
         resulting path_cells back into trackParams as "maze.path_encoded" so
         Unity builds geometry from the exact same path (avoids PRNG mismatch).
         """
-        from training.maze_generator import MazeParams, generate as generate_maze
+        from training.maze_generator import MazeParams
+        from training.maze_generator import generate as generate_maze
 
         params = MazeParams()
         for item in self._reset_config.get("trackParams", []):
@@ -303,7 +304,9 @@ class ABCorridorVisionEnv(gym.Env):
         so the robot trains multiple episodes on the same maze before a new one.
         """
         import random as _random
-        from training.maze_generator import MazeParams, generate as generate_maze
+
+        from training.maze_generator import MazeParams
+        from training.maze_generator import generate as generate_maze
 
         # Reuse cached params if we're within the regen window
         reuse = (
@@ -366,8 +369,7 @@ class ABCorridorVisionEnv(gym.Env):
             self.corridor_width_m * 0.5 * 0.9,
         )
         self.oob_threshold_m = self.corridor_width_m * 0.5 - self.oob_margin_m
-        if self.oob_threshold_m <= 0.05:
-            self.oob_threshold_m = 0.05
+        self.oob_threshold_m = max(0.05, self.oob_threshold_m)
         self.total_route_length = self._compute_route_length()
 
     # ── gym interface ──

@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from typing import Any, Dict, Iterable, Mapping
+from typing import Any
 
 
-def _kv(key: str, value: float) -> Dict[str, str]:
+def _kv(key: str, value: float) -> dict[str, str]:
     return {"key": key, "value": f"{value:.6f}"}
 
 
@@ -16,7 +17,7 @@ class Ks0223Command:
     timestamp: int = 0
     time_base: str = "unix_ms"
 
-    def to_step_command(self) -> Dict[str, Any]:
+    def to_step_command(self) -> dict[str, Any]:
         left = max(-1.0, min(1.0, float(self.left_pwm_norm)))
         right = max(-1.0, min(1.0, float(self.right_pwm_norm)))
         brake = max(0.0, min(1.0, float(self.brake)))
@@ -34,13 +35,13 @@ class Ks0223Command:
         }
 
 
-def parse_telemetry(step_result: Mapping[str, Any]) -> Dict[str, str]:
+def parse_telemetry(step_result: Mapping[str, Any]) -> dict[str, str]:
     state = step_result.get("state") if isinstance(step_result, Mapping) else None
     telemetry = state.get("telemetry") if isinstance(state, Mapping) else None
     if not isinstance(telemetry, Iterable):
         return {}
 
-    parsed: Dict[str, str] = {}
+    parsed: dict[str, str] = {}
     for item in telemetry:
         if not isinstance(item, Mapping):
             continue

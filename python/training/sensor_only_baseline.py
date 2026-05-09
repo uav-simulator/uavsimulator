@@ -98,7 +98,6 @@ def run_one(backend: str, run_idx: int, out_dir: Path,
     snap_idx = 1
     steps_log: list[dict] = []
     last_cmd = "DirStop"
-    contacts = 0
     e_stop_count = 0
     final_reason = "timeout"
     forced_turn_ticks_left = 0

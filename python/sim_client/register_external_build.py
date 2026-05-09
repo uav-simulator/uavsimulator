@@ -2,8 +2,8 @@
 """Register existing Windows Unity build in rusim local registry."""
 
 import sys
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 
 # rusim helpers expect to be invoked from repo root
 REPO_ROOT = Path(r"<repo>")
@@ -31,6 +31,7 @@ entry = _register_external_runtime_build(
 
 # Mark as favorite for `--build favorite`
 from sim_client.cli import _load_runtime_registry, _save_runtime_registry  # type: ignore
+
 reg = _load_runtime_registry()
 reg["favoriteBuildId"] = entry["buildId"]
 _save_runtime_registry(reg)
@@ -38,4 +39,4 @@ _save_runtime_registry(reg)
 print(f"Registered: buildId={entry['buildId']}")
 print(f"  appPath: {entry['appPath']}")
 print(f"  executablePath: {entry['executablePath']}")
-print(f"  favorite: yes")
+print("  favorite: yes")

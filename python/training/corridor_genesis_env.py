@@ -21,16 +21,14 @@ Throughput target on RTX 5080: 5000+ steps/sec at n_envs=512 (vs Unity ~200).
 from __future__ import annotations
 
 import math
-from typing import Any, Optional
-
-import numpy as np
-import torch
+from typing import Any
 
 import genesis as gs
+import numpy as np
+import torch
 from gymnasium import spaces
 from stable_baselines3.common.vec_env import VecEnv
 from stable_baselines3.common.vec_env.base_vec_env import VecEnvObs, VecEnvStepReturn
-
 
 # Matches ks0223 vehicle calibration: 0.73 m/s linear, 380 deg/s yaw.
 ROBOT_MAX_SPEED = 0.73
@@ -49,7 +47,7 @@ ACTION_TABLE = np.array([
 ], dtype=np.float32)
 
 
-def _build_corridor_walls(scene: "gs.Scene", waypoints: list[tuple[float, float]],
+def _build_corridor_walls(scene: gs.Scene, waypoints: list[tuple[float, float]],
                           corridor_width_m: float, wall_height_m: float = 0.20,
                           wall_thickness_m: float = 0.05) -> None:
     """Place box walls flanking the route defined by waypoints (x,z plane)."""
@@ -88,7 +86,7 @@ class CorridorGenesisVecEnv(VecEnv):
         corridor_width_m: float = 0.60,
         oob_margin_m: float = 0.10,
         goal_radius_m: float = 0.25,
-        waypoints: Optional[list[tuple[float, float]]] = None,
+        waypoints: list[tuple[float, float]] | None = None,
         img_size: int = 84,
         env_spacing: tuple[float, float] = (12.0, 12.0),
         backend: str = "auto",
@@ -159,7 +157,7 @@ class CorridorGenesisVecEnv(VecEnv):
         })
         super().__init__(n_envs, obs_space, spaces.Discrete(5))
 
-        self._pending_actions: Optional[np.ndarray] = None
+        self._pending_actions: np.ndarray | None = None
 
     # ---- VecEnv API ----------------------------------------------------- #
 
@@ -299,8 +297,7 @@ class CorridorGenesisVecEnv(VecEnv):
                 t = (ux * (-tz) - uz * (-tx)) / den
                 s = (ux * fz - uz * fx) / -den
                 if t > 0 and 0 <= s <= seg_len:
-                    if t < best:
-                        best = t
+                    best = min(best, t)
         return float(best)
 
     def _route_progress(self, px: float, pz: float) -> float:

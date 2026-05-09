@@ -80,7 +80,7 @@ rusim inspect vehicle vehicle.prometeo.sport.v1 --base-url http://127.0.0.1:8000
 ## 4. Управление симуляцией
 
 ```bash
-rusim reset --base-url http://127.0.0.1:8000 --track-id track.roadsystem_arena.v1 --vehicle-id vehicle.prometeo.sport.v1
+rusim reset --base-url http://127.0.0.1:8000 --track-id track.cardboard_corridor.v1 --vehicle-id vehicle.prometeo.sport.v1
 rusim step --base-url http://127.0.0.1:8000 --throttle 0.3 --steer 0.1
 rusim scenario list
 rusim scenario list --json

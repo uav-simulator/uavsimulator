@@ -9,7 +9,7 @@ sys.path.insert(0, str(ROOT / "python"))
 
 
 def test_resume_with_start_timestep_sets_num_timesteps():
-    from training.maze_curriculum import MazeCurriculumCallback, DEFAULT_STAGES
+    from training.maze_curriculum import DEFAULT_STAGES, MazeCurriculumCallback
 
     # Simulate resume at 30_000 steps: should land in stage-B-medium (starts at 25_000)
     cb = MazeCurriculumCallback(stages=DEFAULT_STAGES, verbose=0)
@@ -23,8 +23,8 @@ def test_resume_with_start_timestep_sets_num_timesteps():
 
 
 def test_trainer_has_start_timestep_flag():
+
     from training import train_cardboard_corridor as mod
-    import argparse
 
     # Parse a minimal argv with the new flag
     original_argv = sys.argv

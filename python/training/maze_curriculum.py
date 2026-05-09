@@ -11,7 +11,6 @@ ranges fed into ABCorridorVisionEnv._apply_maze_randomization.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List
 
 from stable_baselines3.common.callbacks import BaseCallback
 
@@ -23,7 +22,7 @@ class CurriculumStage:
     ranges: dict
 
 
-DEFAULT_STAGES: List[CurriculumStage] = [
+DEFAULT_STAGES: list[CurriculumStage] = [
     # Stage A: longer L-shape (5 cells = 3m path, 1 right turn) — matches v6 shape,
     # long enough (~80 steps/episode) that PPO gets stable gradient per rollout.
     CurriculumStage(
@@ -76,7 +75,7 @@ DEFAULT_STAGES: List[CurriculumStage] = [
 class MazeCurriculumCallback(BaseCallback):
     """Updates maze param ranges on underlying envs as training progresses."""
 
-    def __init__(self, stages: List[CurriculumStage] = DEFAULT_STAGES, verbose: int = 1):
+    def __init__(self, stages: list[CurriculumStage] = DEFAULT_STAGES, verbose: int = 1):
         super().__init__(verbose)
         self._stages = sorted(stages, key=lambda s: s.start_step)
         self._current_idx = -1

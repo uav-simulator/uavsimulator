@@ -1,0 +1,65 @@
+# Pre-commit hooks for uav-simulator.
+#
+# Install once per checkout:
+#   pip install pre-commit && pre-commit install
+#
+# Run on all files manually:
+#   pre-commit run --all-files
+#
+# Hooks intentionally mirror what CI enforces (ci.yml `python-tests` and
+# `frontend-build & lint` jobs) so that a clean local commit cannot fail CI
+# on a style issue.
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: |
+          (?x)^(
+            .*\.md|
+            .*\.patch
+          )$
+      - id: end-of-file-fixer
+      - id: check-yaml
+        args: [--allow-multiple-documents]
+        exclude: ^mkdocs\.yml$  # mkdocs uses !!python/name custom tag
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: check-added-large-files
+        args: [--maxkb=2048]
+      - id: mixed-line-ending
+        args: [--fix=lf]
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+        files: ^python/
+      - id: ruff-format
+        files: ^python/
+
+  - repo: https://github.com/pre-commit/mirrors-prettier
+    rev: v3.1.0
+    hooks:
+      - id: prettier
+        files: ^src/ks0223-web-mac/frontend/.*\.(ts|tsx|js|jsx|css|json|md)$
+        additional_dependencies:
+          - prettier@3.3.3
+
+  # Frontend ESLint is intentionally NOT a pre-commit gate yet — the strict
+  # react-hooks plugin currently reports a baseline of 2 errors + 10 warnings
+  # (App.tsx, ConnectionCard.tsx, ControlPad.tsx, ModelControlPage.tsx,
+  # ScenarioPickerPanel.tsx). Once the baseline is at zero, uncomment the
+  # block below to make eslint a hard pre-commit gate.
+  #
+  # - repo: local
+  #   hooks:
+  #     - id: eslint-frontend
+  #       name: eslint (frontend)
+  #       language: system
+  #       entry: bash -c 'cd src/ks0223-web-mac/frontend && npx eslint --max-warnings 0'
+  #       files: ^src/ks0223-web-mac/frontend/.*\.(ts|tsx|js|jsx)$
+  #       pass_filenames: false

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Generate a circular "swarm" agent layout for showcase visualisation.
 
 Emits either a YAML fragment for ``agents.vehicles[]`` (default) or a full
@@ -20,7 +19,7 @@ from __future__ import annotations
 import argparse
 import math
 import sys
-from typing import Any, Dict, List
+from typing import Any
 
 try:
     import yaml  # type: ignore
@@ -38,8 +37,8 @@ def _round(x: float, n: int = 3) -> float:
 
 
 def build_vehicles(
-    n: int, radius: float, colors: List[str]
-) -> List[Dict[str, Any]]:
+    n: int, radius: float, colors: list[str]
+) -> list[dict[str, Any]]:
     if n < 1:
         raise ValueError("n must be >= 1")
     if radius <= 0:
@@ -47,7 +46,7 @@ def build_vehicles(
     if not colors:
         raise ValueError("colors must not be empty")
 
-    vehicles: List[Dict[str, Any]] = []
+    vehicles: list[dict[str, Any]] = []
     for i in range(n):
         theta = 2.0 * math.pi * i / n  # radians, CCW from +X axis
         x = radius * math.cos(theta)
@@ -65,7 +64,7 @@ def build_vehicles(
             agent_id = f"agent-{i:02d}"
             primary = False
 
-        entry: Dict[str, Any] = {
+        entry: dict[str, Any] = {
             "agentId": agent_id,
             "vehicleId": vehicle_id,
         }
@@ -82,9 +81,9 @@ def build_vehicles(
 def build_full_scenario(
     n: int,
     radius: float,
-    colors: List[str],
+    colors: list[str],
     track_id: str,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     vehicles = build_vehicles(n, radius, colors)
     primary_vehicle_id = vehicles[0]["vehicleId"]
     return {
@@ -132,13 +131,13 @@ def _emit_scalar(v: Any) -> str:
     return str(v)
 
 
-def _emit_list_inline(items: List[Any]) -> str:
+def _emit_list_inline(items: list[Any]) -> str:
     return "[" + ", ".join(_emit_scalar(x) for x in items) + "]"
 
 
-def _emit_vehicles_fragment(vehicles: List[Dict[str, Any]]) -> str:
+def _emit_vehicles_fragment(vehicles: list[dict[str, Any]]) -> str:
     """Emit just the list-of-mapping content under ``agents.vehicles:``."""
-    lines: List[str] = []
+    lines: list[str] = []
     for v in vehicles:
         lines.append(f"  - agentId: {v['agentId']}")
         lines.append(f"    vehicleId: {v['vehicleId']}")
@@ -151,7 +150,7 @@ def _emit_vehicles_fragment(vehicles: List[Dict[str, Any]]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def emit_fragment(vehicles: List[Dict[str, Any]]) -> str:
+def emit_fragment(vehicles: list[dict[str, Any]]) -> str:
     if yaml is not None:
         return yaml.safe_dump(
             vehicles, sort_keys=False, allow_unicode=True, default_flow_style=False
@@ -159,7 +158,7 @@ def emit_fragment(vehicles: List[Dict[str, Any]]) -> str:
     return _emit_vehicles_fragment(vehicles)
 
 
-def emit_full(scenario: Dict[str, Any]) -> str:
+def emit_full(scenario: dict[str, Any]) -> str:
     if yaml is not None:
         return yaml.safe_dump(
             scenario, sort_keys=False, allow_unicode=True, default_flow_style=None
@@ -171,7 +170,7 @@ def emit_full(scenario: Dict[str, Any]) -> str:
     )
 
 
-def parse_args(argv: List[str]) -> argparse.Namespace:
+def parse_args(argv: list[str]) -> argparse.Namespace:
     p = argparse.ArgumentParser(
         description="Generate circular swarm agent layout for rusim scenarios."
     )
@@ -204,7 +203,7 @@ def parse_args(argv: List[str]) -> argparse.Namespace:
     return p.parse_args(argv)
 
 
-def main(argv: List[str]) -> int:
+def main(argv: list[str]) -> int:
     args = parse_args(argv)
     colors = [c.strip() for c in args.colors.split(",") if c.strip()]
     if not colors:

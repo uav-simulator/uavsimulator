@@ -1,4 +1,14 @@
 scenarioId: ab-corridor-multi-v1
+displayName: A to B Corridor — Multi Agent
+description: Базовый A->B сценарий с 4 изолированными агентами на одной арене.
+version: 1
+
+runtime:
+  runtimeMode: unity-sim
+  headless: false
+  timeScale: 2.0
+  seed: 73
+
 world:
   trackId: track.basic_arena.v1
 vehicle:
@@ -19,5 +29,3 @@ agents:
   isolated: true
   seeEachOther: false
   collisionsEnabled: false
-runtime:
-  timeScale: 2.0

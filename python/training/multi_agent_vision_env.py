@@ -17,7 +17,7 @@ import io
 import math
 import sys
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np
 from gymnasium import spaces
@@ -60,7 +60,6 @@ def _seg_dist(px: float, pz: float, ax: float, az: float, bx: float, bz: float) 
 
 
 def _route_progress(px: float, pz: float, waypoints: list[tuple[float, float]], total_length: float) -> float:
-    best_t = 0.0
     best_dist = float("inf")
     cum = 0.0
     progress = 0.0
@@ -146,13 +145,13 @@ class MultiAgentVisionVecEnv(VecEnv):
         corridor_width_m: float = 0.60,
         oob_margin_m: float = 0.10,
         goal_radius_m: float = 0.25,
-        waypoints: Optional[list[tuple[float, float]]] = None,
+        waypoints: list[tuple[float, float]] | None = None,
         track_id: str = "track.cardboard_corridor.v1",
         vehicle_id: str = "vehicle.ks0223.v1",
         real_cam_postprocess: bool = False,
         # Plan 1 (rev37): random-track training support
         maze_randomize: bool = False,
-        maze_param_ranges: Optional[dict] = None,
+        maze_param_ranges: dict | None = None,
         maze_regen_every: int = 1,
         # Plan 4 (rev39): spawn pose jitter (Unity-side via trackParams)
         spawn_jitter_m: float = 0.0,
@@ -204,7 +203,7 @@ class MultiAgentVisionVecEnv(VecEnv):
 
         self._states = [_AgentState() for _ in range(n_agents)]
         self._step_count = 0
-        self._pending_actions: Optional[np.ndarray] = None
+        self._pending_actions: np.ndarray | None = None
         self._episode_seed = 0
         self._real_cam_postprocess = bool(real_cam_postprocess)
 
@@ -262,7 +261,8 @@ class MultiAgentVisionVecEnv(VecEnv):
     def _apply_maze_randomization(self, config: dict) -> None:
         import random as _random
         try:
-            from training.maze_generator import MazeParams, generate as generate_maze
+            from training.maze_generator import MazeParams
+            from training.maze_generator import generate as generate_maze
         except ImportError:
             # Maze generator missing — silently fall back to scenario defaults.
             return

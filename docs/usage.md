@@ -113,8 +113,6 @@ rusim server down
 
 `background` остаётся практическим режимом по умолчанию, если нужна камера и рендер.
 
-На 2026-04-11 latest build уже корректно публикует `track.cardboard_corridor.v1`, но camera stream ground vehicle в standalone всё ещё требует отдельного фикса. Для самого факта наличия трека и корректного `reset` достаточно `background`; для проверки изображения нужен дополнительный smoke после починки capture path.
-
 ## Реальный стенд
 Физический runtime подключается через тот же backend и тот же Web UI.
 

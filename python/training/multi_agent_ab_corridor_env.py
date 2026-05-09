@@ -10,23 +10,22 @@ SB3-compatible VecEnv interface.
 from __future__ import annotations
 
 import math
+import sys
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np
 from gymnasium import spaces
-
-import sys
 
 ROOT = Path(__file__).resolve().parents[2]
 PYTHON_ROOT = ROOT / "python"
 if str(PYTHON_ROOT) not in sys.path:
     sys.path.insert(0, str(PYTHON_ROOT))
 
-from sim_client.http_client import SimClient
 from stable_baselines3.common.vec_env import VecEnv
 from stable_baselines3.common.vec_env.base_vec_env import VecEnvObs, VecEnvStepReturn
 
+from sim_client.http_client import SimClient
 
 # Corridor route waypoints (same as single-agent env)
 WAYPOINTS: list[tuple[float, float]] = [
@@ -89,8 +88,7 @@ def _nearest_dist(px: float, pz: float) -> float:
         ax, az = WAYPOINTS[i]
         bx, bz = WAYPOINTS[i + 1]
         d = _seg_dist(px, pz, ax, az, bx, bz)
-        if d < best:
-            best = d
+        best = min(best, d)
     return best
 
 
@@ -224,7 +222,7 @@ class ABCorridorMultiAgentVecEnv(VecEnv):
 
         self._states: list[_AgentState] = [_AgentState() for _ in range(n_agents)]
         self._step_count = 0
-        self._pending_actions: Optional[np.ndarray] = None
+        self._pending_actions: np.ndarray | None = None
         self._episode_seed = 0
 
     # ------------------------------------------------------------------ #

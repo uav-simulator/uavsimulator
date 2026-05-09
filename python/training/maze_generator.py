@@ -11,7 +11,6 @@ from __future__ import annotations
 import random
 from dataclasses import dataclass, field
 
-
 # Directions: 0=North (+Z), 1=East (+X), 2=South (-Z), 3=West (-X)
 _DELTAS = [(0, 1), (1, 0), (0, -1), (-1, 0)]
 _GRID_SIZE = 40

@@ -14,7 +14,10 @@ Usage: python3 precise_motion.py forward 50    # drive 50cm
        python3 precise_motion.py right 180     # rotate right 180
        python3 precise_motion.py l-route       # demo L-shape: 30cm fwd, 90° turn, 30cm fwd
 """
-import urllib.request, json, time, sys
+import json
+import sys
+import time
+import urllib.request
 
 BACKEND = "http://localhost:5287"; CLIENT = "cal"; MODE = "real-robot"
 

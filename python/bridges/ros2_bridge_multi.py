@@ -22,8 +22,9 @@ import os
 import re
 import sys
 import time
+from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence
+from typing import Any
 
 import requests
 
@@ -41,7 +42,7 @@ except ModuleNotFoundError as exc:
     SimClient = Any  # type: ignore[assignment,misc]
     Ks0223Command = Any  # type: ignore[assignment,misc]
 
-    def parse_telemetry(step_result: Mapping[str, Any]) -> Dict[str, str]:  # type: ignore[no-redef]
+    def parse_telemetry(step_result: Mapping[str, Any]) -> dict[str, str]:  # type: ignore[no-redef]
         _ = step_result
         return {}
 
@@ -59,13 +60,9 @@ try:
     from nav_msgs.msg import Odometry
     from rclpy.node import Node
     from rclpy.qos import qos_profile_sensor_data
-    from sensor_msgs.msg import BatteryState
-    from sensor_msgs.msg import CompressedImage
+    from sensor_msgs.msg import BatteryState, CompressedImage, Range
     from sensor_msgs.msg import Image as RosImage
-    from sensor_msgs.msg import Range
-    from std_msgs.msg import Float32
-    from std_msgs.msg import Float32MultiArray
-    from std_msgs.msg import String
+    from std_msgs.msg import Float32, Float32MultiArray, String
 except ModuleNotFoundError as exc:
     _ROS2_IMPORT_ERROR = exc
     rclpy = None  # type: ignore[assignment]
@@ -156,7 +153,7 @@ def _sanitize_frame_id(value: str, default: str = "camera_front_optical") -> str
     return text or default
 
 
-def parse_agents_arg(raw: Optional[str]) -> Optional[List[str]]:
+def parse_agents_arg(raw: str | None) -> list[str] | None:
     """Parse --agents CLI argument.
 
     Returns:
@@ -173,7 +170,7 @@ def parse_agents_arg(raw: Optional[str]) -> Optional[List[str]]:
     return [_safe_agent_id(p) for p in parts]
 
 
-def discover_agent_ids(client: "SimClient", fallback: Sequence[str] = ("ego",)) -> List[str]:
+def discover_agent_ids(client: SimClient, fallback: Sequence[str] = ("ego",)) -> list[str]:
     """Try to extract agent ids from a zero-action /step response.
 
     Falls back to ``fallback`` if the response does not include an ``agents``
@@ -194,7 +191,7 @@ def discover_agent_ids(client: "SimClient", fallback: Sequence[str] = ("ego",)) 
         return list(fallback)
 
     agents = probe.get("agents") if isinstance(probe, Mapping) else None
-    ids: List[str] = []
+    ids: list[str] = []
     if isinstance(agents, Iterable):
         for item in agents:
             if not isinstance(item, Mapping):
@@ -298,7 +295,7 @@ class AgentChannel:
 
     # --------------------------- publish helpers ---------------------------
 
-    def consume_pending_command(self) -> "Ks0223Command":
+    def consume_pending_command(self) -> Ks0223Command:
         return Ks0223Command(
             left_pwm_norm=self.left_pwm,
             right_pwm_norm=self.right_pwm,
@@ -477,7 +474,7 @@ class AgentChannel:
 class MultiAgentRos2Bridge(Node):
     def __init__(
         self,
-        client: "SimClient",
+        client: SimClient,
         agent_ids: Sequence[str],
         topic_prefix: str = "/uavsim",
         rate_hz: float = 30.0,
@@ -496,7 +493,7 @@ class MultiAgentRos2Bridge(Node):
         self._last_auto_reset_attempt_sec = 0.0
 
         # Build per-agent channel registry.
-        self.agents: Dict[str, AgentChannel] = {}
+        self.agents: dict[str, AgentChannel] = {}
         for agent_id in agent_ids:
             safe_id = _safe_agent_id(agent_id)
             if safe_id in self.agents:
@@ -591,7 +588,7 @@ class MultiAgentRos2Bridge(Node):
 
 
 def run_mock_bridge(
-    client: "SimClient",
+    client: SimClient,
     agent_ids: Sequence[str],
     rate_hz: float,
     reset_on_start: bool,
@@ -614,7 +611,7 @@ def run_mock_bridge(
 
     period = 1.0 / max(1.0, rate_hz)
     for i in range(max(1, steps)):
-        per_agent: List[Dict[str, Any]] = []
+        per_agent: list[dict[str, Any]] = []
         for agent_id in agent_ids:
             cmd = Ks0223Command(
                 left_pwm_norm=0.5,
@@ -650,7 +647,7 @@ def run_mock_bridge(
 # ---------------------------------------------------------------------------
 
 
-def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
+def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Multi-agent ROS2 bridge for UAV simulator HTTP API."
     )
@@ -688,7 +685,7 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def main(argv: Optional[Sequence[str]] = None) -> int:
+def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
 
     if _SDK_IMPORT_ERROR is not None:

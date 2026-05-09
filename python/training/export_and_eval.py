@@ -7,7 +7,6 @@ import json
 import sys
 from pathlib import Path
 
-import numpy as np
 import torch
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -16,6 +15,7 @@ if str(PYTHON_ROOT) not in sys.path:
     sys.path.insert(0, str(PYTHON_ROOT))
 
 from stable_baselines3 import PPO
+
 from training.ab_corridor_env import ABCorridorEnv
 
 ARTIFACT_DIR = ROOT / "python/training/artifacts/ab_corridor_ppo_v1"

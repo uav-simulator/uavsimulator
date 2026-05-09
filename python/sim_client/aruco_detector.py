@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
-from typing import Optional
 
 import numpy as np
 
@@ -31,7 +30,7 @@ class ArucoDetection:
     marker_id: int = -1
     distance_m: float = float("inf")
     center_px: tuple[float, float] = (0.0, 0.0)
-    corners: Optional[np.ndarray] = None
+    corners: np.ndarray | None = None
     goal_reached: bool = False
 
 
@@ -51,7 +50,7 @@ class ArucoGoalDetector:
     goal_distance_m: float = 0.40
     dictionary_id: int = 0  # cv2.aruco.DICT_4X4_50
     camera_fov_deg: float = 60.0
-    image_width_px: Optional[int] = None
+    image_width_px: int | None = None
 
     # Internal state
     _dictionary: object = field(default=None, repr=False, init=False)

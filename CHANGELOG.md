@@ -40,12 +40,27 @@
 - **Plugin SDK Editor**:
   - `Tools > UavSimulator > City Waypoints > Generate Demo Scaffold/Validate Selected/Export to JSON/Import from JSON` — менюшный набор для работы с waypoint-графом.
   - `UavSimulator.Editor` asmdef для editor-only кода.
+- **CI/CD discipline (quality polish iteration)**:
+  - `python-tests` job: реальный `pytest` + `ruff check` + покрытие (артефакт `coverage.xml`) — заменяет фиктивный `python-lint` stub, гонявший только `import` smoke.
+  - `rusim-smoke` job: проверяет `rusim --help`, `rusim scenario list` и валидирует все `configs/scenarios/*.yaml`.
+  - `demo-proof-ci` теперь зовёт настоящий `make plugin-smoke-track` (раньше всегда возвращал 0 со строкой «skip, Unity API not reachable»).
+  - Path-filter `docs/**`, `mkdocs.yml`, `*.md` для `push/pull_request` — экономит CI-минуты на чисто документационных коммитах.
+  - `release-manifest.yml`: добавлен `on: release: [published]` триггер, давно ссылавшийся `${{ github.event.release.tag_name }}` теперь не мёртвый код.
+  - Frontend lint в CI как non-blocking (`continue-on-error`) с baseline 2 ошибки + 10 warnings; драка с baseline — отдельная итерация.
+- **Python project hygiene**:
+  - `python/pyproject.toml`: optional-extras `test` / `training` / `dev`; конфиг `[tool.ruff]`, `[tool.pytest.ini_options]`, `[tool.mypy]`.
+  - `python/tests/conftest.py` — заменяет `sys.path.insert` boilerplate в каждом тестовом файле.
+  - `.pre-commit-config.yaml` — ruff + ruff-format + prettier + базовые pre-commit-hooks; eslint/format-check заведены закомментированными до устранения baseline.
 
 ### Changed
 
 - `BuiltinPluginFactory` дополнен фабриками для `track.city_polygon.v1` и арсадных машинок Arcade Free Racing Car (Blue/Red/Gray/Purple).
 - `RuntimeMaterialCompatibility` теперь автоматически конвертирует Built-in pipeline материалы на URP/Lit в момент загрузки сторонних ассетов (POLYGON City Pack).
 - `CityPolygonTrack` переключён на дефолтный режим load DemoScene аддитивно через `EditorSceneManager.LoadSceneAsyncInPlayMode`. Procedural-grid режим сохранён как fallback.
+- **Master-thesis numbering (quality polish)**: H1 заголовки глав 06-api-spec и 07-plugin-development приведены в соответствие с ToC из 11-conclusion (`6→4`, `7→5` и все subsection refs внутри). Cross-refs в 08-training-python и 03-related-work-and-analogs синхронизированы.
+- **MkDocs nav**: добавлен раздел «Магистерская диссертация» (14 глав, ранее доступных только по прямому URL); `superpowers/**` исключён из деплоя.
+- **Docs canonical examples**: `cli.md` подтянут к каноническому `track.cardboard_corridor.v1` (был `roadsystem_arena.v1`); `usage.md` — удалена стейл-нота с датой 2026-04-11.
+- **Python codebase**: ruff `--fix` применён ко всему `python/` (240 авто-правок) — модернизация типов `Dict[K,V] → dict[K,V]`, `Optional[X] → X | None`, сортировка `import`-ов, удаление неиспользуемых импортов и `f`-префиксов без placeholder'ов. Поведение не меняется.
 
 ### Fixed
 
@@ -54,6 +69,10 @@
 - Дублирующийся скаффолд раздела 7.7 в `docs/master-thesis/07-plugin-development.md` (оставшийся от ранней разметки) удалён.
 - Текст 7.6.3 диссертации скорректирован: ранее ошибочно утверждалось, что Unity-сторона runtime читает `~/.rusim/plugin-registry.json`. На самом деле `PluginRegistry.Load()` читает только Resources + `BuiltinPluginFactory`. Раздел 7.6.4 описывает known limitation runtime-side-loading и что именно нужно сделать в `v0.3.0`.
 - Frontend Vite build больше не выдаёт «chunks larger than 500 kB» — введено разделение на `react`, `mui`, `signalr` и основной чанк через `manualChunks`.
+- `configs/scenarios/ab-corridor-multi-v1.yaml`: дублирующийся блок `runtime:` в конце файла затирал валидный верхний; добавлены недостающие `runtimeMode`/`headless`. Теперь `rusim scenario validate` зелёный для всех 12 сценариев.
+- `docs/training.md` — был 14-строчный stub со ссылкой на несуществующий `docs/experiments.md`; переписан в полноценный обзор контура обучения.
+- Битые master-thesis ссылки в `docs/sample-city-autonomy.md` (`master-thesis/06-python-training.md` → `08-training-python.md`).
+- 6 точечных правок исходников (B904 raise-without-from в `sim_client/cli.py`, `evaluate_ab_policy.py`, `evaluate_v9.py`; F841 unused-variable в `inspect_policy.py`, `multi_agent_vision_env.py`, `sensor_only_baseline.py`).
 
 ## [v0.1.2] — 2026-04
 
