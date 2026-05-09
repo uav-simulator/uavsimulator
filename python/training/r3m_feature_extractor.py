@@ -24,10 +24,10 @@ images = closer to real-camera distribution than scratch CNN.
 from __future__ import annotations
 
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
 from gymnasium import spaces
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
+from torch import nn
 
 
 class R3MFeatureExtractor(BaseFeaturesExtractor):
@@ -50,7 +50,7 @@ class R3MFeatureExtractor(BaseFeaturesExtractor):
         super().__init__(observation_space, features_dim)
 
         # Lazy import — torchvision optional dep
-        from torchvision.models import resnet18, resnet50, ResNet18_Weights, ResNet50_Weights
+        from torchvision.models import ResNet18_Weights, ResNet50_Weights, resnet18, resnet50
 
         if backbone == "resnet18":
             net = resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)

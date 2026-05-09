@@ -36,7 +36,6 @@ from training.policy_saliency import (  # noqa: E402
     overlay_heatmap,
 )
 
-
 _MODEL = None
 _BACKEND = "http://127.0.0.1:5287"
 _IMG_SIZE = 84

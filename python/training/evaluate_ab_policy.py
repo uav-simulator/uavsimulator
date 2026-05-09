@@ -4,17 +4,16 @@
 from __future__ import annotations
 
 import argparse
-from collections import Counter
-from dataclasses import dataclass
 import json
 import math
-from pathlib import Path
 import sys
-from typing import Any, Iterable
+from collections import Counter
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
 
 import numpy as np
 import onnxruntime as ort
-
 
 ROOT = Path(__file__).resolve().parents[2]
 PYTHON_ROOT = ROOT / "python"
@@ -110,8 +109,8 @@ def build_vision_observation(step: dict[str, Any], img_size: int = 84) -> dict[s
         import io
         try:
             from PIL import Image
-        except ImportError:
-            raise RuntimeError("Pillow is required for vision eval: pip install Pillow")
+        except ImportError as exc:
+            raise RuntimeError("Pillow is required for vision eval: pip install Pillow") from exc
         raw = base64.b64decode(data_b64)
         img = Image.open(io.BytesIO(raw)).convert("RGB").resize((img_size, img_size), Image.BILINEAR)
         image = np.array(img, dtype=np.float32)[np.newaxis]  # (1, H, W, 3)

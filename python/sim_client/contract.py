@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 
-def validate_contract(contract: Dict[str, Any]) -> Tuple[bool, List[str]]:
-    errors: List[str] = []
+def validate_contract(contract: dict[str, Any]) -> tuple[bool, list[str]]:
+    errors: list[str] = []
 
     if not isinstance(contract, dict):
         return False, ["contract must be an object"]

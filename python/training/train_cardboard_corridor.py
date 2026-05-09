@@ -26,7 +26,7 @@ if str(PYTHON_ROOT) not in sys.path:
 from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import BaseCallback, CheckpointCallback
 from stable_baselines3.common.monitor import Monitor
-from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecMonitor
+from stable_baselines3.common.vec_env import SubprocVecEnv, VecMonitor
 
 from training.ab_corridor_vision_env import ABCorridorVisionEnv
 from training.model_artifacts import (

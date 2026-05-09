@@ -22,7 +22,6 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
-import json
 import sys
 import time
 from pathlib import Path
@@ -55,7 +54,6 @@ from training.anti_spin_reward import AntiSpinRewardWrapper
 from training.discrete_action_wrapper import ACTION_NAMES, DiscreteActionWrapper
 from training.image_aug_wrapper import ImageAugObservationWrapper
 from training.latency_wrapper import DelayedActionWrapper
-from training.multi_agent_vision_env import MultiAgentVisionVecEnv
 from training.model_artifacts import (
     build_compatibility,
     build_model_metadata,
@@ -64,6 +62,7 @@ from training.model_artifacts import (
     resolve_artifact_dir,
     write_json,
 )
+from training.multi_agent_vision_env import MultiAgentVisionVecEnv
 
 DEFAULT_LOG_DIR = ROOT / "python/training/logs"
 DEFAULT_SCENARIO = ROOT / "configs/scenarios/cardboard-corridor-v1.yaml"
@@ -560,7 +559,7 @@ def main() -> int:
     print(f"  device:           {args.device}")
     print()
     print("  Wrappers stack:")
-    print(f"    DiscreteAction:    enabled (Discrete(5) -> ks0223 cmds)")
+    print("    DiscreteAction:    enabled (Discrete(5) -> ks0223 cmds)")
     print(f"    DelayedAction:     {'enabled' if enable_latency else 'disabled'} (delay={args.latency_steps})")
     print(f"    AntiSpinReward:    {'enabled' if enable_anti_spin else 'disabled'}")
     print(f"    ImageAug:          {'enabled' if enable_aug else 'disabled'}")
@@ -776,7 +775,7 @@ def main() -> int:
         extra_policy_kwargs["features_extractor_kwargs"] = dict(features_dim=args.feature_dim)
         print(f"  Feature extractor: R3M (frozen ResNet18) -> {args.feature_dim}-d")
     else:
-        print(f"  Feature extractor: SB3 default (NatureCNN)")
+        print("  Feature extractor: SB3 default (NatureCNN)")
 
     if args.resume:
         print(f"Resuming PPO from checkpoint: {args.resume}")

@@ -26,7 +26,6 @@ import io
 import sys
 import time
 from pathlib import Path
-from typing import Optional
 
 import numpy as np
 from PIL import Image
@@ -150,7 +149,6 @@ def main() -> int:
         sess = requests.Session()
         period = 1.0 / max(args.mjpeg_fps, 0.1)
         n = 0
-        boundary = None
         with sess.get(args.mjpeg, stream=True, timeout=10) as resp:
             buf = b""
             for chunk in resp.iter_content(8192):

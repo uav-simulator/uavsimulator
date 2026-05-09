@@ -1,6 +1,7 @@
 """rev24 ONNX export with FLOAT image input (matches rev16 signature)."""
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path('python').resolve()))
 import torch
 from stable_baselines3 import PPO
@@ -51,6 +52,7 @@ print(f"Exported: {out_path} ({out_path.stat().st_size/1024/1024:.2f} MB)")
 
 # Verify signature
 import onnx
+
 m = onnx.load(str(out_path))
 for inp in m.graph.input:
     dims = [d.dim_value if d.dim_value > 0 else (d.dim_param or '?') for d in inp.type.tensor_type.shape.dim]

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -26,22 +26,22 @@ class SimClient:
         self.session.mount("http://", adapter)
         self.session.mount("https://", adapter)
 
-    def health(self) -> Dict[str, Any]:
+    def health(self) -> dict[str, Any]:
         return self._get("/health")
 
-    def get_contract(self) -> Dict[str, Any]:
+    def get_contract(self) -> dict[str, Any]:
         return self._get("/contract")
 
-    def reset(self, config: Dict[str, Any]) -> Dict[str, Any]:
+    def reset(self, config: dict[str, Any]) -> dict[str, Any]:
         return self._post("/reset", config)
 
-    def step(self, command: Dict[str, Any]) -> Dict[str, Any]:
+    def step(self, command: dict[str, Any]) -> dict[str, Any]:
         return self._post("/step", command)
 
-    def list_models(self) -> Dict[str, Any] | list[Dict[str, Any]]:
+    def list_models(self) -> dict[str, Any] | list[dict[str, Any]]:
         return self._get_any("/api/models")
 
-    def get_active_model(self) -> Optional[Dict[str, Any]]:
+    def get_active_model(self) -> dict[str, Any] | None:
         url = f"{self.base_url}/api/models/active"
         r = self.session.get(url, timeout=self.timeout_s)
         if r.status_code == 404:
@@ -49,10 +49,10 @@ class SimClient:
         self._raise_for_status(r)
         return r.json()
 
-    def get_model_catalog(self) -> list[Dict[str, Any]]:
+    def get_model_catalog(self) -> list[dict[str, Any]]:
         return self._get_any("/api/model-catalog")  # type: ignore[return-value]
 
-    def activate_model(self, model_id: str) -> Dict[str, Any]:
+    def activate_model(self, model_id: str) -> dict[str, Any]:
         return self._post("/api/models/activate", {"modelId": model_id})
 
     def get_model_binding(
@@ -60,7 +60,7 @@ class SimClient:
         client_id: str,
         runtime_mode: str,
         agent_id: str = "",
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         params = {
             "clientId": client_id,
             "runtimeMode": runtime_mode,
@@ -81,8 +81,8 @@ class SimClient:
         runtime_mode: str,
         model_id: str,
         agent_id: str = "",
-    ) -> Dict[str, Any]:
-        payload: Dict[str, Any] = {
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {
             "clientId": client_id,
             "runtimeMode": runtime_mode,
             "modelId": model_id,
@@ -100,9 +100,9 @@ class SimClient:
         source: str = "",
         metadata_json: str = "",
         metrics_json: str = "",
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         url = f"{self.base_url}/api/models/upload"
-        data: Dict[str, str] = {}
+        data: dict[str, str] = {}
         if name:
             data["name"] = name
         if version:
@@ -125,19 +125,19 @@ class SimClient:
         self._raise_for_status(r)
         return r.json()
 
-    def _get(self, path: str) -> Dict[str, Any]:
+    def _get(self, path: str) -> dict[str, Any]:
         url = f"{self.base_url}{path}"
         r = self.session.get(url, timeout=self.timeout_s)
         self._raise_for_status(r)
         return r.json()
 
-    def _get_any(self, path: str) -> Dict[str, Any] | list[Dict[str, Any]]:
+    def _get_any(self, path: str) -> dict[str, Any] | list[dict[str, Any]]:
         url = f"{self.base_url}{path}"
         r = self.session.get(url, timeout=self.timeout_s)
         self._raise_for_status(r)
         return r.json()
 
-    def _post(self, path: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    def _post(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
         url = f"{self.base_url}{path}"
         r = self.session.post(url, json=payload, timeout=self.timeout_s)
         self._raise_for_status(r)

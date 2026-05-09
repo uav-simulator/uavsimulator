@@ -17,7 +17,7 @@ if str(PYTHON_ROOT) not in sys.path:
     sys.path.insert(0, str(PYTHON_ROOT))
 
 from training.ab_corridor_vision_env import ABCorridorVisionEnv
-from training.discrete_action_wrapper import ACTION_NAMES, ACTION_TABLE, DiscreteActionWrapper
+from training.discrete_action_wrapper import ACTION_NAMES, DiscreteActionWrapper
 from training.latency_wrapper import DelayedActionWrapper
 from training.model_artifacts import default_artifact_dir, default_onnx_file_name, default_sb3_stem
 
@@ -86,7 +86,7 @@ def build_discrete_predictor(model_path: Path):
             except Exception as e:
                 raise RuntimeError(
                     f"Failed to load checkpoint as PPO or RecurrentPPO: {e}"
-                )
+                ) from e
 
         if kind == "recurrent_ppo":
             # RecurrentPPO carries LSTM hidden state across steps. Reset on

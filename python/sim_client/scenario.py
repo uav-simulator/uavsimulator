@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable, Mapping
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Mapping, Tuple
+from typing import Any
 
 try:
     import yaml
@@ -10,7 +11,7 @@ except ModuleNotFoundError:  # pragma: no cover - optional until installed
     yaml = None
 
 
-def load_scenario_file(path: str | Path) -> Dict[str, Any]:
+def load_scenario_file(path: str | Path) -> dict[str, Any]:
     file_path = Path(path)
     if not file_path.exists():
         raise FileNotFoundError(f"Scenario file not found: {file_path}")
@@ -33,8 +34,8 @@ def load_scenario_file(path: str | Path) -> Dict[str, Any]:
     return payload
 
 
-def validate_scenario(payload: Mapping[str, Any]) -> Tuple[bool, List[str]]:
-    errors: List[str] = []
+def validate_scenario(payload: Mapping[str, Any]) -> tuple[bool, list[str]]:
+    errors: list[str] = []
 
     if not isinstance(payload, Mapping):
         return False, ["scenario must be an object"]
@@ -104,7 +105,7 @@ def validate_scenario(payload: Mapping[str, Any]) -> Tuple[bool, List[str]]:
     return len(errors) == 0, errors
 
 
-def scenario_to_reset_config(payload: Mapping[str, Any]) -> Dict[str, Any]:
+def scenario_to_reset_config(payload: Mapping[str, Any]) -> dict[str, Any]:
     world = _as_mapping(payload.get("world"))
     vehicle = _as_mapping(payload.get("vehicle"))
     route = _as_mapping(payload.get("route"))
@@ -112,9 +113,9 @@ def scenario_to_reset_config(payload: Mapping[str, Any]) -> Dict[str, Any]:
     agents = _as_mapping(payload.get("agents"))
     sensors = _as_mapping(payload.get("sensors"))
 
-    track_params: List[Dict[str, str]] = []
-    vehicle_params: List[Dict[str, str]] = []
-    flags: List[Dict[str, str]] = []
+    track_params: list[dict[str, str]] = []
+    vehicle_params: list[dict[str, str]] = []
+    flags: list[dict[str, str]] = []
 
     for item in _mapping_items(route, "params"):
         track_params.append(_kv(item[0], item[1]))
@@ -165,7 +166,7 @@ def scenario_to_reset_config(payload: Mapping[str, Any]) -> Dict[str, Any]:
     }
 
 
-def _expect_mapping(payload: Mapping[str, Any], key: str, errors: List[str]) -> Mapping[str, Any] | None:
+def _expect_mapping(payload: Mapping[str, Any], key: str, errors: list[str]) -> Mapping[str, Any] | None:
     value = payload.get(key)
     if not isinstance(value, Mapping):
         errors.append(f"{key} must be an object")
@@ -173,13 +174,13 @@ def _expect_mapping(payload: Mapping[str, Any], key: str, errors: List[str]) -> 
     return value
 
 
-def _expect_string(payload: Mapping[str, Any], key: str, errors: List[str]) -> None:
+def _expect_string(payload: Mapping[str, Any], key: str, errors: list[str]) -> None:
     value = payload.get(key)
     if not isinstance(value, str) or not value.strip():
         errors.append(f"{key} must be a non-empty string")
 
 
-def _expect_bool_like(payload: Mapping[str, Any], key: str, errors: List[str]) -> None:
+def _expect_bool_like(payload: Mapping[str, Any], key: str, errors: list[str]) -> None:
     value = payload.get(key)
     if not isinstance(value, bool):
         errors.append(f"{key} must be a boolean")
@@ -203,7 +204,7 @@ def _encode_waypoint(item: Any) -> str:
     raise ValueError(f"Unsupported waypoint format: {item!r}")
 
 
-def _mapping_items(payload: Mapping[str, Any], key: str) -> Iterable[Tuple[str, str]]:
+def _mapping_items(payload: Mapping[str, Any], key: str) -> Iterable[tuple[str, str]]:
     value = payload.get(key)
     if not isinstance(value, Mapping):
         return []
@@ -218,11 +219,11 @@ def _bool_str(value: Any) -> str:
     return "true" if bool(value) else "false"
 
 
-def _kv(key: str, value: str) -> Dict[str, str]:
+def _kv(key: str, value: str) -> dict[str, str]:
     return {"key": key, "value": value}
 
 
-def _upsert_param(items: List[Dict[str, str]], key: str, value: str) -> None:
+def _upsert_param(items: list[dict[str, str]], key: str, value: str) -> None:
     for item in items:
         if item.get("key") == key:
             item["value"] = value
@@ -233,11 +234,11 @@ def _upsert_param(items: List[Dict[str, str]], key: str, value: str) -> None:
 def _build_agents_payload(
     agents: Mapping[str, Any],
     vehicle: Mapping[str, Any],
-    base_vehicle_params: List[Dict[str, str]],
-) -> List[Dict[str, Any]]:
+    base_vehicle_params: list[dict[str, str]],
+) -> list[dict[str, Any]]:
     vehicles = agents.get("vehicles")
     if isinstance(vehicles, list) and vehicles:
-        result: List[Dict[str, Any]] = []
+        result: list[dict[str, Any]] = []
         has_primary = any(isinstance(item, Mapping) and bool(item.get("primary")) for item in vehicles)
         for index, item in enumerate(vehicles):
             if not isinstance(item, Mapping):
@@ -276,7 +277,7 @@ def _build_agents_payload(
     return result
 
 
-def _agent_track_params(payload: Mapping[str, Any]) -> List[Dict[str, str]]:
+def _agent_track_params(payload: Mapping[str, Any]) -> list[dict[str, str]]:
     result = [_kv(key, value) for key, value in _mapping_items(payload, "trackParams")]
     spawn_pose = payload.get("spawnPose")
     if not isinstance(spawn_pose, Mapping):

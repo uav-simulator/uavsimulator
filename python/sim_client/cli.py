@@ -14,14 +14,14 @@ import urllib.parse
 import urllib.request
 import zipfile
 from datetime import datetime
-from importlib.metadata import PackageNotFoundError, version as package_version
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as package_version
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 from .contract import validate_contract
 from .http_client import SimClient
 from .scenario import load_scenario_file, scenario_to_reset_config, validate_scenario
-
 
 CLI_PACKAGE_NAME = "uav-sim-client"
 DEFAULT_UNITY_VERSION = "6000.1.8f1"
@@ -492,7 +492,7 @@ def _upgrade(args: argparse.Namespace) -> int:
     existing = next((item for item in registry.get("builds") or [] if str(item.get("buildId") or "") == build_id), None)
     already_installed = existing is not None and Path(str(existing.get("appPath") or "")).expanduser().exists()
 
-    result: Dict[str, Any] = {
+    result: dict[str, Any] = {
         "repo": args.repo,
         "channel": args.channel,
         "manifestUrl": manifest_url,
@@ -730,7 +730,7 @@ def _scenario_list(args: argparse.Namespace) -> int:
         )
         return 1
 
-    items: List[Dict[str, Any]] = []
+    items: list[dict[str, Any]] = []
     for path in sorted(scenarios_dir.glob("*.yaml"), key=lambda p: p.name.lower()):
         try:
             payload = load_scenario_file(str(path))
@@ -823,7 +823,7 @@ def _scenario(args: argparse.Namespace) -> int:
 # Plugin management
 # ---------------------------------------------------------------------------
 
-_BUILTIN_PLUGINS: List[Dict[str, str]] = [
+_BUILTIN_PLUGINS: list[dict[str, str]] = [
     {"pluginId": "vehicle.prometeo.sport.v1", "type": "vehicle", "displayName": "PROMETEO Sport Car", "version": "1.0.0"},
     {"pluginId": "vehicle.arcade.blue.v1", "type": "vehicle", "displayName": "Arcade Free Racing Car (Blue)", "version": "1.0.0"},
     {"pluginId": "vehicle.arcade.red.v1", "type": "vehicle", "displayName": "Arcade Free Racing Car (Red)", "version": "1.0.0"},
@@ -849,14 +849,14 @@ def _plugin_registry_path() -> Path:
     return _rusim_home() / "plugin-registry.json"
 
 
-def _load_plugin_registry() -> Dict[str, Any]:
+def _load_plugin_registry() -> dict[str, Any]:
     path = _plugin_registry_path()
     if not path.exists():
         return {"schemaVersion": 1, "plugins": []}
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def _save_plugin_registry(registry: Dict[str, Any]) -> None:
+def _save_plugin_registry(registry: dict[str, Any]) -> None:
     path = _plugin_registry_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(registry, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -938,7 +938,7 @@ def _plugin_list(args: argparse.Namespace) -> int:
     registry = _load_plugin_registry()
     user_plugins = registry.get("plugins", [])
 
-    items: List[Dict[str, str]] = []
+    items: list[dict[str, str]] = []
     for p in _BUILTIN_PLUGINS:
         items.append({**p, "source": "built-in"})
     for p in user_plugins:
@@ -1032,7 +1032,7 @@ def _plugin_new(args: argparse.Namespace) -> int:
 
 def _step(base_url: str, throttle: float, steer: float, brake: float, agent_id: str, vehicle_id: str) -> int:
     client = SimClient(base_url=base_url)
-    payload: Dict[str, Any] = {
+    payload: dict[str, Any] = {
         "throttle": throttle,
         "steer": steer,
         "brake": brake,
@@ -1222,7 +1222,7 @@ def _server_start_single(args: argparse.Namespace) -> int:
             log_file=log_file,
         )
         launch_kind = "standalone-runtime"
-        launch_meta: Dict[str, Any] = {
+        launch_meta: dict[str, Any] = {
             "runtimeApp": str(runtime_app),
             "runtimeExecutable": str(executable),
         }
@@ -1442,7 +1442,7 @@ def _state_file() -> Path:
     return _runtime_dir() / "unity-server.json"
 
 
-def _load_state() -> Dict[str, Any] | None:
+def _load_state() -> dict[str, Any] | None:
     state_path = _state_file()
     if not state_path.exists():
         return None
@@ -1541,9 +1541,11 @@ def _runtime_build(args: argparse.Namespace) -> int:
     )
     try:
         return_code = process.wait(timeout=args.wait_seconds)
-    except subprocess.TimeoutExpired:
+    except subprocess.TimeoutExpired as exc:
         _terminate_pid(process.pid, grace_seconds=3.0)
-        raise RuntimeError(f"Runtime build timed out after {args.wait_seconds:.1f}s. Log: {log_file}")
+        raise RuntimeError(
+            f"Runtime build timed out after {args.wait_seconds:.1f}s. Log: {log_file}"
+        ) from exc
 
     if return_code != 0:
         log_tail = _read_log_tail(log_file, max_lines=40)
@@ -1740,7 +1742,7 @@ def _runtime_launch_command(executable: Path, mode: str, log_file: Path) -> list
     return cmd
 
 
-def _spawn_process(cmd: list[str], cwd: Path, env: Dict[str, str], log_file: Path) -> subprocess.Popen[Any]:
+def _spawn_process(cmd: list[str], cwd: Path, env: dict[str, str], log_file: Path) -> subprocess.Popen[Any]:
     with open(log_file, "ab") as log_handle:
         return subprocess.Popen(
             cmd,
@@ -1885,14 +1887,14 @@ def _runtime_registry_path() -> Path:
     return _rusim_home() / "runtime-builds.json"
 
 
-def _load_runtime_registry() -> Dict[str, Any]:
+def _load_runtime_registry() -> dict[str, Any]:
     path = _runtime_registry_path()
     if not path.exists():
         return {"schemaVersion": 1, "favoriteBuildId": None, "builds": []}
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def _save_runtime_registry(registry: Dict[str, Any]) -> None:
+def _save_runtime_registry(registry: dict[str, Any]) -> None:
     path = _runtime_registry_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(registry, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -1906,7 +1908,7 @@ def _register_runtime_build(
     scene: str,
     unity_version: str,
     source_project_path: Path,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     registry = _load_runtime_registry()
     builds = [entry for entry in registry.get("builds") or [] if entry.get("buildId") != build_id]
     entry = {
@@ -1937,11 +1939,11 @@ def _register_external_runtime_build(
     unity_version: str,
     source: str,
     source_project_path: Path,
-    metadata: Dict[str, Any],
-) -> Dict[str, Any]:
+    metadata: dict[str, Any],
+) -> dict[str, Any]:
     registry = _load_runtime_registry()
     builds = [entry for entry in registry.get("builds") or [] if entry.get("buildId") != build_id]
-    entry: Dict[str, Any] = {
+    entry: dict[str, Any] = {
         "buildId": build_id,
         "versionLabel": version_label,
         "createdAt": datetime.now().isoformat(timespec="seconds"),
@@ -1960,18 +1962,18 @@ def _register_external_runtime_build(
     return entry
 
 
-def _sorted_builds(builds: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def _sorted_builds(builds: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return sorted(builds, key=lambda item: str(item.get("createdAt") or ""), reverse=True)
 
 
-def _latest_build_entry(builds: List[Dict[str, Any]]) -> Dict[str, Any]:
+def _latest_build_entry(builds: list[dict[str, Any]]) -> dict[str, Any]:
     sorted_builds = _sorted_builds(builds)
     if not sorted_builds:
         raise RuntimeError("No runtime builds are registered.")
     return sorted_builds[0]
 
 
-def _resolve_build_selector(build_selector: str, registry: Dict[str, Any] | None = None) -> Dict[str, Any]:
+def _resolve_build_selector(build_selector: str, registry: dict[str, Any] | None = None) -> dict[str, Any]:
     active_registry = registry or _load_runtime_registry()
     builds = active_registry.get("builds") or []
     if not builds:
@@ -1997,7 +1999,7 @@ def _resolve_build_selector(build_selector: str, registry: Dict[str, Any] | None
     return entry
 
 
-def _resolve_release_manifest(*, repo: str, tag: str, manifest_url: str, github_token: str) -> tuple[Dict[str, Any], str, Dict[str, str]]:
+def _resolve_release_manifest(*, repo: str, tag: str, manifest_url: str, github_token: str) -> tuple[dict[str, Any], str, dict[str, str]]:
     if manifest_url.strip():
         data = _http_get_json(manifest_url.strip(), github_token=github_token)
         return data, manifest_url.strip(), {"tag": tag if tag != "latest" else str(data.get("latestTag") or "")}
@@ -2035,7 +2037,7 @@ def _resolve_release_manifest(*, repo: str, tag: str, manifest_url: str, github_
     return data, url, {"tag": release_tag}
 
 
-def _fetch_github_release(*, repo: str, tag: str, github_token: str) -> Dict[str, Any]:
+def _fetch_github_release(*, repo: str, tag: str, github_token: str) -> dict[str, Any]:
     if "/" not in repo:
         raise RuntimeError(f"Invalid repo format '{repo}'. Expected owner/repo.")
 
@@ -2047,7 +2049,7 @@ def _fetch_github_release(*, repo: str, tag: str, github_token: str) -> Dict[str
     return _http_get_json(url, github_token=github_token)
 
 
-def _fetch_github_releases(*, repo: str, github_token: str, per_page: int = 30) -> List[Dict[str, Any]]:
+def _fetch_github_releases(*, repo: str, github_token: str, per_page: int = 30) -> list[dict[str, Any]]:
     if "/" not in repo:
         raise RuntimeError(f"Invalid repo format '{repo}'. Expected owner/repo.")
     url = f"https://api.github.com/repos/{repo}/releases?per_page={per_page}"
@@ -2058,7 +2060,7 @@ def _fetch_github_releases(*, repo: str, github_token: str, per_page: int = 30) 
     return [item for item in parsed if isinstance(item, dict)]
 
 
-def _http_get_json(url: str, *, github_token: str) -> Dict[str, Any]:
+def _http_get_json(url: str, *, github_token: str) -> dict[str, Any]:
     data = _http_get_bytes(url, github_token=github_token)
     return json.loads(data.decode("utf-8"))
 
@@ -2132,7 +2134,7 @@ def _sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _select_manifest_release(manifest: Dict[str, Any], channel: str, preferred_tag: str) -> Dict[str, Any]:
+def _select_manifest_release(manifest: dict[str, Any], channel: str, preferred_tag: str) -> dict[str, Any]:
     if int(manifest.get("schemaVersion") or 0) != 1:
         raise RuntimeError(f"Unsupported release manifest schemaVersion: {manifest.get('schemaVersion')}")
 
@@ -2158,7 +2160,7 @@ def _select_manifest_release(manifest: Dict[str, Any], channel: str, preferred_t
     return releases[0]
 
 
-def _select_runtime_asset(release_entry: Dict[str, Any], platform: str) -> Dict[str, Any]:
+def _select_runtime_asset(release_entry: dict[str, Any], platform: str) -> dict[str, Any]:
     assets = release_entry.get("assets") or []
     if not assets:
         raise RuntimeError("Release entry does not contain assets.")
@@ -2181,7 +2183,7 @@ def _select_runtime_asset(release_entry: Dict[str, Any], platform: str) -> Dict[
     raise RuntimeError("Release entry does not contain runtime assets.")
 
 
-def _resolve_runtime_asset_url(runtime_asset: Dict[str, Any], *, github_token: str) -> str:
+def _resolve_runtime_asset_url(runtime_asset: dict[str, Any], *, github_token: str) -> str:
     api_url = str(runtime_asset.get("apiUrl") or "").strip()
     browser_url = str(runtime_asset.get("browserDownloadUrl") or "").strip()
     if api_url and github_token:
@@ -2216,7 +2218,7 @@ def _detect_runtime_platform() -> str:
     return "unknown"
 
 
-def _first_track_id(contract: Dict[str, Any]) -> str:
+def _first_track_id(contract: dict[str, Any]) -> str:
     for item in contract.get("availableTracks") or []:
         if isinstance(item, dict):
             candidate = str(item.get("trackId") or "")
@@ -2225,7 +2227,7 @@ def _first_track_id(contract: Dict[str, Any]) -> str:
     return ""
 
 
-def _first_vehicle_id(contract: Dict[str, Any]) -> str:
+def _first_vehicle_id(contract: dict[str, Any]) -> str:
     for item in contract.get("availableVehicles") or []:
         if isinstance(item, dict):
             candidate = str(item.get("deviceId") or "")
@@ -2234,21 +2236,21 @@ def _first_vehicle_id(contract: Dict[str, Any]) -> str:
     return ""
 
 
-def _find_track(contract: Dict[str, Any], track_id: str) -> Dict[str, Any]:
+def _find_track(contract: dict[str, Any], track_id: str) -> dict[str, Any]:
     for item in contract.get("availableTracks") or []:
         if isinstance(item, dict) and str(item.get("trackId") or "") == track_id:
             return item
     raise KeyError(f"Unknown track id: '{track_id}'.")
 
 
-def _find_vehicle(contract: Dict[str, Any], vehicle_id: str) -> Dict[str, Any]:
+def _find_vehicle(contract: dict[str, Any], vehicle_id: str) -> dict[str, Any]:
     for item in contract.get("availableVehicles") or []:
         if isinstance(item, dict) and str(item.get("deviceId") or "") == vehicle_id:
             return item
     raise KeyError(f"Unknown vehicle id: '{vehicle_id}'.")
 
 
-def _normalize_track_descriptor(item: Any) -> Dict[str, Any]:
+def _normalize_track_descriptor(item: Any) -> dict[str, Any]:
     descriptor = dict(item) if isinstance(item, dict) else {}
     track_id = str(descriptor.get("trackId") or "")
     display_name = str(descriptor.get("displayName") or track_id)
@@ -2259,7 +2261,7 @@ def _normalize_track_descriptor(item: Any) -> Dict[str, Any]:
     }
 
 
-def _normalize_vehicle_descriptor(item: Any, include_contract: bool = False) -> Dict[str, Any]:
+def _normalize_vehicle_descriptor(item: Any, include_contract: bool = False) -> dict[str, Any]:
     descriptor = dict(item) if isinstance(item, dict) else {}
     sensors = descriptor.get("sensors") or []
     actuators = descriptor.get("actuators") or []

@@ -45,9 +45,9 @@ NPC-машины следуют по графу путевых точек и т�
 
 Эта глава — учебный runbook. За архитектурой плагин-системы и Python
 training pipeline отсылаем к диссертации:
-[глава 5 «Реализация платформы»](master-thesis/05-implementation.md)
+[глава 3 «Реализация платформы»](master-thesis/05-implementation.md)
 описывает PluginRegistry и SimulationManager, а
-[глава 6 «Python training & sim2real»](master-thesis/06-python-training.md)
+[глава 6 «Программная обвязка обучения»](master-thesis/08-training-python.md)
 — sim_client, SubprocVecEnv и rollout-сбор для PPO.
 
 ### 1.1. Чем стенд отличается от готовых решений
@@ -628,11 +628,12 @@ docker exec city-demo-ros2-bridge \
 
 **См. также:**
 
-- [Глава 5 диссертации — Реализация платформы](master-thesis/05-implementation.md)
+- [Глава 3 диссертации — Реализация платформы](master-thesis/05-implementation.md)
   (PluginRegistry, SimulationManager, как track.city_polygon.v1
   включает сцену).
-- [Глава 6 диссертации — Python training & sim2real](master-thesis/06-python-training.md)
+- [Глава 6 диссертации — Программная обвязка обучения](master-thesis/08-training-python.md)
   (PPO, sim_client, vec env).
+- [Глава 7 диссертации — Sim-to-real эксперименты](master-thesis/09-sim2real-real-car.md)
 - [README основного репозитория](../README.md) — список плагинов,
   быстрый старт, релизы.
 - `python/bridges/ros2_bridge_multi.py` — исходник bridge,

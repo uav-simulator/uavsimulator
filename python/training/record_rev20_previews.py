@@ -22,7 +22,7 @@ REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "python"))
 
 from training.ab_corridor_vision_env import ABCorridorVisionEnv
-from training.discrete_action_wrapper import ACTION_NAMES, DiscreteActionWrapper
+from training.discrete_action_wrapper import DiscreteActionWrapper
 
 
 def record_one(

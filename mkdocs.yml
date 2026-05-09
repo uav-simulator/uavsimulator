@@ -7,7 +7,13 @@ strict: false
 exclude_docs: |
   report/prediploma-practice/*.docx
   reports/**
+  superpowers/**
 
+# Validation is intentionally lenient: thesis chapters link to repo source
+# files (e.g. `../../src/.../SimulatorContracts.cs`) which mkdocs treats as
+# missing because they live outside `docs_dir`. Tightening these to `warn`
+# requires migrating those refs to GitHub blob URLs first — tracked as a
+# follow-up cleanup.
 validation:
   links:
     not_found: ignore
@@ -65,8 +71,24 @@ nav:
   - API: api.md
   - Model Lifecycle: model-lifecycle.md
   - Глоссарий: glossary.md
+  - Обучение моделей: training.md
   - Преддипломная практика:
       - Обзор: prediploma-practice.md
       - Спринт 1: report/prediploma-practice/sprint-1-changelog.md
       - Спринт 2: report/prediploma-practice/sprint-2-changelog.md
       - Спринт 3: report/prediploma-practice/sprint-3-report.md
+  - Магистерская диссертация:
+      - Обзор: master-thesis/README.md
+      - Реферат: master-thesis/01-topic-goals-tasks.md
+      - Введение: master-thesis/02-introduction.md
+      - 1. Современное состояние области: master-thesis/03-related-work-and-analogs.md
+      - 2. Архитектура платформы: master-thesis/04-architecture.md
+      - 3. Реализация ключевых компонентов: master-thesis/05-implementation.md
+      - 4. Спецификация API: master-thesis/06-api-spec.md
+      - 5. Разработка плагинов: master-thesis/07-plugin-development.md
+      - 6. Программная обвязка обучения: master-thesis/08-training-python.md
+      - 7. Sim-to-real эксперименты: master-thesis/09-sim2real-real-car.md
+      - 8. Тестирование, сборка и поставка: master-thesis/10-testing-build-release.md
+      - Заключение: master-thesis/11-conclusion.md
+      - Список источников: master-thesis/12-references.md
+      - Список сокращений: master-thesis/13-abbreviations.md

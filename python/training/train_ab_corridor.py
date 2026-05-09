@@ -5,12 +5,10 @@ from __future__ import annotations
 
 import argparse
 import json
-import shutil
 import sys
 import time
 from pathlib import Path
 
-import numpy as np
 import torch
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -22,14 +20,12 @@ from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import (
     BaseCallback,
     CheckpointCallback,
-    EvalCallback,
 )
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import VecMonitor
 
 from training.ab_corridor_env import ABCorridorEnv
 from training.multi_agent_ab_corridor_env import ABCorridorMultiAgentVecEnv
-
 
 DEFAULT_ARTIFACT_DIR = ROOT / "python/training/artifacts/ab_corridor_ppo_v2"
 DEFAULT_LOG_DIR = ROOT / "python/training/logs"

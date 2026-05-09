@@ -1,13 +1,14 @@
 from __future__ import annotations
 
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from fnmatch import fnmatch
-from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence
+from typing import Any
 
 from .http_client import SimClient
 
 
-def _kv(key: str, value: str) -> Dict[str, str]:
+def _kv(key: str, value: str) -> dict[str, str]:
     return {"key": key, "value": value}
 
 
@@ -33,11 +34,11 @@ class Map:
         z_from: float,
         z_to: float,
         step_m: float,
-    ) -> List[Waypoint]:
+    ) -> list[Waypoint]:
         if step_m <= 0:
             raise ValueError("step_m must be > 0")
 
-        waypoints: List[Waypoint] = []
+        waypoints: list[Waypoint] = []
         x = x_from
         while x <= x_to + 1e-6:
             z = z_from
@@ -59,10 +60,10 @@ class BlueprintLibrary:
     def __init__(self, blueprints: Sequence[VehicleBlueprint]):
         self._blueprints = list(blueprints)
 
-    def all(self) -> List[VehicleBlueprint]:
+    def all(self) -> list[VehicleBlueprint]:
         return list(self._blueprints)
 
-    def filter(self, pattern: str) -> List[VehicleBlueprint]:
+    def filter(self, pattern: str) -> list[VehicleBlueprint]:
         if not pattern or pattern == "*":
             return self.all()
         return [bp for bp in self._blueprints if fnmatch(bp.id, pattern)]
@@ -88,9 +89,9 @@ class World:
                 return map_item
         return maps[0] if maps else Map(id="", name="default")
 
-    def get_available_maps(self) -> List[Map]:
+    def get_available_maps(self) -> list[Map]:
         tracks = self._contract.get("availableTracks") or []
-        maps: List[Map] = []
+        maps: list[Map] = []
         for item in tracks:
             if not isinstance(item, Mapping):
                 continue
@@ -102,7 +103,7 @@ class World:
 
     def get_blueprint_library(self) -> BlueprintLibrary:
         vehicles = self._contract.get("availableVehicles") or []
-        blueprints: List[VehicleBlueprint] = []
+        blueprints: list[VehicleBlueprint] = []
         for item in vehicles:
             if not isinstance(item, Mapping):
                 continue
@@ -125,7 +126,7 @@ class World:
         vehicle_id: str = "",
         seed: int = 0,
         time_scale: float = 1.0,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         return self.spawn_actor(
             vehicle_id=vehicle_id or self._active_vehicle_id,
             map_id=map_id,
@@ -140,12 +141,12 @@ class World:
         map_id: str = "",
         seed: int = 0,
         time_scale: float = 1.0,
-        waypoints: Optional[Sequence[Waypoint]] = None,
+        waypoints: Sequence[Waypoint] | None = None,
         route_loop: bool = False,
         route_reach_distance_m: float = 1.0,
-        track_params: Optional[Iterable[Mapping[str, Any]]] = None,
-        vehicle_params: Optional[Iterable[Mapping[str, Any]]] = None,
-    ) -> Dict[str, Any]:
+        track_params: Iterable[Mapping[str, Any]] | None = None,
+        vehicle_params: Iterable[Mapping[str, Any]] | None = None,
+    ) -> dict[str, Any]:
         selected_track_id = map_id or self._active_track_id
         selected_vehicle_id = vehicle_id or self._active_vehicle_id
 
@@ -170,7 +171,7 @@ class World:
             self._active_vehicle_id = selected_vehicle_id
         return result
 
-    def tick(self, command: Optional[Mapping[str, Any]] = None) -> Dict[str, Any]:
+    def tick(self, command: Mapping[str, Any] | None = None) -> dict[str, Any]:
         return self._http_client.step(dict(command) if command is not None else default_command())
 
     @staticmethod
@@ -211,7 +212,7 @@ class Client:
         return World(self._http_client, contract)
 
 
-def default_command() -> Dict[str, Any]:
+def default_command() -> dict[str, Any]:
     return {
         "throttle": 0.0,
         "steer": 0.0,
@@ -226,7 +227,7 @@ def _waypoint_params(
     waypoints: Sequence[Waypoint],
     route_loop: bool,
     route_reach_distance_m: float,
-) -> List[Dict[str, str]]:
+) -> list[dict[str, str]]:
     encoded = ";".join(wp.encode() for wp in waypoints)
     params = [_kv("route.waypoints", encoded)]
     params.append(_kv("route.loop", "true" if route_loop else "false"))
@@ -234,11 +235,11 @@ def _waypoint_params(
     return params
 
 
-def _normalize_params(params: Optional[Iterable[Mapping[str, Any]]]) -> List[Dict[str, str]]:
+def _normalize_params(params: Iterable[Mapping[str, Any]] | None) -> list[dict[str, str]]:
     if params is None:
         return []
 
-    normalized: List[Dict[str, str]] = []
+    normalized: list[dict[str, str]] = []
     for item in params:
         if not isinstance(item, Mapping):
             continue

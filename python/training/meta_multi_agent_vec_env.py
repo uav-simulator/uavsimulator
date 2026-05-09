@@ -14,7 +14,7 @@ while still scaling beyond what a single Unity instance can handle.
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np
 from stable_baselines3.common.vec_env import VecEnv
@@ -41,7 +41,7 @@ class MetaMultiAgentVecEnv(VecEnv):
         img_size: int,
         corridor_width_m: float,
         goal_radius_m: float,
-        waypoints: Optional[list[tuple[float, float]]],
+        waypoints: list[tuple[float, float]] | None,
         real_cam_postprocess: bool = False,
         base_port: int = 8000,
     ) -> None:
@@ -71,7 +71,7 @@ class MetaMultiAgentVecEnv(VecEnv):
             self.inner_envs[0].observation_space,
             self.inner_envs[0].action_space,
         )
-        self._pending_actions: Optional[np.ndarray] = None
+        self._pending_actions: np.ndarray | None = None
 
     def reset(self) -> VecEnvObs:
         futures = [self._executor.submit(env.reset) for env in self.inner_envs]

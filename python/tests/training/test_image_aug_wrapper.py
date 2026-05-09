@@ -7,7 +7,6 @@ from pathlib import Path
 
 import gymnasium as gym
 import numpy as np
-import pytest
 from gymnasium import spaces
 
 PYTHON_ROOT = Path(__file__).resolve().parents[2]

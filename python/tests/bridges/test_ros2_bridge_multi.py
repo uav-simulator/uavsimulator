@@ -14,7 +14,6 @@ if str(PYTHON_ROOT) not in sys.path:
 
 from bridges import ros2_bridge_multi as bridge_multi  # noqa: E402
 
-
 # ---------------------------------------------------------------------------
 # parse_agents_arg
 # ---------------------------------------------------------------------------
