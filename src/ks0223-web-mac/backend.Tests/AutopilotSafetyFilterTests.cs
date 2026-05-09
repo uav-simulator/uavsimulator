@@ -88,17 +88,19 @@ public sealed class AutopilotSafetyFilterTests
         // Advance past ramp-up so rampScale = 1.0
         fake.Advance(TimeSpan.FromMilliseconds(300));
 
+        // Default ThrottleMax = 0.25 (from AutopilotSafetyOptions). Forward
+        // throttle is clipped to [0, ThrottleMax]; reverse is unclipped (-1..0).
         var d1 = filter.Apply(1.0f, 0f, 1.0f);
-        Assert.Equal(0.5f, d1.Throttle, 3);
+        Assert.Equal(0.25f, d1.Throttle, 3);
 
         var d2 = filter.Apply(-1.0f, 0f, 1.0f);
         Assert.Equal(-1.0f, d2.Throttle, 3);
 
-        var d3 = filter.Apply(0.3f, 0f, 1.0f);
-        Assert.Equal(0.3f, d3.Throttle, 3);
+        var d3 = filter.Apply(0.1f, 0f, 1.0f);
+        Assert.Equal(0.1f, d3.Throttle, 3);
 
         var d4 = filter.Apply(0.7f, 0f, 1.0f);
-        Assert.Equal(0.5f, d4.Throttle, 3);
+        Assert.Equal(0.25f, d4.Throttle, 3);
     }
 
     // 5. Ramp-up scales throttle linearly from zero
@@ -109,19 +111,20 @@ public sealed class AutopilotSafetyFilterTests
         var filter = CreateFilter(timeProvider: fake);
         filter.Reset();
 
-        // t=0: scale=0 → throttle=0
+        // Defaults: RampUpMs=200, ThrottleMax=0.25.
+        // t=0: rampScale=0 → throttle=0
         var d0 = filter.Apply(1.0f, 0f, 1.0f);
         Assert.Equal(0f, d0.Throttle, 3);
 
-        // t=100ms: rampScale=0.5; clip(1.0, 0.5)=0.5; 0.5*0.5=0.25
+        // t=100ms: rampScale=100/200=0.5; clip(1.0, 0.25)=0.25; 0.5*0.25=0.125
         fake.Advance(TimeSpan.FromMilliseconds(100));
         var d100 = filter.Apply(1.0f, 0f, 1.0f);
-        Assert.Equal(0.25f, d100.Throttle, 3);
+        Assert.Equal(0.125f, d100.Throttle, 3);
 
-        // t=200ms+: rampScale=1.0; clip(0.5)=0.5; 0.5*1.0=0.5
+        // t=200ms+: rampScale=1.0; clip(0.5, 0.25)=0.25; 1.0*0.25=0.25
         fake.Advance(TimeSpan.FromMilliseconds(100));
         var d200 = filter.Apply(0.5f, 0f, 1.0f);
-        Assert.Equal(0.5f, d200.Throttle, 3);
+        Assert.Equal(0.25f, d200.Throttle, 3);
     }
 
     // 6. Deadman forces stop after idle period, then ramp restarts
@@ -160,12 +163,13 @@ public sealed class AutopilotSafetyFilterTests
         // Advance past ramp-up
         fake.Advance(TimeSpan.FromMilliseconds(300));
 
-        // Safe distance, high throttle: only clip applies
+        // Safe distance, high throttle: only clip applies (ThrottleMax=0.25).
         var safeDec = filter.Apply(1.0f, 0f, 1.0f);
-        Assert.Equal(0.5f, safeDec.Throttle, 3);
+        Assert.Equal(0.25f, safeDec.Throttle, 3);
         Assert.False(safeDec.EStopActive);
 
-        // Obstacle within threshold: E-stop dominates
+        // Obstacle within threshold (EStopDistanceM=0.20m by default):
+        // E-stop dominates and zeroes throttle regardless of clip.
         var estopDec = filter.Apply(1.0f, 0f, 0.10f);
         Assert.Equal(0f, estopDec.Throttle);
         Assert.True(estopDec.EStopActive);
