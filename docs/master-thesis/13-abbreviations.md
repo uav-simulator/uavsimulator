@@ -35,7 +35,6 @@
 | SDK | Software Development Kit — набор средств разработки |
 | SignalR | Библиотека ASP.NET Core для двунаправленного обмена сообщениями в режиме реального времени |
 | SR | Success Rate — доля успешных эпизодов |
-| TF | TensorFlow — библиотека машинного обучения |
 | UPM | Unity Package Manager — система управления пакетами Unity |
 | URP | Universal Render Pipeline — универсальный конвейер рендеринга Unity |
 | ВКР | Выпускная квалификационная работа |
