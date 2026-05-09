@@ -148,10 +148,22 @@ jobs:
 
   demo-proof-ci:
     # Smoke that runs without a live Unity Editor: validates plugin SDK packaging
-    # workflow end-to-end (template → build → install dry-run → unpack).
-    name: Plugin packaging smoke
+    # workflow end-to-end (template → build → install dry-run → unpack) for
+    # both plugin types (vehicle + track) so a regression in either branch
+    # of `validate_plugin_workflow.sh` blocks the build.
+    name: Plugin packaging smoke (vehicle + track)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - name: Plugin packaging smoke
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Install rusim CLI
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+        working-directory: python
+      - name: Plugin packaging smoke (vehicle)
+        run: make plugin-smoke
+      - name: Plugin packaging smoke (track)
         run: make plugin-smoke-track
