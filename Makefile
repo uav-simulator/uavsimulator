@@ -425,9 +425,11 @@ build-frontend:
 	@cd src/ks0223-web-mac/frontend && npm run build
 
 # Validate every shipped scenario YAML against the rusim CLI parser.
+# Recurses into subdirs (robustness/, etc.) so an invalid scenario in a
+# nested folder still fails the gate.
 scenarios-validate:
-	@echo "==> rusim scenario validate (configs/scenarios/*.yaml)"
-	@set -e; for f in configs/scenarios/*.yaml; do \
+	@echo "==> rusim scenario validate (configs/scenarios/**/*.yaml)"
+	@shopt -s globstar nullglob; set -e; for f in configs/scenarios/**/*.yaml; do \
 		echo "  $$f"; \
 		$(RUSIM) scenario validate "$$f" >/dev/null; \
 	done
