@@ -15,7 +15,7 @@ import {
   TextField,
   Typography,
 } from '@mui/material'
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import type { AutopilotStatusDto, CompatibilityHintsDto, ModelBindingDto, ModelCatalogEntryDto, ModelInfoDto } from '../types'
 
 type Props = {
@@ -63,25 +63,21 @@ export function ModelControlPage({
   const [runtimeModesHint, setRuntimeModesHint] = useState('')
   const [vehicleIdsHint, setVehicleIdsHint] = useState('')
   const [robotKindsHint, setRobotKindsHint] = useState('')
-  const [selectedName, setSelectedName] = useState('')
-  const [selectedModelId, setSelectedModelId] = useState('')
+  // `explicit*` holds the user's manual dropdown choice. The effective
+  // selection is derived at render time so the catalog can grow/shrink
+  // without writing back to state from a `useEffect` (which the strict
+  // react-hooks plugin flags as `set-state-in-effect`). When the user has
+  // not picked, or has picked something that no longer exists in the
+  // catalog, we fall back to the active/bound model — or to the first
+  // entry in the catalog as a last resort.
+  const [explicitName, setExplicitName] = useState('')
+  const [explicitModelId, setExplicitModelId] = useState('')
   const [loopIntervalMs, setLoopIntervalMs] = useState('140')
   const [error, setError] = useState<string | null>(null)
 
-  const selectedGroup = useMemo(
-    () => catalog.find((item) => item.name === selectedName) ?? null,
-    [catalog, selectedName],
-  )
-  const selectedVersion = useMemo(
-    () => selectedGroup?.versions.find((item) => item.modelId === selectedModelId) ?? null,
-    [selectedGroup, selectedModelId],
-  )
-
-  useEffect(() => {
+  const { selectedName, selectedModelId, selectedGroup, selectedVersion } = useMemo(() => {
     if (catalog.length === 0) {
-      setSelectedName('')
-      setSelectedModelId('')
-      return
+      return { selectedName: '', selectedModelId: '', selectedGroup: null, selectedVersion: null }
     }
 
     const preferredModelId = binding?.modelId ?? activeModel?.modelId ?? catalog[0]?.versions[0]?.modelId ?? ''
@@ -89,19 +85,21 @@ export function ModelControlPage({
       catalog.find((entry) => entry.versions.some((item) => item.modelId === preferredModelId)) ??
       catalog[0]
 
-    if (!selectedName || !catalog.some((entry) => entry.name === selectedName)) {
-      setSelectedName(preferredGroup.name)
-    }
+    const name =
+      explicitName && catalog.some((entry) => entry.name === explicitName)
+        ? explicitName
+        : preferredGroup.name
+    const group = catalog.find((entry) => entry.name === name) ?? preferredGroup
 
-    const nextGroup = catalog.find((entry) => entry.name === (selectedName || preferredGroup.name)) ?? preferredGroup
-    if (!nextGroup.versions.some((item) => item.modelId === selectedModelId)) {
-      const preferredVersion =
-        nextGroup.versions.find((item) => item.modelId === preferredModelId) ??
-        nextGroup.versions[0] ??
-        null
-      setSelectedModelId(preferredVersion?.modelId ?? '')
-    }
-  }, [activeModel?.modelId, binding?.modelId, catalog, selectedModelId, selectedName])
+    const modelId = group.versions.some((item) => item.modelId === explicitModelId)
+      ? explicitModelId
+      : (group.versions.find((item) => item.modelId === preferredModelId) ??
+          group.versions[0] ??
+          null)?.modelId ?? ''
+
+    const version = group.versions.find((item) => item.modelId === modelId) ?? null
+    return { selectedName: name, selectedModelId: modelId, selectedGroup: group, selectedVersion: version }
+  }, [catalog, binding?.modelId, activeModel?.modelId, explicitName, explicitModelId])
 
   const handleUpload = async () => {
     if (!file) {
@@ -270,9 +268,9 @@ export function ModelControlPage({
                 value={selectedName}
                 onChange={(event) => {
                   const nextName = event.target.value
-                  setSelectedName(nextName)
+                  setExplicitName(nextName)
                   const nextGroup = catalog.find((item) => item.name === nextName)
-                  setSelectedModelId(nextGroup?.versions[0]?.modelId ?? '')
+                  setExplicitModelId(nextGroup?.versions[0]?.modelId ?? '')
                 }}
               >
                 {catalog.map((entry) => (
@@ -286,7 +284,7 @@ export function ModelControlPage({
                 size="small"
                 label="Version"
                 value={selectedModelId}
-                onChange={(event) => setSelectedModelId(event.target.value)}
+                onChange={(event) => setExplicitModelId(event.target.value)}
                 disabled={!selectedGroup}
               >
                 {(selectedGroup?.versions ?? []).map((item) => (
@@ -404,8 +402,8 @@ export function ModelControlPage({
                             variant={model.modelId === selectedModelId ? 'contained' : 'outlined'}
                             disabled={busy}
                             onClick={() => {
-                              setSelectedName(entry.name)
-                              setSelectedModelId(model.modelId)
+                              setExplicitName(entry.name)
+                              setExplicitModelId(model.modelId)
                             }}
                           >
                             Select

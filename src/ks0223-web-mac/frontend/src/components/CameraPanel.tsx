@@ -370,7 +370,11 @@ export function CameraPanel({
     await viewportRef.current.requestFullscreen()
   }, [])
 
-  const flat = sensorTelemetry?.flat ?? {}
+  // Wrapped in useMemo so its identity is stable across renders when the
+  // upstream `sensorTelemetry` object hasn't changed — without this, the
+  // `useMemo(overlayLines, [...flat...])` below would recompute every
+  // render and the React Compiler would refuse to preserve manual memo.
+  const flat = useMemo(() => sensorTelemetry?.flat ?? {}, [sensorTelemetry])
   const ultrasonicServoAngle = cleanTelemetryValue(flat['ultrasonic.scan_servo_angle_deg'])
 
   const overlayLines = useMemo(() => {
@@ -446,7 +450,10 @@ export function CameraPanel({
     flat,
     status?.tcpConnected,
     status?.latencyMs,
-    sensorTelemetry?.timestamp,
+    // The body reads `sensorTelemetry?.timestamp`; depending on the whole
+    // object lets the React Compiler reconcile its inferred dep set with
+    // ours (it walks `sensorTelemetry.flat` through the `flat` memo above).
+    sensorTelemetry,
     camera?.source,
     driveSpeedPercent,
     cameraSpeedPercent,

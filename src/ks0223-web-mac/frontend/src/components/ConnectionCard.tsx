@@ -122,9 +122,14 @@ export function ConnectionCard({
   const hostLabel = isUnityMode ? 'IP или host Unity runtime' : 'IP или host Raspberry Pi'
   const defaultPort = isUnityMode ? 8000 : 5051
   const runtimeLabel = status?.runtimeLabel ?? (isUnityMode ? 'Unity Simulator Vehicle' : 'Keyestudio KS0223 (Real Robot)')
-  const tracks = unityCatalog?.tracks ?? []
-  const vehicles = unityCatalog?.vehicles ?? []
-  const agents = unityCatalog?.agents ?? []
+  // Wrapped in useMemo so identity is stable across renders when the
+  // upstream `unityCatalog` is unchanged — without this, the downstream
+  // useMemos (selectedVehicleTitle / selectedControlAgentTitle /
+  // selectedCameraAgentTitle / effectiveAgentOptions) would recompute on
+  // every render because their `vehicles`/`agents` deps would be new arrays.
+  const tracks = useMemo(() => unityCatalog?.tracks ?? [], [unityCatalog])
+  const vehicles = useMemo(() => unityCatalog?.vehicles ?? [], [unityCatalog])
+  const agents = useMemo(() => unityCatalog?.agents ?? [], [unityCatalog])
 
   const hasUnityOptions = tracks.length > 0 && vehicles.length > 0
   const dialogBusy = unityDialogBusy || unityCatalogBusy
@@ -204,6 +209,11 @@ export function ConnectionCard({
         isPrimary: agent.isPrimary,
       })),
     )
+    // unityCollisionsEnabled / unitySeeEachOther are intentionally read
+    // only when the dialog opens (they reset the draft once); excluding
+    // them from deps prevents the dialog from snapping back to current
+    // values mid-edit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [unityCatalog, unityDialogOpen])
 
   const effectiveAgentOptions = useMemo(() => {

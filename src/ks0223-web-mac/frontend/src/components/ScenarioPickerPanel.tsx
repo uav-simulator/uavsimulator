@@ -61,6 +61,11 @@ export function ScenarioPickerPanel() {
 
   useEffect(() => {
     void refreshScenarios()
+    // Mount-only: we want the initial scenario list once. `refreshScenarios`
+    // is recreated on every render but its closure is stable in intent
+    // (just calls listScenarios + setState). Re-running on its identity
+    // would refresh on every render — clearly not what we want.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const onLoad = async () => {

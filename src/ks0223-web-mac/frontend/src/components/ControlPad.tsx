@@ -178,7 +178,7 @@ export function ControlPad({
         }
       }, intervalMs)
     },
-    [onCommand, status?.tcpConnected, stopDriveHold],
+    [controlsEnabled, onCommand, status?.tcpConnected, stopDriveHold],
   )
 
   const startCameraHold = useCallback(
@@ -202,7 +202,7 @@ export function ControlPad({
         }
       }, intervalMs)
     },
-    [onCommand, status?.tcpConnected, stopCameraHold],
+    [controlsEnabled, onCommand, status?.tcpConnected, stopCameraHold],
   )
 
   useEffect(() => {
