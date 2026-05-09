@@ -55,14 +55,9 @@ jobs:
       - name: Install
         run: npm ci
         working-directory: src/ks0223-web-mac/frontend
-      # Lint is reported but does NOT fail the build yet — there is a
-      # baseline of 2 errors + 10 warnings flagged by the strict
-      # `react-hooks` plugin. Tracked as a follow-up; once the baseline
-      # is at zero, drop `continue-on-error` to make this a hard gate.
-      - name: Lint (non-blocking)
-        run: npm run lint
+      - name: Lint
+        run: npm run lint -- --max-warnings 0
         working-directory: src/ks0223-web-mac/frontend
-        continue-on-error: true
       - name: Build
         run: npm run build
         working-directory: src/ks0223-web-mac/frontend
