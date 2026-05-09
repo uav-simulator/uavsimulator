@@ -16,7 +16,6 @@ import pytest
 
 from sim_client.cli import build_parser, main
 
-
 # Top-level subcommands currently registered by build_parser().
 TOP_LEVEL_SUBCOMMANDS = [
     "doctor",
