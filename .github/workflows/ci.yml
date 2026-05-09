@@ -30,7 +30,7 @@ jobs:
           fi
 
   backend-build:
-    name: Backend build (.NET)
+    name: Backend build + xUnit tests (.NET)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -41,6 +41,12 @@ jobs:
         run: |
           dotnet restore src/ks0223-web-mac/backend/backend.csproj
           dotnet build src/ks0223-web-mac/backend/backend.csproj --no-restore
+      - name: Restore and test backend.Tests
+        run: |
+          dotnet restore src/ks0223-web-mac/backend.Tests/backend.Tests.csproj
+          dotnet test src/ks0223-web-mac/backend.Tests/backend.Tests.csproj \
+            --no-restore --nologo --verbosity minimal \
+            --logger "console;verbosity=normal"
 
   frontend-build:
     name: Frontend build & lint (Vite)
