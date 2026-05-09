@@ -78,6 +78,17 @@
 
 - **10 копипастных `export_v9_rev{24,25,26,29,30,37,38,39,41,42}_onnx.py`** — все различались только двумя путями (либо argparse-обёрткой для `--frame-stack` в случае rev38 и встроенной сигнатурной верификацией в rev24). Заменены одним `python/training/export_onnx.py --rev <rev>` с опциональными `--frame-stack k`, `--sanity-forward`, `--verify-signature`, `--artifacts-root`, `--model-family`. Покрыт 7 unit-тестами (`tests/training/test_export_onnx.py`). Ссылка на семейство в `docs/master-thesis/04-architecture.md` обновлена.
 
+### Quality polish round 2 (iter 5-10)
+
+- **Frontend lint baseline → 0** (commit `2b872be`). Поправлены 2 ошибки `react-hooks/preserve-manual-memoization` (CameraPanel) и `set-state-in-effect` (ModelControlPage), плюс 10 warnings по `react-hooks/exhaustive-deps`. CI теперь гоняет `eslint --max-warnings 0` как hard gate.
+- **SimClient: `wait_for_ready` + `check_contract_version` + `assert_contract_compatible` + `ContractMismatchError`** (commit `f353175`). Бридж Unity boot/JIT окна и fail-fast при API drift. 10 новых unit-тестов.
+- **`sim_client/scenario.py` covered** (commit `f353175`): 29 unit-тестов на JSON/YAML loader, validator, и reset-config builder. Покрытие модуля ~10% → ~85%.
+- **Backend xUnit подключён в CI** (commit `63ca94a`). Существовавший локально `backend.Tests/` никогда не запускался, и 3 из 13 тестов молчаливо падали (стейл-defaults после `ThrottleMax` / `RampUpMs` нерфа). Починены и добавлено 9 новых тестов: `OptionsDefaultsTests` (pin defaults, sanity guard ThrottleMax<=0.5) + `ContractsSerializationTests` (camelCase wire round-trip для DTO которые читают frontend и Python). Включены `EnableNETAnalyzers` + targeted `WarningsAsErrors`.
+- **Plugin smoke на оба типа** (commit `fe62d1b`): CI теперь гоняет `make plugin-smoke` (vehicle) И `make plugin-smoke-track`.
+- **Dependabot weekly + grouped minor/patch** для pip / npm / nuget / github-actions.
+- **Lychee link-check workflow** на cron + `workflow_dispatch`, открывает tracking issue при failure.
+- **README badges** (CI / Docs / Python / Unity / .NET) для быстрой проверки health.
+
 ## [v0.1.2] — 2026-04
 
 ### Added
