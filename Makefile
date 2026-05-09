@@ -8,6 +8,12 @@ UNITY_BIN ?= /Applications/Unity/Hub/Editor/$(UNITY_VERSION)/Unity.app/Contents/
 
 PYTHON ?= $(PROJECT_ROOT)/.venv/bin/python
 PIP ?= $(PROJECT_ROOT)/.venv/bin/pip
+# Prefer venv-local tools so quality-gate targets work without sourcing
+# the venv first. Fall back to PATH for fresh checkouts where the venv
+# hasn't been created yet.
+RUFF ?= $(if $(wildcard $(PROJECT_ROOT)/.venv/bin/ruff),$(PROJECT_ROOT)/.venv/bin/ruff,ruff)
+PYTEST ?= $(if $(wildcard $(PROJECT_ROOT)/.venv/bin/pytest),$(PROJECT_ROOT)/.venv/bin/pytest,pytest)
+RUSIM ?= $(if $(wildcard $(PROJECT_ROOT)/.venv/bin/rusim),$(PROJECT_ROOT)/.venv/bin/rusim,rusim)
 
 UAVSIM_API_HOST ?= 127.0.0.1
 UAVSIM_API_PORT ?= 8000
@@ -45,6 +51,14 @@ RUSIM_RELEASE_TAG ?= latest
 RUSIM_MANIFEST_URL ?=
 
 help:
+	@echo "Quality gates (mirrors CI):"
+	@echo "  make verify       - lint + test + build + scenario validate (full sweep)"
+	@echo "  make lint         - ruff (python) + eslint (frontend), --max-warnings 0"
+	@echo "  make test         - pytest + dotnet test + plugin smoke (vehicle+track)"
+	@echo "  make build        - dotnet build (backend) + vite build (frontend)"
+	@echo "  make scenarios-validate - rusim scenario validate configs/scenarios/*.yaml"
+	@echo "  make plugin-smoke[-track] - end-to-end plugin packaging smoke test"
+	@echo ""
 	@echo "Developer setup:"
 	@echo "  make venv         - create local Python env"
 	@echo "  make sim-public   - open Unity Editor with API accessible for Docker/ROS"
@@ -365,3 +379,61 @@ plugin-smoke:
 # То же самое для track-плагина.
 plugin-smoke-track:
 	@PLUGIN_ID=track.smoke.test.v1 PLUGIN_TYPE=track bash scripts/validate_plugin_workflow.sh
+
+# ----------------------------------------------------------------------------
+# Aggregate quality gates — mirrors what `.github/workflows/ci.yml` runs.
+# Use locally to confirm a green PR before pushing.
+# ----------------------------------------------------------------------------
+
+.PHONY: lint test test-python test-backend test-plugin-smoke build build-backend build-frontend scenarios-validate verify
+
+# Lint everything (Python ruff + frontend ESLint). Fast, no tests.
+lint:
+	@echo "==> ruff check (python/)"
+	@cd python && $(RUFF) check .
+	@echo "==> eslint (frontend)"
+	@cd src/ks0223-web-mac/frontend && npm run lint -- --max-warnings 0
+
+# Run every test suite the project currently has.
+# Skips Unity tests (need GameCI license) and live-runtime integration tests.
+test: test-python test-backend test-plugin-smoke
+	@echo ""
+	@echo "All test suites passed."
+
+test-python:
+	@echo "==> pytest (python/)"
+	@cd python && $(PYTEST) -q
+
+test-backend:
+	@echo "==> dotnet test (backend.Tests)"
+	@dotnet test src/ks0223-web-mac/backend.Tests/backend.Tests.csproj \
+		--nologo --verbosity minimal --logger "console;verbosity=normal"
+
+test-plugin-smoke: plugin-smoke plugin-smoke-track
+
+# Build everything that has a build step (excluding Unity, which needs Editor).
+build: build-backend build-frontend
+	@echo ""
+	@echo "All targets built."
+
+build-backend:
+	@echo "==> dotnet build (backend)"
+	@dotnet build src/ks0223-web-mac/backend/backend.csproj --nologo --verbosity minimal
+
+build-frontend:
+	@echo "==> vite build (frontend)"
+	@cd src/ks0223-web-mac/frontend && npm run build
+
+# Validate every shipped scenario YAML against the rusim CLI parser.
+scenarios-validate:
+	@echo "==> rusim scenario validate (configs/scenarios/*.yaml)"
+	@set -e; for f in configs/scenarios/*.yaml; do \
+		echo "  $$f"; \
+		$(RUSIM) scenario validate "$$f" >/dev/null; \
+	done
+	@echo "All scenarios valid."
+
+# The full pre-PR sanity sweep.
+verify: lint test build scenarios-validate
+	@echo ""
+	@echo "All quality gates passed locally."
