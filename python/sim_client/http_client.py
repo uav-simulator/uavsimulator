@@ -1,11 +1,23 @@
 from __future__ import annotations
 
+import time
 from pathlib import Path
 from typing import Any
 
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+
+# Major version of the runtime API contract this client is built against.
+# Bump when a breaking change in `/contract`, `/reset`, or `/step` lands on
+# the Unity side. The client will refuse to talk to a server whose
+# `contractVersion` is on a different major track.
+SUPPORTED_CONTRACT_VERSION_MAJOR = 0
+
+
+class ContractMismatchError(RuntimeError):
+    """Raised when the connected simulator advertises an API contract this
+    client does not know how to talk to (e.g. major version drift)."""
 
 
 class SimClient:
@@ -63,6 +75,69 @@ class SimClient:
 
     def get_contract(self) -> dict[str, Any]:
         return self._get("/contract")
+
+    def wait_for_ready(self, deadline_s: float = 30.0, poll_interval_s: float = 0.5) -> dict[str, Any]:
+        """Poll ``/health`` until the simulator answers 200, or raise.
+
+        Useful at the start of a training run where Unity may still be
+        booting (scene load, JIT, plugin registry merge). Independent of
+        the GET-retry policy attached to the adapter — that one fires per
+        request, this one wraps the boot itself.
+
+        Returns the final ``/health`` payload on success. Raises
+        :class:`TimeoutError` if the deadline expires.
+        """
+        start = time.monotonic()
+        last_exc: Exception | None = None
+        while True:
+            try:
+                return self.health()
+            except (requests.ConnectionError, requests.Timeout, requests.HTTPError) as exc:
+                last_exc = exc
+            if time.monotonic() - start > deadline_s:
+                raise TimeoutError(
+                    f"Simulator at {self.base_url} not ready within {deadline_s:.1f}s "
+                    f"(last error: {last_exc!r})"
+                ) from last_exc
+            time.sleep(poll_interval_s)
+
+    def check_contract_version(self, expected_major: int = SUPPORTED_CONTRACT_VERSION_MAJOR) -> tuple[bool, str]:
+        """Fetch ``/contract`` and verify the server's major version matches ours.
+
+        Returns ``(True, server_version_string)`` on match, otherwise
+        ``(False, human_readable_message)``. Does NOT raise — callers
+        decide whether a mismatch is fatal (training pipelines should
+        usually fail fast; CLI tools may want to warn and proceed).
+        Use :meth:`assert_contract_compatible` for the raise-on-mismatch
+        variant.
+        """
+        contract = self.get_contract()
+        raw_version = contract.get("contractVersion")
+        if not isinstance(raw_version, str) or not raw_version.strip():
+            return False, f"server did not advertise contractVersion (got {raw_version!r})"
+
+        # Accept both "MAJOR.MINOR.PATCH" and bare "MAJOR".
+        major_str = raw_version.split(".", 1)[0].strip()
+        try:
+            server_major = int(major_str)
+        except ValueError:
+            return False, f"unparseable contractVersion: {raw_version!r}"
+
+        if server_major != expected_major:
+            return (
+                False,
+                f"contractVersion major mismatch: client expects {expected_major}.x, "
+                f"server reports {raw_version!r}. Update the client (`pip install -U uav-sim-client`) "
+                f"or roll the simulator back.",
+            )
+        return True, raw_version
+
+    def assert_contract_compatible(self, expected_major: int = SUPPORTED_CONTRACT_VERSION_MAJOR) -> str:
+        """Raise :class:`ContractMismatchError` if :meth:`check_contract_version` fails."""
+        ok, info = self.check_contract_version(expected_major=expected_major)
+        if not ok:
+            raise ContractMismatchError(info)
+        return info
 
     def reset(self, config: dict[str, Any]) -> dict[str, Any]:
         return self._post("/reset", config)
