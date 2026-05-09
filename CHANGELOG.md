@@ -74,6 +74,10 @@
 - Битые master-thesis ссылки в `docs/sample-city-autonomy.md` (`master-thesis/06-python-training.md` → `08-training-python.md`).
 - 6 точечных правок исходников (B904 raise-without-from в `sim_client/cli.py`, `evaluate_ab_policy.py`, `evaluate_v9.py`; F841 unused-variable в `inspect_policy.py`, `multi_agent_vision_env.py`, `sensor_only_baseline.py`).
 
+### Removed
+
+- **10 копипастных `export_v9_rev{24,25,26,29,30,37,38,39,41,42}_onnx.py`** — все различались только двумя путями (либо argparse-обёрткой для `--frame-stack` в случае rev38 и встроенной сигнатурной верификацией в rev24). Заменены одним `python/training/export_onnx.py --rev <rev>` с опциональными `--frame-stack k`, `--sanity-forward`, `--verify-signature`, `--artifacts-root`, `--model-family`. Покрыт 7 unit-тестами (`tests/training/test_export_onnx.py`). Ссылка на семейство в `docs/master-thesis/04-architecture.md` обновлена.
+
 ## [v0.1.2] — 2026-04
 
 ### Added
