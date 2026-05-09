@@ -88,6 +88,11 @@
 - **Dependabot weekly + grouped minor/patch** для pip / npm / nuget / github-actions.
 - **Lychee link-check workflow** на cron + `workflow_dispatch`, открывает tracking issue при failure.
 - **README badges** (CI / Docs / Python / Unity / .NET) для быстрой проверки health.
+- **`make verify` / `lint` / `test` / `build` / `scenarios-validate`** (commit `a4d4de1`): локальные aggregate-таргеты, повторяющие то, что гоняет CI; `RUFF`/`PYTEST`/`RUSIM` подхватываются из `.venv` если есть.
+- **План SDK consolidation** (commit `9995e6e`) в `2026-05-09-plugin-sdk-consolidation.md`. Описывает как объединить in-tree дубликаты с настоящим Plugin SDK без поломки сцен — исполнение требует Unity Editor, отдельная сессия.
+- **Тесты `sim_client/contract.py`** (commit `a70d5cf`): 14 тестов `validate_contract`. Coverage 0% → ~100%. Вычистили `TF | TensorFlow` из `13-abbreviations.md` (не используется).
+- **Тесты `sim_client/ks0223.py`** (commit `262d18c`): 11 тестов `Ks0223Command` + `parse_telemetry`.
+- **CI/Makefile глоб `**/*.yaml`** (commit `262d18c`): scenario-validate теперь покрывает `configs/scenarios/robustness/*.yaml` (10 ранее не валидировавшихся файлов). Всего 22 сценария проверяются на каждом push.
 
 ## [v0.1.2] — 2026-04
 
