@@ -1,0 +1,55 @@
+name: Link check (markdown)
+
+# Runs lychee against docs to surface dead links proactively.
+# Heavy-ish (hits external URLs), so it does NOT block develop/PRs:
+#   * weekly cron (Monday morning), and
+#   * manual dispatch when you want a fresh sweep.
+# Failing runs open a tracking issue (or update an existing one) so dead
+# links don't silently rot the docs site.
+
+on:
+  schedule:
+    - cron: "0 6 * * 1" # Mon 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  lychee:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Run lychee on docs and root markdown
+        uses: lycheeverse/lychee-action@v2
+        with:
+          # `--no-progress` keeps logs readable; `--cache` reuses HTTP results
+          # for 24h to avoid hammering the same hosts; `--max-concurrency 8`
+          # is friendly to mkdocs material's CDN-backed assets.
+          args: >-
+            --no-progress
+            --cache
+            --max-cache-age 1d
+            --max-concurrency 8
+            --exclude-mail
+            --exclude-loopback
+            --exclude '127\.0\.0\.1'
+            --exclude '192\.168\.'
+            --exclude 'localhost'
+            --exclude 'github\.com/.*/issues/'
+            --exclude '^https?://example\.'
+            'docs/**/*.md'
+            '*.md'
+          fail: true
+          format: markdown
+          output: ./lychee-out.md
+
+      - name: Create or update tracking issue on failure
+        if: failure() && github.event_name == 'schedule'
+        uses: peter-evans/create-issue-from-file@v5
+        with:
+          title: "Docs link check: dead links detected"
+          content-filepath: ./lychee-out.md
+          labels: docs, ci

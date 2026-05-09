@@ -1,0 +1,84 @@
+# Dependabot configuration for uav-simulator.
+#
+# Conservative weekly updates only — research repo, we do not want
+# auto-PRs every day. Limit open PRs per ecosystem so a flaky upstream
+# doesn't drown `develop` in noise.
+#
+# Group minor + patch upgrades together: a single PR per ecosystem per
+# week is much easier to review than one PR per package.
+
+version: 2
+updates:
+  # Python (sim_client, training, bridges) — pyproject.toml lives in python/
+  - package-ecosystem: "pip"
+    directory: "/python"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 3
+    labels:
+      - "deps"
+      - "python"
+    groups:
+      python-minor:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # Frontend (React + Vite + MUI)
+  - package-ecosystem: "npm"
+    directory: "/src/ks0223-web-mac/frontend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 3
+    labels:
+      - "deps"
+      - "frontend"
+    groups:
+      npm-minor:
+        update-types:
+          - "minor"
+          - "patch"
+    ignore:
+      # MUI majors require coordinated theme changes — bump intentionally.
+      - dependency-name: "@mui/*"
+        update-types: ["version-update:semver-major"]
+      # React majors are coordinated platform upgrades, not deps churn.
+      - dependency-name: "react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-dom"
+        update-types: ["version-update:semver-major"]
+
+  # Backend (.NET 8) — pin tooling but skip ML/runtime majors.
+  - package-ecosystem: "nuget"
+    directory: "/src/ks0223-web-mac/backend"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 2
+    labels:
+      - "deps"
+      - "dotnet"
+
+  - package-ecosystem: "nuget"
+    directory: "/src/ks0223-web-mac/backend.Tests"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 2
+    labels:
+      - "deps"
+      - "dotnet"
+      - "tests"
+
+  # GitHub Actions: keep checkout / setup-* / etc. fresh.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 2
+    labels:
+      - "deps"
+      - "ci"
