@@ -110,7 +110,10 @@ quickstart:
 
 venv:
 	python3 -m venv .venv
-	$(PIP) install -r python/requirements.txt
+	# Install sim_client + the 'test' + 'dev' extras so contributors get
+	# pytest / ruff / mypy out of the box. Add `,training` to the bracket
+	# if you also want torch + stable-baselines3 (~1 GB).
+	$(PIP) install -e "python[test,dev]"
 
 sim:
 	@if [ ! -x "$(UNITY_BIN)" ]; then echo "Unity binary not found: $(UNITY_BIN)"; exit 1; fi

@@ -14,7 +14,7 @@
 
 ### Python
 - Python `3.11+`
-- зависимости из `python/requirements.txt`
+- зависимости устанавливаются через `pip install -e "python[test,dev]"` (минимум для тестов и линтеров) или `pip install -e "python[test,dev,training]"` для полного RL-стека (torch + stable-baselines3, ~1 ГБ).
 
 ## Базовый путь запуска из репозитория
 
