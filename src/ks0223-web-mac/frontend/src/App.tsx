@@ -60,32 +60,40 @@ import type {
 } from './types'
 
 type TabKey = 'dashboard' | 'sensors' | 'led' | 'logs' | 'models' | 'demoReplay' | 'scenarios'
-type RuntimeMode = 'real-robot' | 'unity-sim'
 type UnityAgentDraft = { agentId?: string; vehicleId?: string; isPrimary?: boolean }
 type UnityPendingSelection = { trackId: string; vehicleId: string; cameraMode: string; agents: UnityAgentDraft[]; collisionsEnabled: boolean; seeEachOther: boolean }
 
-const RUNTIME_MODE_STORAGE_KEY = 'ks0223_runtime_mode'
-const TARGET_HOST_STORAGE_KEY_PREFIX = 'ks0223_target_host_'
-const TARGET_PORT_STORAGE_KEY_PREFIX = 'ks0223_target_port_'
-const UNITY_TRACK_STORAGE_KEY = 'ks0223_unity_track_id'
-const UNITY_VEHICLE_STORAGE_KEY = 'ks0223_unity_vehicle_id'
-const UNITY_CAMERA_MODE_STORAGE_KEY = 'ks0223_unity_camera_mode'
-const UNITY_CONTROL_AGENT_STORAGE_KEY = 'ks0223_unity_control_agent'
-const UNITY_CAMERA_AGENT_STORAGE_KEY = 'ks0223_unity_camera_agent'
-const UNITY_COLLISIONS_ENABLED_STORAGE_KEY = 'ks0223_unity_collisions_enabled'
-const UNITY_SEE_EACH_OTHER_STORAGE_KEY = 'ks0223_unity_see_each_other'
-const CLIENT_INSTANCE_ID_STORAGE_KEY = 'ks0223_client_instance_id'
-const LEGACY_UNITY_SECONDARY_VEHICLE_STORAGE_KEY = 'ks0223_unity_secondary_vehicle_id'
-const DEFAULT_TARGET_HOST = '192.168.1.121'
+// `localStorage` key registry and runtime-mode helpers live in their own
+// modules so this 1200-line file does not own the source of truth for them.
+import { normalizeRuntimeMode, type RuntimeMode } from './runtime-modes'
+import {
+  CAMERA_PAN_STORAGE_KEY,
+  CAMERA_SPEED_STORAGE_KEY,
+  CAMERA_TILT_STORAGE_KEY,
+  CLIENT_INSTANCE_ID_STORAGE_KEY,
+  DRIVE_SPEED_STORAGE_KEY,
+  LEGACY_UNITY_SECONDARY_VEHICLE_STORAGE_KEY,
+  RUNTIME_MODE_STORAGE_KEY,
+  ULTRASONIC_ANGLE_STORAGE_KEY,
+  ULTRASONIC_AUTO_SCAN_MIGRATION_V2_KEY,
+  ULTRASONIC_AUTO_SCAN_STORAGE_KEY,
+  ULTRASONIC_SERVO_PIN_STORAGE_KEY,
+  UNITY_CAMERA_AGENT_STORAGE_KEY,
+  UNITY_CAMERA_MODE_STORAGE_KEY,
+  UNITY_COLLISIONS_ENABLED_STORAGE_KEY,
+  UNITY_CONTROL_AGENT_STORAGE_KEY,
+  UNITY_SEE_EACH_OTHER_STORAGE_KEY,
+  UNITY_TRACK_STORAGE_KEY,
+  UNITY_VEHICLE_STORAGE_KEY,
+  targetHostStorageKey,
+  targetPortStorageKey,
+} from './storage-keys'
+
+// Default connection targets per RuntimeMode. `127.0.0.1` for both is the
+// safe baseline — operators override the actual robot IP through the
+// connection panel (persisted under `targetHostStorageKey(mode)`).
+const DEFAULT_TARGET_HOST = '127.0.0.1'
 const DEFAULT_UNITY_TARGET_HOST = '127.0.0.1'
-const DRIVE_SPEED_STORAGE_KEY = 'ks0223_drive_speed_percent'
-const CAMERA_SPEED_STORAGE_KEY = 'ks0223_camera_speed_percent'
-const ULTRASONIC_ANGLE_STORAGE_KEY = 'ks0223_ultrasonic_angle_deg'
-const ULTRASONIC_AUTO_SCAN_STORAGE_KEY = 'ks0223_ultrasonic_auto_scan'
-const ULTRASONIC_AUTO_SCAN_MIGRATION_V2_KEY = 'ks0223_ultrasonic_auto_scan_migration_v2'
-const ULTRASONIC_SERVO_PIN_STORAGE_KEY = 'ks0223_ultrasonic_servo_pin'
-const CAMERA_PAN_STORAGE_KEY = 'ks0223_camera_pan_deg'
-const CAMERA_TILT_STORAGE_KEY = 'ks0223_camera_tilt_deg'
 const ULTRASONIC_UI_OVERRIDE_MS = 5000
 
 const theme = createTheme({
@@ -204,24 +212,12 @@ function ensureClientInstanceId(): string {
   return generated
 }
 
-function normalizeRuntimeMode(value: string | null | undefined): RuntimeMode {
-  return value === 'unity-sim' ? 'unity-sim' : 'real-robot'
-}
-
 function defaultHostForMode(mode: RuntimeMode): string {
   return mode === 'unity-sim' ? DEFAULT_UNITY_TARGET_HOST : DEFAULT_TARGET_HOST
 }
 
 function defaultPortForMode(mode: RuntimeMode): number {
   return mode === 'unity-sim' ? 8000 : 5051
-}
-
-function targetHostStorageKey(mode: RuntimeMode): string {
-  return `${TARGET_HOST_STORAGE_KEY_PREFIX}${mode}`
-}
-
-function targetPortStorageKey(mode: RuntimeMode): string {
-  return `${TARGET_PORT_STORAGE_KEY_PREFIX}${mode}`
 }
 
 function readStoredTargetHost(mode: RuntimeMode): string {
