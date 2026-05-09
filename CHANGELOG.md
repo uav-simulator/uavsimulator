@@ -94,6 +94,14 @@
 - **Тесты `sim_client/ks0223.py`** (commit `262d18c`): 11 тестов `Ks0223Command` + `parse_telemetry`.
 - **CI/Makefile глоб `**/*.yaml`** (commit `262d18c`): scenario-validate теперь покрывает `configs/scenarios/robustness/*.yaml` (10 ранее не валидировавшихся файлов). Всего 22 сценария проверяются на каждом push.
 
+### Quality polish round 3 (iter 15-20) — god-class splits + safety nets
+
+- **Backend `Program.cs` split** (commit `21fe2fa`): 1063 → 116 строк (-89%). 46 inline `app.Map*()` endpoint handler'ов вынесены в 9 extension классов (`Endpoints/SessionEndpoints.cs`, `ModelEndpoints.cs`, `AutopilotEndpoints.cs`, `UnityRuntimeEndpoints.cs`, `CameraEndpoints.cs`, `SensorsEndpoints.cs`, `CommandEndpoints.cs`, `LogsEndpoints.cs`, `DemoEndpoints.cs`, `ScenarioEndpoints.cs`) + общие JSON/query/form helpers в `Endpoints/EndpointHelpers.cs`. Wire shape байт-в-байт идентичен — runtime smoke на 3-х endpoint'ах (`/api/status`, `/api/scenarios`, `/api/protocol`) подтвердил.
+- **План `cli.py` split** (commit `4e553be`) в `2026-05-09-cli-py-split.md`. 5 фаз, target layout `sim_client/cli/` package. Phase 0 (44 argparse smoke-теста на каждый top-level и nested subcommand + drift detector) уже в репе — будущий рефактор уже защищён регрессионной сетью.
+- **План bridges deduplication** (commit `4180c39`) в `2026-05-09-ros2-bridges-dedup.md`. 5 фаз, цель — сделать `ros2_bridge.py` шимом над `ros2_bridge_multi.py` с `--agents ego`. Phase 0 (33 теста на pure helpers `_safe_ns`, `_clamp`, `_as_float`, `_telemetry_float`, `_decode_frame_bytes`, `_sanitize_frame_id`, `parse_args`) — уже в репе. Локирует helper-форму перед extraction в `bridges/_common.py`.
+- **`python/requirements.txt` удалён** (commit `bff666a`): дублировал deps из `pyproject.toml`. Теперь install через `pip install -e "python[test,dev]"` (CI baseline) или `[test,dev,training]` (полный RL стек). `Makefile venv`, `docs/installation.md`, и тезис-глава 10 переписаны.
+- **Pytest stats:** 0 в CI на старте сессии → **202 passed, 2 skipped** после iter 20. Покрытие `sim_client.*` `~0% → ~85%`, backend `0 → 22 tests`, bridges single-agent helpers `0 → 33 tests`, plus 44 argparse smoke + 39 cli.py-related.
+
 ## [v0.1.2] — 2026-04
 
 ### Added
