@@ -20,7 +20,11 @@ from unittest.mock import MagicMock, patch
 import pytest
 import requests
 
-from sim_client.http_client import SimClient
+from sim_client.http_client import (
+    SUPPORTED_CONTRACT_VERSION_MAJOR,
+    ContractMismatchError,
+    SimClient,
+)
 
 # ---------------------------------------------------------------------------
 # helpers
@@ -185,3 +189,91 @@ def test_set_model_binding_omits_agent_id_when_blank(client: SimClient) -> None:
         )
     assert mock_post.call_args.kwargs["json"] == expected
     assert "agentId" not in mock_post.call_args.kwargs["json"]
+
+
+# ---------------------------------------------------------------------------
+# check_contract_version / assert_contract_compatible
+# ---------------------------------------------------------------------------
+
+
+def test_check_contract_version_matches_supported_major(client: SimClient) -> None:
+    payload = {"contractVersion": f"{SUPPORTED_CONTRACT_VERSION_MAJOR}.1.0", "simulatorId": "x"}
+    with patch.object(client.session, "get", return_value=_make_response(200, payload)):
+        ok, info = client.check_contract_version()
+    assert ok is True
+    assert info == f"{SUPPORTED_CONTRACT_VERSION_MAJOR}.1.0"
+
+
+def test_check_contract_version_rejects_major_drift(client: SimClient) -> None:
+    payload = {"contractVersion": f"{SUPPORTED_CONTRACT_VERSION_MAJOR + 1}.0.0"}
+    with patch.object(client.session, "get", return_value=_make_response(200, payload)):
+        ok, info = client.check_contract_version()
+    assert ok is False
+    assert "major mismatch" in info
+    assert f"{SUPPORTED_CONTRACT_VERSION_MAJOR + 1}.0.0" in info
+
+
+def test_check_contract_version_rejects_missing_field(client: SimClient) -> None:
+    with patch.object(client.session, "get", return_value=_make_response(200, {})):
+        ok, info = client.check_contract_version()
+    assert ok is False
+    assert "did not advertise contractVersion" in info
+
+
+def test_check_contract_version_rejects_unparseable(client: SimClient) -> None:
+    payload = {"contractVersion": "not-a-version"}
+    with patch.object(client.session, "get", return_value=_make_response(200, payload)):
+        ok, info = client.check_contract_version()
+    assert ok is False
+    assert "unparseable" in info
+
+
+def test_check_contract_version_accepts_bare_major(client: SimClient) -> None:
+    """Server may report just the major (e.g. '0' instead of '0.1.0')."""
+    payload = {"contractVersion": str(SUPPORTED_CONTRACT_VERSION_MAJOR)}
+    with patch.object(client.session, "get", return_value=_make_response(200, payload)):
+        ok, info = client.check_contract_version()
+    assert ok is True
+
+
+def test_assert_contract_compatible_returns_version_string_on_match(client: SimClient) -> None:
+    payload = {"contractVersion": f"{SUPPORTED_CONTRACT_VERSION_MAJOR}.2.3"}
+    with patch.object(client.session, "get", return_value=_make_response(200, payload)):
+        result = client.assert_contract_compatible()
+    assert result == f"{SUPPORTED_CONTRACT_VERSION_MAJOR}.2.3"
+
+
+def test_assert_contract_compatible_raises_on_mismatch(client: SimClient) -> None:
+    payload = {"contractVersion": f"{SUPPORTED_CONTRACT_VERSION_MAJOR + 7}.0.0"}
+    with patch.object(client.session, "get", return_value=_make_response(200, payload)):
+        with pytest.raises(ContractMismatchError, match="major mismatch"):
+            client.assert_contract_compatible()
+
+
+# ---------------------------------------------------------------------------
+# wait_for_ready
+# ---------------------------------------------------------------------------
+
+
+def test_wait_for_ready_returns_health_payload_on_first_success(client: SimClient) -> None:
+    payload = {"status": "ok", "uptime": 1.0}
+    with patch.object(client.session, "get", return_value=_make_response(200, payload)):
+        result = client.wait_for_ready(deadline_s=1.0, poll_interval_s=0.01)
+    assert result == payload
+
+
+def test_wait_for_ready_retries_then_succeeds(client: SimClient) -> None:
+    """Simulator is briefly unreachable, then comes online — wait_for_ready survives."""
+    payload = {"status": "ok"}
+    success = _make_response(200, payload)
+    side_effects = [requests.ConnectionError("boot"), requests.ConnectionError("boot"), success]
+    with patch.object(client.session, "get", side_effect=side_effects):
+        result = client.wait_for_ready(deadline_s=2.0, poll_interval_s=0.01)
+    assert result == payload
+
+
+def test_wait_for_ready_raises_timeout_when_deadline_expires(client: SimClient) -> None:
+    """If the simulator never comes online, the loop exits with TimeoutError."""
+    with patch.object(client.session, "get", side_effect=requests.ConnectionError("never")):
+        with pytest.raises(TimeoutError, match="not ready within"):
+            client.wait_for_ready(deadline_s=0.05, poll_interval_s=0.01)
