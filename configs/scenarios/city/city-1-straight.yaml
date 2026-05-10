@@ -1,0 +1,37 @@
+scenarioId: city-1-straight
+displayName: "City Curriculum 1 — Straight (sanity)"
+description: |
+  Самый простой сценарий curriculum-обучения policy на track.city_polygon.v1.
+  Прямой путь из 5 waypoint'ов вдоль одной улицы. Цель — научить агента
+  поддерживать скорость и держаться по центру дороги без поворотов.
+version: 1
+
+runtime:
+  runtimeMode: unity-sim
+  headless: false
+  timeScale: 2.0
+  seed: 1001
+
+world:
+  trackId: track.city_polygon.v1
+
+vehicle:
+  vehicleId: vehicle.arcade.blue.v1
+  params:
+    camera.profile: high
+
+route:
+  params:
+    spawn.position: "0.000,0.200,-20.000"
+  waypoints:
+    - [0.0, -20.0]
+    - [0.0, -10.0]
+    - [0.0, 0.0]
+    - [0.0, 10.0]
+    - [0.0, 20.0]
+  reachDistanceM: 1.5
+
+agents:
+  isolated: true
+  seeEachOther: false
+  collisionsEnabled: false
