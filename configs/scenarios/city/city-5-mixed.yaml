@@ -1,0 +1,50 @@
+scenarioId: city-5-mixed
+displayName: "City Curriculum 5 — Mixed circuit (eval)"
+description: |
+  Полный круг: прямая на север → 2 правых поворота → восток → U-turn в
+  правом-нижнем → запад → 2 левых поворота → возврат к старту.
+  Используется как evaluation-scenario для измерения success rate
+  обученной policy. НЕ предназначен для curriculum-стартового обучения.
+version: 1
+
+runtime:
+  runtimeMode: unity-sim
+  headless: false
+  timeScale: 2.0
+  seed: 1005
+
+world:
+  trackId: track.city_polygon.v1
+
+vehicle:
+  vehicleId: vehicle.arcade.blue.v1
+  params:
+    camera.profile: high
+
+route:
+  params:
+    spawn.position: "-15.000,0.200,-15.000"
+  waypoints:
+    # Стартовый прямой участок на север.
+    - [-15.0, -15.0]
+    - [-15.0, 0.0]
+    - [-15.0, 15.0]
+    # Два правых поворота: → центр → восток.
+    - [0.0, 15.0]
+    - [15.0, 15.0]
+    - [15.0, 0.0]
+    - [15.0, -15.0]
+    # U-turn в правом-нижнем углу.
+    - [12.0, -15.0]
+    - [12.0, -5.0]
+    # Возврат на запад через два левых поворота.
+    - [0.0, -5.0]
+    - [-12.0, -5.0]
+    - [-12.0, -15.0]
+    - [-15.0, -15.0]
+  reachDistanceM: 1.5
+
+agents:
+  isolated: true
+  seeEachOther: false
+  collisionsEnabled: false
