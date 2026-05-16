@@ -94,12 +94,8 @@ __pycache__/
 # Local preview/debug artifacts
 tmp/
 .tmp/
-output/*.png
-output/*.jpg
+output/
 .mkdocs-site/
-output/*.xwd
-output/*.log
-output/debug_turns/
 .rusim/
 dist/
 
