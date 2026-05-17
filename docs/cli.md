@@ -37,7 +37,7 @@ source ~/.zshrc
 ```bash
 rusim install --write-shell-config
 rusim version
-rusim upgrade --repo NMGorovenko/uav-simulator --tag latest --check-only
+rusim upgrade --repo uav-simulator/uavsimulator --tag latest --check-only
 ```
 
 Назначение:
