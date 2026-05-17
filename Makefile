@@ -46,7 +46,7 @@ ROS_BRIDGE_RESET_FLAG := $(if $(filter 1 true TRUE yes YES,$(UAVSIM_ROS_RESET_ON
 SCENARIO ?= $(PROJECT_ROOT)/configs/scenarios/demo.yaml
 DEMO_SCENARIO ?= $(PROJECT_ROOT)/configs/scenarios/demo.yaml
 RUNTIME_APP ?=
-RUSIM_RELEASE_REPO ?= NMGorovenko/uav-simulator
+RUSIM_RELEASE_REPO ?= uav-simulator/uavsimulator
 RUSIM_RELEASE_TAG ?= latest
 RUSIM_MANIFEST_URL ?=
 

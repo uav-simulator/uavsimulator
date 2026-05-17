@@ -171,7 +171,7 @@ unity-tests:
 
 ### 8.2.2 Workflow pages.yml: деплой документации
 
-Workflow `pages.yml` отвечает за публикацию проектной документации на GitHub Pages по адресу `https://nmgorovenko.github.io/uav-simulator/`. Триггер сужен до случаев, когда правки касаются именно документации: события `push` на ветки `main` и `develop`, ограниченные путями `docs/**`, `mkdocs.yml` и сам `pages.yml`. Это исключает повторные деплои при правке кода, не влияющего на документационный сайт.
+Workflow `pages.yml` отвечает за публикацию проектной документации на GitHub Pages по адресу `https://uav-simulator.github.io/uavsimulator/`. Триггер сужен до случаев, когда правки касаются именно документации: события `push` на ветки `main` и `develop`, ограниченные путями `docs/**`, `mkdocs.yml` и сам `pages.yml`. Это исключает повторные деплои при правке кода, не влияющего на документационный сайт.
 
 Workflow собран из двух job-ов: `build` и `deploy`. `build` ставит Python 3.11, устанавливает `mkdocs`, `mkdocs-material` и `pymdown-extensions` из `docs/requirements-pages.txt`, исполняет `mkdocs build --strict` (флаг `--strict` превращает любые предупреждения mkdocs в ошибки) и публикует получившийся `.mkdocs-site` как pages-artifact. `deploy` использует `actions/deploy-pages@v4` и берёт собранный artifact, запуская публикацию в окружение `github-pages`. Concurrency-группа `pages` с `cancel-in-progress: true` гарантирует, что параллельные push-ы документации не приводят к конкурирующему деплою.
 
@@ -375,7 +375,7 @@ Plugin SDK — набор базовых классов и редакторны�
 }
 ```
 
-Пакет содержит две корневые директории: `Runtime/` (классы `VehiclePluginBase`, `TrackPluginBase`, descriptor-types, runtime-utility) и `Editor/` (ассистенты валидации и `PluginExporter` — инструмент Tools-меню для упаковки `.rusim-plugin.zip`). Установка в Editor стороннего разработчика выполняется через диалог Package Manager в режиме «Add package from git URL» с адресом `https://github.com/NMGorovenko/uav-simulator.git?path=packages/com.uav-simulator.plugin-sdk`. UPM сам клонирует репозиторий, читает `package.json` указанного `path` и подключает его как пакет — что освобождает разработчика от необходимости копировать SDK в свой проект.
+Пакет содержит две корневые директории: `Runtime/` (классы `VehiclePluginBase`, `TrackPluginBase`, descriptor-types, runtime-utility) и `Editor/` (ассистенты валидации и `PluginExporter` — инструмент Tools-меню для упаковки `.rusim-plugin.zip`). Установка в Editor стороннего разработчика выполняется через диалог Package Manager в режиме «Add package from git URL» с адресом `https://github.com/uav-simulator/uavsimulator.git?path=packages/com.uav-simulator.plugin-sdk`. UPM сам клонирует репозиторий, читает `package.json` указанного `path` и подключает его как пакет — что освобождает разработчика от необходимости копировать SDK в свой проект.
 
 Полный сценарий разработки плагина — от установки SDK через UPM до экспорта `.rusim-plugin.zip` — изложен в разделе 5; настоящий подраздел фиксирует только механику поставки. Привязка пакета к git-URL означает, что версионирование SDK совпадает с git-тэгами репозитория `uav-simulator`: разработчик плагина может закрепиться на конкретной ревизии SDK через `?path=…&ref=v0.1.2`, что обеспечивает стабильность intra-project разработки. Публикация SDK в публичный UPM-registry (`registry.npmjs.org/scopes/uav-simulator` или `openupm`) на текущий момент не выполнена — такой шаг становится оправданным после стабилизации API SDK и зафиксирован как направление расширения.
 
@@ -397,7 +397,7 @@ Plugin SDK — набор базовых классов и редакторны�
 
 ### 8.6.2 Деплой через GitHub Actions на Pages
 
-Деплой документации полностью автоматизирован workflow-ом `pages.yml`, описанным в разделе 8.2.2. На уровне поведения сайта это означает следующий сценарий: автор редактирует маркдаун в `docs/`, выполняет `git push develop`, через одну–полторы минуты обновлённый сайт становится доступен по адресу `https://nmgorovenko.github.io/uav-simulator/`. Никаких ручных операций — генерации сайта, копирования в `gh-pages`-ветку, загрузки артефакта — не требуется.
+Деплой документации полностью автоматизирован workflow-ом `pages.yml`, описанным в разделе 8.2.2. На уровне поведения сайта это означает следующий сценарий: автор редактирует маркдаун в `docs/`, выполняет `git push develop`, через одну–полторы минуты обновлённый сайт становится доступен по адресу `https://uav-simulator.github.io/uavsimulator/`. Никаких ручных операций — генерации сайта, копирования в `gh-pages`-ветку, загрузки артефакта — не требуется.
 
 Локальный preview-сайта поддерживается через венв `.venv-docs/`, в котором установлен mkdocs из `docs/requirements-pages.txt`. Команда `.venv-docs/bin/mkdocs serve` запускает локальный сервер на 8000-м порту с auto-reload, что даёт обратную связь по правкам в реальном времени. Команда `.venv-docs/bin/mkdocs build --strict` исполняется автором перед push-ем для проверки, что workflow не упадёт на флаге `--strict`. Это превентивная защита от ошибок mkdocs (битые ссылки, неизвестные admonition-типы, проблемы с heading-структурой), которые иначе обнаруживаются только в CI.
 

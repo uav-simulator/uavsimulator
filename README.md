@@ -1,7 +1,7 @@
 # Autonomous Vehicle Training Simulator (Unity)
 
-[![CI](https://github.com/NMGorovenko/uav-simulator/actions/workflows/ci.yml/badge.svg?branch=develop)](https://github.com/NMGorovenko/uav-simulator/actions/workflows/ci.yml)
-[![Docs](https://github.com/NMGorovenko/uav-simulator/actions/workflows/pages.yml/badge.svg?branch=develop)](https://nmgorovenko.github.io/uav-simulator/)
+[![CI](https://github.com/uav-simulator/uavsimulator/actions/workflows/ci.yml/badge.svg?branch=develop)](https://github.com/uav-simulator/uavsimulator/actions/workflows/ci.yml)
+[![Docs](https://github.com/uav-simulator/uavsimulator/actions/workflows/pages.yml/badge.svg?branch=develop)](https://uav-simulator.github.io/uavsimulator/)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](python/pyproject.toml)
 [![Unity 6000.1](https://img.shields.io/badge/unity-6000.1.8f1-black.svg)](src/UnityProject/uav-simulator/)
 [![.NET 8](https://img.shields.io/badge/.net-8.0-512bd4.svg)](src/ks0223-web-mac/backend/)

@@ -33,7 +33,7 @@ DEFAULT_RUNTIME_OUTPUT_DIR = REPO_ROOT / "build" / "runtime" / "macos"
 DEFAULT_BIN_DIR = Path.home() / ".local" / "bin"
 DEFAULT_ZSHRC = Path.home() / ".zshrc"
 DEFAULT_RUSIM_HOME = REPO_ROOT / ".rusim"
-DEFAULT_GITHUB_REPO = os.environ.get("GITHUB_REPOSITORY", "NMGorovenko/uav-simulator")
+DEFAULT_GITHUB_REPO = os.environ.get("GITHUB_REPOSITORY", "uav-simulator/uavsimulator")
 DEFAULT_RELEASE_CHANNEL = "stable"
 RELEASE_MANIFEST_ASSET_NAME = "rusim-release-manifest.json"
 

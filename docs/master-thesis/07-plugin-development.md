@@ -339,7 +339,7 @@ Built-in плагины читаются из жёстко закодирова�
 Plugin SDK поставляется как Unity Package и подключается стандартным механизмом UPM. В Unity Editor: `Window > Package Manager > + > Add package from git URL` с адресом
 
 ```
-https://github.com/NMGorovenko/uav-simulator.git?path=packages/com.uav-simulator.plugin-sdk
+https://github.com/uav-simulator/uavsimulator.git?path=packages/com.uav-simulator.plugin-sdk
 ```
 
 Альтернативно — вручную в `Packages/manifest.json`:
@@ -347,7 +347,7 @@ https://github.com/NMGorovenko/uav-simulator.git?path=packages/com.uav-simulator
 ```json
 {
   "dependencies": {
-    "com.uav-simulator.plugin-sdk": "https://github.com/NMGorovenko/uav-simulator.git?path=packages/com.uav-simulator.plugin-sdk"
+    "com.uav-simulator.plugin-sdk": "https://github.com/uav-simulator/uavsimulator.git?path=packages/com.uav-simulator.plugin-sdk"
   }
 }
 ```

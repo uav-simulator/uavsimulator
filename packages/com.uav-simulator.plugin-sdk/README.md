@@ -7,7 +7,7 @@ SDK for developing plugins (vehicles, tracks) for the **uav-simulator** platform
 Add to your Unity project via **Window > Package Manager > Add package from git URL**:
 
 ```
-https://github.com/NMGorovenko/uav-simulator.git?path=packages/com.uav-simulator.plugin-sdk
+https://github.com/uav-simulator/uavsimulator.git?path=packages/com.uav-simulator.plugin-sdk
 ```
 
 Or add directly to `Packages/manifest.json`:
@@ -15,7 +15,7 @@ Or add directly to `Packages/manifest.json`:
 ```json
 {
   "dependencies": {
-    "com.uav-simulator.plugin-sdk": "https://github.com/NMGorovenko/uav-simulator.git?path=packages/com.uav-simulator.plugin-sdk"
+    "com.uav-simulator.plugin-sdk": "https://github.com/uav-simulator/uavsimulator.git?path=packages/com.uav-simulator.plugin-sdk"
   }
 }
 ```

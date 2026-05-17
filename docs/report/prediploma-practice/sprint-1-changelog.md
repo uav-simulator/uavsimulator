@@ -376,7 +376,7 @@ classDiagram
 Контракты платформы (`PluginDescriptorBase`, `VehiclePluginDescriptor`, `TrackPluginDescriptor`, `DeviceContractDescriptor` и др.) доступны через Unity Package Manager в виде пакета `com.uav-simulator.plugin-sdk`. Пакет подключается к Unity-проекту стандартным способом — через `manifest.json` или через UI: `Window > Package Manager > Add package from git URL`:
 
 ```text
-https://github.com/NMGorovenko/uav-simulator.git?path=packages/com.uav-simulator.plugin-sdk
+https://github.com/uav-simulator/uavsimulator.git?path=packages/com.uav-simulator.plugin-sdk
 ```
 
 Пакет содержит:
@@ -391,7 +391,7 @@ https://github.com/NMGorovenko/uav-simulator.git?path=packages/com.uav-simulator
 
 ```bash
 # Клонировать шаблон
-git clone https://github.com/NMGorovenko/uav-simulator-plugin-template.git my-plugin
+git clone https://github.com/uav-simulator/uavsimulator-plugin-template.git my-plugin
 
 # Открыть в Unity 6 (версия должна совпадать с целевым runtime)
 # → SDK-пакет уже подключён через manifest.json
@@ -617,12 +617,12 @@ rusim version
 # → favorite: uav-simulator-2026.03.28-120000.app
 
 # Обновление runtime из GitHub Release:
-rusim upgrade --repo NMGorovenko/uav-simulator --tag latest
+rusim upgrade --repo uav-simulator/uavsimulator --tag latest
 # → скачивает manifest, выбирает asset по платформе,
 #   проверяет sha256, распаковывает, регистрирует build
 
 # Только проверить наличие обновления (без скачивания):
-rusim upgrade --repo NMGorovenko/uav-simulator --tag latest --check-only
+rusim upgrade --repo uav-simulator/uavsimulator --tag latest --check-only
 ```
 
 `upgrade` автоматически работает с private-репозиторием при наличии `GITHUB_TOKEN`.
@@ -680,7 +680,7 @@ sequenceDiagram
     participant GH as GitHub Releases API
     participant FS as Локальная FS
 
-    User->>CLI: rusim upgrade --repo NMGorovenko/uav-simulator --tag latest
+    User->>CLI: rusim upgrade --repo uav-simulator/uavsimulator --tag latest
 
     CLI->>GH: GET /releases/latest → найти release
     GH-->>CLI: Release assets list
@@ -1273,7 +1273,7 @@ flowchart TB
 
 Вся документация проекта собрана в единый сайт на базе **MkDocs** с темой **Material** и автоматически публикуется на **GitHub Pages** при каждом push в ветки `main` / `develop`.
 
-**Адрес документации:** [nmgorovenko.github.io/uav-simulator](https://nmgorovenko.github.io/uav-simulator/)
+**Адрес документации:** [uav-simulator.github.io/uavsimulator](https://uav-simulator.github.io/uavsimulator/)
 
 **Структура сайта:**
 
