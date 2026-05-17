@@ -4,9 +4,6 @@ Mirrors the existing cardboard-corridor training pipeline (Stable-Baselines3
 PPO, ``MultiInputPolicy``, periodic checkpoints + EvalCallback) but targets
 ``track.city_polygon.v1`` and the city-curriculum scenario set.
 
-Operator startup is documented in
-``2026-05-10-city-autonomy-training.md``.
-
 Quickstart::
 
     # Unity Editor must be open on the city polygon scene, in PlayMode.
