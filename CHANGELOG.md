@@ -40,7 +40,7 @@
 - **Plugin SDK Editor**:
   - `Tools > UavSimulator > City Waypoints > Generate Demo Scaffold/Validate Selected/Export to JSON/Import from JSON` — менюшный набор для работы с waypoint-графом.
   - `UavSimulator.Editor` asmdef для editor-only кода.
-- **CI/CD discipline (quality polish iteration)**:
+- **CI/CD discipline**:
   - `python-tests` job: реальный `pytest` + `ruff check` + покрытие (артефакт `coverage.xml`) — заменяет фиктивный `python-lint` stub, гонявший только `import` smoke.
   - `rusim-smoke` job: проверяет `rusim --help`, `rusim scenario list` и валидирует все `configs/scenarios/*.yaml`.
   - `demo-proof-ci` теперь зовёт настоящий `make plugin-smoke-track` (раньше всегда возвращал 0 со строкой «skip, Unity API not reachable»).
@@ -57,8 +57,8 @@
 - `BuiltinPluginFactory` дополнен фабриками для `track.city_polygon.v1` и арсадных машинок Arcade Free Racing Car (Blue/Red/Gray/Purple).
 - `RuntimeMaterialCompatibility` теперь автоматически конвертирует Built-in pipeline материалы на URP/Lit в момент загрузки сторонних ассетов (POLYGON City Pack).
 - `CityPolygonTrack` переключён на дефолтный режим load DemoScene аддитивно через `EditorSceneManager.LoadSceneAsyncInPlayMode`. Procedural-grid режим сохранён как fallback.
-- **Master-thesis numbering (quality polish)**: H1 заголовки глав 06-api-spec и 07-plugin-development приведены в соответствие с ToC из 11-conclusion (`6→4`, `7→5` и все subsection refs внутри). Cross-refs в 08-training-python и 03-related-work-and-analogs синхронизированы.
-- **MkDocs nav**: добавлен раздел «Магистерская диссертация» (14 глав, ранее доступных только по прямому URL); `superpowers/**` исключён из деплоя.
+- **Master-thesis numbering**: H1 заголовки глав 06-api-spec и 07-plugin-development приведены в соответствие с ToC из 11-conclusion (`6→4`, `7→5` и все subsection refs внутри). Cross-refs в 08-training-python и 03-related-work-and-analogs синхронизированы.
+- **MkDocs nav**: добавлен раздел «Магистерская диссертация» (14 глав, ранее доступных только по прямому URL).
 - **Docs canonical examples**: `cli.md` подтянут к каноническому `track.cardboard_corridor.v1` (был `roadsystem_arena.v1`); `usage.md` — удалена стейл-нота с датой 2026-04-11.
 - **Python codebase**: ruff `--fix` применён ко всему `python/` (240 авто-правок) — модернизация типов `Dict[K,V] → dict[K,V]`, `Optional[X] → X | None`, сортировка `import`-ов, удаление неиспользуемых импортов и `f`-префиксов без placeholder'ов. Поведение не меняется.
 
@@ -78,7 +78,7 @@
 
 - **10 копипастных `export_v9_rev{24,25,26,29,30,37,38,39,41,42}_onnx.py`** — все различались только двумя путями (либо argparse-обёрткой для `--frame-stack` в случае rev38 и встроенной сигнатурной верификацией в rev24). Заменены одним `python/training/export_onnx.py --rev <rev>` с опциональными `--frame-stack k`, `--sanity-forward`, `--verify-signature`, `--artifacts-root`, `--model-family`. Покрыт 7 unit-тестами (`tests/training/test_export_onnx.py`). Ссылка на семейство в `docs/master-thesis/04-architecture.md` обновлена.
 
-### Quality polish round 2 (iter 5-10)
+### Quality polish round 2
 
 - **Frontend lint baseline → 0** (commit `2b872be`). Поправлены 2 ошибки `react-hooks/preserve-manual-memoization` (CameraPanel) и `set-state-in-effect` (ModelControlPage), плюс 10 warnings по `react-hooks/exhaustive-deps`. CI теперь гоняет `eslint --max-warnings 0` как hard gate.
 - **SimClient: `wait_for_ready` + `check_contract_version` + `assert_contract_compatible` + `ContractMismatchError`** (commit `f353175`). Бридж Unity boot/JIT окна и fail-fast при API drift. 10 новых unit-тестов.
@@ -89,18 +89,18 @@
 - **Lychee link-check workflow** на cron + `workflow_dispatch`, открывает tracking issue при failure.
 - **README badges** (CI / Docs / Python / Unity / .NET) для быстрой проверки health.
 - **`make verify` / `lint` / `test` / `build` / `scenarios-validate`** (commit `a4d4de1`): локальные aggregate-таргеты, повторяющие то, что гоняет CI; `RUFF`/`PYTEST`/`RUSIM` подхватываются из `.venv` если есть.
-- **План SDK consolidation** (commit `9995e6e`) в `2026-05-09-plugin-sdk-consolidation.md`. Описывает как объединить in-tree дубликаты с настоящим Plugin SDK без поломки сцен — исполнение требует Unity Editor, отдельная сессия.
+- **План SDK consolidation** (commit `9995e6e`). Описывает как объединить in-tree дубликаты с настоящим Plugin SDK без поломки сцен — исполнение требует Unity Editor, отдельный заход.
 - **Тесты `sim_client/contract.py`** (commit `a70d5cf`): 14 тестов `validate_contract`. Coverage 0% → ~100%. Вычистили `TF | TensorFlow` из `13-abbreviations.md` (не используется).
 - **Тесты `sim_client/ks0223.py`** (commit `262d18c`): 11 тестов `Ks0223Command` + `parse_telemetry`.
 - **CI/Makefile глоб `**/*.yaml`** (commit `262d18c`): scenario-validate теперь покрывает `configs/scenarios/robustness/*.yaml` (10 ранее не валидировавшихся файлов). Всего 22 сценария проверяются на каждом push.
 
-### Quality polish round 3 (iter 15-20) — god-class splits + safety nets
+### Quality polish round 3 — god-class splits + safety nets
 
 - **Backend `Program.cs` split** (commit `21fe2fa`): 1063 → 116 строк (-89%). 46 inline `app.Map*()` endpoint handler'ов вынесены в 9 extension классов (`Endpoints/SessionEndpoints.cs`, `ModelEndpoints.cs`, `AutopilotEndpoints.cs`, `UnityRuntimeEndpoints.cs`, `CameraEndpoints.cs`, `SensorsEndpoints.cs`, `CommandEndpoints.cs`, `LogsEndpoints.cs`, `DemoEndpoints.cs`, `ScenarioEndpoints.cs`) + общие JSON/query/form helpers в `Endpoints/EndpointHelpers.cs`. Wire shape байт-в-байт идентичен — runtime smoke на 3-х endpoint'ах (`/api/status`, `/api/scenarios`, `/api/protocol`) подтвердил.
-- **План `cli.py` split** (commit `4e553be`) в `2026-05-09-cli-py-split.md`. 5 фаз, target layout `sim_client/cli/` package. Phase 0 (44 argparse smoke-теста на каждый top-level и nested subcommand + drift detector) уже в репе — будущий рефактор уже защищён регрессионной сетью.
-- **План bridges deduplication** (commit `4180c39`) в `2026-05-09-ros2-bridges-dedup.md`. 5 фаз, цель — сделать `ros2_bridge.py` шимом над `ros2_bridge_multi.py` с `--agents ego`. Phase 0 (33 теста на pure helpers `_safe_ns`, `_clamp`, `_as_float`, `_telemetry_float`, `_decode_frame_bytes`, `_sanitize_frame_id`, `parse_args`) — уже в репе. Локирует helper-форму перед extraction в `bridges/_common.py`.
+- **План `cli.py` split** (commit `4e553be`). 5 фаз, target layout `sim_client/cli/` package. Phase 0 (44 argparse smoke-теста на каждый top-level и nested subcommand + drift detector) уже в репе — будущий рефактор уже защищён регрессионной сетью.
+- **План bridges deduplication** (commit `4180c39`). 5 фаз, цель — сделать `ros2_bridge.py` шимом над `ros2_bridge_multi.py` с `--agents ego`. Phase 0 (33 теста на pure helpers `_safe_ns`, `_clamp`, `_as_float`, `_telemetry_float`, `_decode_frame_bytes`, `_sanitize_frame_id`, `parse_args`) — уже в репе. Локирует helper-форму перед extraction в `bridges/_common.py`.
 - **`python/requirements.txt` удалён** (commit `bff666a`): дублировал deps из `pyproject.toml`. Теперь install через `pip install -e "python[test,dev]"` (CI baseline) или `[test,dev,training]` (полный RL стек). `Makefile venv`, `docs/installation.md`, и тезис-глава 10 переписаны.
-- **Pytest stats:** 0 в CI на старте сессии → **202 passed, 2 skipped** после iter 20. Покрытие `sim_client.*` `~0% → ~85%`, backend `0 → 22 tests`, bridges single-agent helpers `0 → 33 tests`, plus 44 argparse smoke + 39 cli.py-related.
+- **Pytest stats:** 0 в CI до этого раунда → **202 passed, 2 skipped** после серии полировок. Покрытие `sim_client.*` `~0% → ~85%`, backend `0 → 22 tests`, bridges single-agent helpers `0 → 33 tests`, plus 44 argparse smoke + 39 cli.py-related.
 
 ## [v0.1.2] — 2026-04
 

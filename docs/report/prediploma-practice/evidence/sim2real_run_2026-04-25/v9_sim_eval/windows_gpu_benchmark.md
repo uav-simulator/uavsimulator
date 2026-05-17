@@ -49,8 +49,7 @@ cd <repo>
 
 ## Architecture significance
 
-Этот benchmark — proof-of-concept для **edge-cloud разделения compute** (см.
-plan [2026-04-26-remote-simulator-orchestration.md](../../../../superpowers/plans/2026-04-26-remote-simulator-orchestration.md)):
+Этот benchmark — proof-of-concept для **edge-cloud разделения compute**:
 - **Edge node (Mac):** robot control, ONNX inference, безопасность реального робота
 - **Cloud node (Windows):** parallel sim farm + PPO training с GPU acceleration
 - **Coordination:** SSH ControlMaster + REST API + ONNX artifact transfer

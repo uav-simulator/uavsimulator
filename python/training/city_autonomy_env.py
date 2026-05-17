@@ -1,7 +1,6 @@
 """City autonomy RL environment: waypoint-following on `track.city_polygon.v1`.
 
-Phase 1 of the city autonomy training plan
-(`2026-05-10-city-autonomy-training.md`):
+Phase 1 of the city autonomy training pipeline:
 
   - Vision-only observation (84x84x3 RGB) + 4-d navigation vector.
   - Continuous action: ``[throttle, steer]``, both in ``[-1, 1]``.

@@ -7,7 +7,6 @@ strict: false
 exclude_docs: |
   report/prediploma-practice/*.docx
   reports/**
-  superpowers/**
 
 # Validation is intentionally lenient: thesis chapters link to repo source
 # files (e.g. `../../src/.../SimulatorContracts.cs`) which mkdocs treats as
