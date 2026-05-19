@@ -9,6 +9,11 @@ LOGS_DIR ?= $(CURDIR)/logs
 REPO_ROOT ?= $(CURDIR)/../..
 SCENARIOS_DIR ?= $(REPO_ROOT)/configs/scenarios
 
+# Trained model artifacts (.onnx + .metadata.json) live on the host so
+# they survive image rebuilds and don't bloat the container. Mounted into
+# /app/runtime-data so ModelRegistryService finds them at startup.
+RUNTIME_DATA_DIR ?= $(CURDIR)/backend/runtime-data
+
 .PHONY: docker-build docker-rebuild docker-run docker-stop docker-update docker-logs docker-health docker-shell docker-pull-base docker-wait
 
 docker-pull-base:
@@ -28,11 +33,12 @@ docker-stop:
 	-docker rm -f $(CONTAINER)
 
 docker-run: docker-stop
-	mkdir -p $(LOGS_DIR)
+	mkdir -p $(LOGS_DIR) $(RUNTIME_DATA_DIR)/models $(RUNTIME_DATA_DIR)/autopilot-recordings
 	docker run -d --name $(CONTAINER) \
 		-p $(PORT):5058 -p $(UDP_PORT):5051/udp \
 		-v $(LOGS_DIR):/app/logs \
 		-v $(SCENARIOS_DIR):/app/configs/scenarios:ro \
+		-v $(RUNTIME_DATA_DIR):/app/runtime-data \
 		--add-host host.docker.internal:host-gateway \
 		$(IMAGE)
 
