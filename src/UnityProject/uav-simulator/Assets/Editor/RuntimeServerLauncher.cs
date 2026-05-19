@@ -8,6 +8,7 @@ namespace UavSimulator.EditorTools
     {
         private const string DefaultScenePath = "Assets/Scenes/TrackScence.unity";
         private static bool startRequested;
+        private static int pollAttempts;
 
         public static void StartRuntimeServer()
         {
@@ -24,18 +25,37 @@ namespace UavSimulator.EditorTools
             }
 
             EditorSceneManager.OpenScene(scenePath, OpenSceneMode.Single);
-            EditorApplication.delayCall += EnterPlayMode;
+            // Poll on every Editor tick instead of delayCall — when launched
+            // via `-executeMethod` (no GUI), delayCall fires once and may run
+            // before compile/import finishes, so EnterPlaymode silently no-ops.
+            // EditorApplication.update keeps firing each tick, letting us wait
+            // for isCompiling/isUpdating to settle and retry.
+            EditorApplication.update += PollEnterPlayMode;
             UnityEngine.Debug.Log($"[RuntimeServerLauncher] Prepared scene '{scenePath}' and requested Play Mode.");
         }
 
-        private static void EnterPlayMode()
+        private static void PollEnterPlayMode()
         {
             if (EditorApplication.isPlayingOrWillChangePlaymode)
             {
+                EditorApplication.update -= PollEnterPlayMode;
                 return;
             }
 
+            if (EditorApplication.isCompiling || EditorApplication.isUpdating)
+            {
+                pollAttempts++;
+                if (pollAttempts > 6000)
+                {
+                    EditorApplication.update -= PollEnterPlayMode;
+                    UnityEngine.Debug.LogError("[RuntimeServerLauncher] Timed out waiting for compile/import to finish; not entering Play Mode.");
+                }
+                return;
+            }
+
+            EditorApplication.update -= PollEnterPlayMode;
             EditorApplication.EnterPlaymode();
+            UnityEngine.Debug.Log("[RuntimeServerLauncher] Entered Play Mode.");
         }
     }
 }
