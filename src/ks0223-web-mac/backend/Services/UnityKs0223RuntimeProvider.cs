@@ -249,11 +249,28 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
             return BuildCatalogSnapshot();
         }
 
-        var catalog = await ProbeContractAsync(cancellationToken);
-        using var initial = await ResetSimulationAsync(cancellationToken);
-        UpdateFromStepResult(initial, selectedControlAgentId, updateSharedState: true);
-        await BroadcastStatusAsync(cancellationToken);
-        return catalog;
+        // The step loop is hammering /step concurrently. If we call /reset
+        // while a /step is in flight, Unity destroys the old agents mid-call,
+        // the /step throws, and the loop's catch block flips desiredConnection
+        // + unityConnected to false (and BroadcastStatusAsync pushes the
+        // dropped state to all SignalR clients before our reset finishes) —
+        // perceived by the WebUI as a connection reset right after Apply.
+        // Pause the loop around the reset, mirroring ConnectCoreAsync.
+        await lifecycleLock.WaitAsync(cancellationToken);
+        try
+        {
+            await StopLoopAsync();
+            var catalog = await ProbeContractAsync(cancellationToken);
+            using var initial = await ResetSimulationAsync(cancellationToken);
+            UpdateFromStepResult(initial, selectedControlAgentId, updateSharedState: true);
+            await StartLoopAsync(cancellationToken);
+            await BroadcastStatusAsync(cancellationToken);
+            return catalog;
+        }
+        finally
+        {
+            lifecycleLock.Release();
+        }
     }
 
     public async Task DisconnectAsync(CancellationToken cancellationToken)

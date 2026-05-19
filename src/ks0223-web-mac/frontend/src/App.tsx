@@ -462,7 +462,14 @@ function App() {
     void syncFiles()
     void syncDiagnostics()
     void syncModelControl()
+  }, [syncDiagnostics, syncFiles, syncModelControl, syncStatus])
 
+  // SignalR hub is tied ONLY to clientInstanceId. Earlier this effect also
+  // depended on the sync* callbacks; their identity flips whenever their
+  // own deps (e.g. unityControlAgentId after Apply) change, which tore
+  // down the WebSocket and made the backend drop the client — wiping the
+  // selected track, agents, and live camera from the UI.
+  useEffect(() => {
     const hub = new HubConnectionBuilder()
       .withUrl(resolveHubUrl())
       .withAutomaticReconnect()
@@ -498,7 +505,7 @@ function App() {
     return () => {
       void hub.stop()
     }
-  }, [clientInstanceId, syncDiagnostics, syncFiles, syncModelControl, syncStatus])
+  }, [clientInstanceId])
 
   useEffect(() => {
     const timer = window.setInterval(() => {

@@ -219,7 +219,7 @@ export function CameraPanel({
   saliencyClientId = 'web',
   saliencyRuntimeMode = 'real-robot',
 }: Props) {
-  const hasFrame = camera?.hasFrame ?? false
+  const hasFrame = (camera?.hasFrame ?? false) || (cameraStreamUrl?.includes('runtimeMode=unity-sim') ?? false)
   const [overlay, setOverlay] = useState<OverlaySettings>(() => loadOverlaySettings())
   const [isFullscreen, setIsFullscreen] = useState(false)
   const viewportRef = useRef<HTMLDivElement | null>(null)
@@ -487,7 +487,7 @@ export function CameraPanel({
     <Card>
       <CardContent>
         <Stack spacing={2}>
-          <Typography variant="h6">Камера, здоровье и Overlay</Typography>
+          <Typography variant="h6">Камера</Typography>
 
           <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap alignItems="center">
             <Chip label={`Health: ${health?.status ?? 'unknown'}`} color={health?.status === 'ok' ? 'success' : 'warning'} />
