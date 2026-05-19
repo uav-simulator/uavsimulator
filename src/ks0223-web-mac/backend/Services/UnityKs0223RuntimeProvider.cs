@@ -831,7 +831,7 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
             }).ToArray(),
         };
 
-        using var response = await SendAsync(HttpMethod.Post, "/reset", payload, cancellationToken);
+        using var response = await SendAsync(HttpMethod.Post, "/reset", payload, cancellationToken, timeout: TimeSpan.FromSeconds(60));
         response.EnsureSuccessStatusCode();
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
         return await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
@@ -880,9 +880,9 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
         return await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
     }
 
-    private async Task<HttpResponseMessage> SendAsync(HttpMethod method, string path, object? payload, CancellationToken cancellationToken)
+    private async Task<HttpResponseMessage> SendAsync(HttpMethod method, string path, object? payload, CancellationToken cancellationToken, TimeSpan? timeout = null)
     {
-        return await SendAsync(method, path, payload, targetHost, targetPort, cancellationToken, updateLastSource: true);
+        return await SendAsync(method, path, payload, targetHost, targetPort, cancellationToken, updateLastSource: true, timeout);
     }
 
     private async Task<HttpResponseMessage> SendAsync(
@@ -892,10 +892,14 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
         string host,
         int port,
         CancellationToken cancellationToken,
-        bool updateLastSource)
+        bool updateLastSource,
+        TimeSpan? timeout = null)
     {
         var client = httpClientFactory.CreateClient(nameof(UnityKs0223RuntimeProvider));
-        client.Timeout = TimeSpan.FromSeconds(5);
+        // /step (per-tick) needs to fail fast so the loop can recover; /reset
+        // can rebuild a heavy scene (POLYGON City Pack ≈ 1000 GameObjects) and
+        // legitimately takes >5s, so callers pass a longer timeout for it.
+        client.Timeout = timeout ?? TimeSpan.FromSeconds(5);
         var url = $"http://{host}:{port}{path}";
 
         var request = new HttpRequestMessage(method, url);
