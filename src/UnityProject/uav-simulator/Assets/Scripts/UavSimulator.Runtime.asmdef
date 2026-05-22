@@ -2,7 +2,8 @@
   "name": "UavSimulator.Runtime",
   "references": [
     "GUID:13bb748a4cdc23745900902b3024379d",
-    "GUID:15fc0a57446b3144c949da3e2b9737a9"
+    "GUID:15fc0a57446b3144c949da3e2b9737a9",
+    "Unity.Sentis"
   ],
   "includePlatforms": [],
   "excludePlatforms": [],
