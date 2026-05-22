@@ -59,6 +59,35 @@ namespace UavSimulator.Vehicles
         }
 
         /// <summary>
+        /// Snapshot of the nearest detectable traffic light's state and distance.
+        /// Used by telemetry pipeline to publish ground-truth label for auto-labeling.
+        /// </summary>
+        public readonly struct NearestLightSnapshot
+        {
+            public readonly bool hasLight;
+            public readonly string state;
+            public readonly float distanceM;
+
+            public NearestLightSnapshot(bool hasLight, string state, float distance)
+            {
+                this.hasLight = hasLight;
+                this.state = state;
+                this.distanceM = distance;
+            }
+        }
+
+        public NearestLightSnapshot GetNearestLightSnapshot()
+        {
+            var zone = ResolveZoneAhead();
+            if (zone == null)
+            {
+                return new NearestLightSnapshot(false, "None", -1f);
+            }
+            var dist = Vector3.Distance(transform.position, zone.transform.position);
+            return new NearestLightSnapshot(true, zone.CurrentState.ToString(), dist);
+        }
+
+        /// <summary>
         /// Pure decision function. <c>internal</c> so the test assembly can call it
         /// directly without staging a Collider.
         /// </summary>

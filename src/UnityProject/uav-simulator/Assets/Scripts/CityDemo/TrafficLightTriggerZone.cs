@@ -14,10 +14,21 @@ namespace UavSimulator.CityDemo
     {
         [SerializeField] private TrafficLight trafficLight;
 
+        private TrafficLightState? stateOverride;
+
         public TrafficLightState CurrentState
-            => trafficLight != null ? trafficLight.State : TrafficLightState.Green;
+        {
+            get
+            {
+                if (stateOverride.HasValue) return stateOverride.Value;
+                return trafficLight != null ? trafficLight.State : TrafficLightState.Green;
+            }
+        }
 
         /// <summary>Test-only seam to wire the light without going through the inspector.</summary>
         public void SetTrafficLight(TrafficLight light) => trafficLight = light;
+
+        /// <summary>Test-only seam that forces <see cref="CurrentState"/> without a real <see cref="TrafficLight"/>.</summary>
+        public void SetStateForTesting(TrafficLightState state) => stateOverride = state;
     }
 }
