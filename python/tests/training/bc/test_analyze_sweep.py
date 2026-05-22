@@ -27,3 +27,28 @@ def test_summarize_branch_skips_incomplete(tmp_path):
     (branch / "seed-10" / "metrics.json").write_text(json.dumps({"success_rate": 0.5}))
     summary = summarize_branch(branch)
     assert summary.n == 0
+
+
+def test_metrics_json_schema_round_trips(tmp_path):
+    """A metrics.json written by run_single is consumed by analyze_sweep.
+
+    Pins the shared schema between run_single (the producer) and
+    analyze_sweep.summarize_branch (the consumer). The fields here mirror
+    what run_single.py writes after the evaluate_v9 subprocess succeeds.
+    """
+    branch = tmp_path / "bc-ppo"
+    branch.mkdir()
+    sd = branch / "seed-42"
+    sd.mkdir()
+    (sd / "sb3.zip").write_bytes(b"fake")
+    (sd / "metrics.json").write_text(json.dumps({
+        "success_rate": 0.85,
+        "seed": 42,
+        "episodes": 20,
+        "mean_reward": 234.5,
+        "evaluated_at_unix": 1735689600,
+    }))
+    summary = summarize_branch(branch)
+    assert summary.n == 1
+    assert summary.values == [0.85]
+    assert summary.seeds == [42]
