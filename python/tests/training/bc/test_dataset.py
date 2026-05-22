@@ -4,7 +4,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
-import pytest
 
 from training.bc.dataset import (
     ACTION_NAMES,
@@ -19,15 +18,8 @@ FIXTURES = Path(__file__).parent / "fixtures"
 
 def test_action_index_matches_env_wrapper():
     """BC dataset uses same action indexing as DiscreteActionWrapper."""
-    assert ACTION_TO_INDEX == {
-        "DirStop": 0,
-        "DirForward": 1,
-        "DirBack": 2,
-        "DirLeft": 3,
-        "DirRight": 4,
-    }
-    # Sanity: keep names list aligned with the dict order.
     assert ACTION_NAMES == ["DirStop", "DirForward", "DirBack", "DirLeft", "DirRight"]
+    assert ACTION_TO_INDEX == {n: i for i, n in enumerate(ACTION_NAMES)}
 
 
 def test_load_session_returns_aligned_arrays():

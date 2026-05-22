@@ -119,23 +119,36 @@ def load_session(jsonl_path: Path, video_path: Path) -> list[BcSample]:
     if not cap.isOpened():
         raise FileNotFoundError(f"Cannot open video: {video_path}")
 
-    fps = cap.get(cv2.CAP_PROP_FPS) or DEFAULT_FPS
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    if not fps or fps <= 0:
+        fps = DEFAULT_FPS  # rare: container lacked FPS metadata
     frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
 
+    # Sequential read: events are sorted by timestamp (monotonic), so we advance the
+    # decoder forward instead of `cap.set(CAP_PROP_POS_FRAMES, k)` per sample
+    # (the latter forces seek-to-keyframe + decode-forward, 10-100× slower on H.264).
     samples: list[BcSample] = []
+    next_frame_idx = 0
+    current_bgr: np.ndarray | None = None
+    ok = True
     try:
         for ts, cmd, ultra in events:
             offset_s = max(0.0, ts - video_start_ts)
-            frame_idx = int(round(offset_s * fps))
+            target = int(round(offset_s * fps))
             if frame_count > 0:
-                frame_idx = min(frame_idx, frame_count - 1)
-            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
-            ok, bgr = cap.read()
-            if not ok or bgr is None:
+                target = min(target, frame_count - 1)
+            # Advance sequentially until we reach the target frame.
+            while next_frame_idx <= target:
+                ok, bgr = cap.read()
+                if not ok or bgr is None:
+                    break
+                current_bgr = bgr
+                next_frame_idx += 1
+            if not ok or current_bgr is None:
                 continue
             samples.append(
                 BcSample(
-                    frame=_resize_frame(bgr),
+                    frame=_resize_frame(current_bgr),
                     ultrasonic=ultra,
                     action_idx=ACTION_TO_INDEX[cmd],
                 )
@@ -166,9 +179,12 @@ def discover_pairs(demos_dir: Path) -> list[tuple[Path, Path]]:
     pairs: list[tuple[Path, Path]] = []
     for jsonl in sorted(demos_dir.glob("session_*.jsonl")):
         stem = jsonl.stem  # e.g. session_20260428_004613_human-demo-...
-        # 1) Same-stem MP4 (sprint-4 convention).
-        candidates = list(demos_dir.glob(f"{stem}*.mp4"))
-        if not candidates:
+        # 1) Same-stem MP4 (sprint-4 convention) — exact literal match, no prefix wildcard.
+        same_stem = demos_dir / f"{stem}.mp4"
+        if same_stem.exists():
+            candidates = [same_stem]
+        else:
+            candidates = []
             # 2) MP4 sharing the YYYYMMDD_HHMMSS timestamp (sprint-3 convention).
             parts = stem.split("_")
             if len(parts) >= 3:
