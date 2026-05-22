@@ -133,6 +133,10 @@ def parse_args() -> argparse.Namespace:
                         "Implies disable-anti-spin and disable-latency.")
     p.add_argument("--resume", default="",
                    help="Path to SB3 checkpoint .zip to resume from (transfer learning)")
+    p.add_argument("--bc-init", default="",
+                   help="Path to BC checkpoint .zip (produced by training.bc.trainer). "
+                        "Initializes PPO policy weights from BC then trains under PPO. "
+                        "Mutually exclusive with --resume.")
     p.add_argument("--maze-randomize", action="store_true",
                    help="Randomize maze params each episode (requires track.cardboard_maze.v1)")
     p.add_argument("--maze-regen-every", type=int, default=1)
@@ -777,6 +781,9 @@ def main() -> int:
     else:
         print("  Feature extractor: SB3 default (NatureCNN)")
 
+    if args.resume and args.bc_init:
+        raise SystemExit("--resume and --bc-init are mutually exclusive")
+
     if args.resume:
         print(f"Resuming PPO from checkpoint: {args.resume}")
         model = ppo_cls.load(args.resume, env=train_env, device=args.device)
@@ -792,6 +799,30 @@ def main() -> int:
         # PPO.load preserves num_timesteps automatically; total_timesteps relative
         print(f"  Resumed at num_timesteps={model.num_timesteps}, "
               f"will train to reach {args.total_timesteps}, target_kl={target_kl}")
+    elif args.bc_init:
+        # A.4 BC->PPO transfer: load BC weights then continue with PPO using
+        # the same hyperparameters as the from-scratch path below.
+        if args.recurrent:
+            raise SystemExit("--bc-init does not currently support --recurrent")
+        from training.bc.bc_to_ppo import BcToPpoConfig, prepare_ppo_from_bc
+        print(f"Initializing PPO from BC checkpoint: {args.bc_init}")
+        model = prepare_ppo_from_bc(
+            Path(args.bc_init),
+            config=BcToPpoConfig(
+                learning_rate=args.learning_rate,
+                n_steps=args.n_steps,
+                batch_size=args.batch_size,
+                n_epochs=args.n_epochs,
+                gamma=args.gamma,
+                clip_range=args.clip_range,
+                ent_coef=ent_coef_value,
+                target_kl=target_kl if target_kl is not None else 0.02,
+                seed=args.seed,
+            ),
+            env=train_env,
+        )
+        print(f"  BC->PPO initialized; ent_coef={model.ent_coef}, "
+              f"target_kl={model.target_kl}, seed={args.seed}")
     else:
         print(f"Creating new {ppo_cls.__name__} model with {policy_id} (device={args.device})...")
         policy_kwargs = dict(net_arch=dict(pi=[128, 64], vf=[128, 64]))
@@ -956,6 +987,7 @@ def main() -> int:
                 "strongAug": bool(args.strong_aug),
                 "realCamPostprocess": bool(args.real_cam_postprocess),
                 "resumeFrom": args.resume or None,
+                "bcInitFrom": args.bc_init or None,
             },
             "monitoring": {
                 "evalBaseUrl": args.eval_base_url or None,
