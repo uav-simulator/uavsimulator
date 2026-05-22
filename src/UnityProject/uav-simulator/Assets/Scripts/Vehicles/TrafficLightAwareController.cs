@@ -10,7 +10,7 @@ namespace UavSimulator.Vehicles
     /// vehicle — that's an upstream controller's job (e.g. an Arcade or
     /// PROMETEO controller).
     /// </summary>
-    public sealed class TrafficLightAwareController : MonoBehaviour
+    public sealed class TrafficLightAwareController : MonoBehaviour, IMovementGate
     {
         public float lookAheadDistance = 15f;
         public LayerMask trafficLightLayerMask = ~0;

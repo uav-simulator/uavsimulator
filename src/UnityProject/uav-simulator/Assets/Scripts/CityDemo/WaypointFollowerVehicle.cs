@@ -25,8 +25,18 @@ namespace UavSimulator.CityDemo
         [SerializeField] private float intersectionSlowdownFactor = 0.6f;
 
         [Header("Wiring")]
+        // Generic gate slot: drag any IMovementGate implementer (ground-truth
+        // TrafficLightAwareController or ONNX-based OnnxTrafficLightAwareController).
+        // The MonoBehaviour-typed field keeps inspector drag-and-drop working
+        // without binding to a concrete type.
+        [SerializeField] private MonoBehaviour gateComponent;
+        // Deprecated, kept only so existing prefabs / scenes that already wired
+        // a TrafficLightAwareController continue to deserialize and behave.
+        // New wiring should use <see cref="gateComponent"/>.
         [SerializeField] private TrafficLightAwareController trafficAware;
         [SerializeField] private Rigidbody body;
+
+        private IMovementGate gate;
 
         // Public API for inspection / debugging
         public string CurrentNodeId { get; private set; }
@@ -43,7 +53,7 @@ namespace UavSimulator.CityDemo
             // Init RNG with deterministic seed if ResetVehicle called.
             rng = new System.Random();
             ResolveBody();
-            ResolveTrafficAware();
+            ResolveGate();
         }
 
         public override void ResetVehicle(int seed)
@@ -85,9 +95,10 @@ namespace UavSimulator.CityDemo
             var desired = target != null && target.isIntersection ? baseSpeed * intersectionSlowdownFactor : baseSpeed;
             TargetSpeedMps = desired;
 
-            // Traffic light override (existing aware controller).
+            // Traffic light override via the IMovementGate abstraction (either
+            // ground-truth raycast or ONNX-classifier implementation).
             float brake = 0f;
-            if (trafficAware != null && trafficAware.ShouldBrake(out var ti)) brake = ti;
+            if (gate != null && gate.ShouldBrake(out var ti)) brake = ti;
 
             // Steering: PD on heading error.
             var toTarget = target.position - body.position;
@@ -153,7 +164,21 @@ namespace UavSimulator.CityDemo
         }
 
         private void ResolveBody() { if (body == null) body = GetComponent<Rigidbody>(); }
-        private void ResolveTrafficAware() { if (trafficAware == null) trafficAware = GetComponent<TrafficLightAwareController>(); }
+
+        /// <summary>
+        /// Resolve <see cref="gate"/> in priority order:
+        ///   1. Inspector-assigned <see cref="gateComponent"/> if it implements <see cref="IMovementGate"/>.
+        ///   2. Deprecated <see cref="trafficAware"/> field (back-compat with existing prefabs).
+        ///   3. Any <see cref="TrafficLightAwareController"/> on this GameObject.
+        ///   4. Any <see cref="OnnxTrafficLightAwareController"/> on this GameObject.
+        /// </summary>
+        private void ResolveGate()
+        {
+            if (gateComponent != null) gate = gateComponent as IMovementGate;
+            if (gate == null && trafficAware != null) gate = trafficAware;
+            if (gate == null) gate = GetComponent<TrafficLightAwareController>();
+            if (gate == null) gate = GetComponent<OnnxTrafficLightAwareController>();
+        }
 
         // Test-only seam (assemblies have InternalsVisibleTo via reflection workaround in EditMode tests).
         public void __TestSetGraphAndStart(CityWaypointGraph g, string startId)
