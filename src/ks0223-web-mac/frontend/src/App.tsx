@@ -40,6 +40,7 @@ import {
 import { DemoReplayPanel } from './components/DemoReplayPanel'
 import { ScenarioPickerPanel } from './components/ScenarioPickerPanel'
 import { ControlPage } from './pages/ControlPage'
+import { ExplainabilityPage } from './pages/ExplainabilityPage'
 import { LedPage } from './pages/LedPage'
 import { LogsPage } from './pages/LogsPage'
 import { ModelControlPage } from './pages/ModelControlPage'
@@ -59,7 +60,7 @@ import type {
   UnityRuntimeCatalogDto,
 } from './types'
 
-type TabKey = 'dashboard' | 'sensors' | 'led' | 'logs' | 'models' | 'demoReplay' | 'scenarios'
+type TabKey = 'dashboard' | 'sensors' | 'led' | 'logs' | 'models' | 'demoReplay' | 'scenarios' | 'explainability'
 type UnityAgentDraft = { agentId?: string; vehicleId?: string; isPrimary?: boolean }
 type UnityPendingSelection = { trackId: string; vehicleId: string; cameraMode: string; agents: UnityAgentDraft[]; collisionsEnabled: boolean; seeEachOther: boolean }
 
@@ -1072,6 +1073,16 @@ function App() {
       )
     }
 
+    if (tab === 'explainability') {
+      return (
+        <ExplainabilityPage
+          clientInstanceId={clientInstanceId}
+          runtimeMode={activeRuntimeMode}
+          cameraAgentId={activeRuntimeMode === 'unity-sim' ? unityCameraAgentId || unityControlAgentId || undefined : undefined}
+        />
+      )
+    }
+
     return (
       <ControlPage
         status={status}
@@ -1226,6 +1237,7 @@ function App() {
             <Tab value="sensors" label="Сенсоры KS0223" />
             <Tab value="led" label="LED панель" />
             <Tab value="models" label="Model Control" />
+            <Tab value="explainability" label="Explainability" />
             <Tab value="demoReplay" label="Demo Replay" />
             <Tab value="logs" label="Логи" />
           </Tabs>

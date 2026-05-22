@@ -69,6 +69,8 @@ builder.Services.AddSingleton<AutopilotSafetyFilter>(sp => new AutopilotSafetyFi
 builder.Services.AddSingleton<SessionVideoRecorder>();
 builder.Services.AddSingleton<AutopilotService>();
 builder.Services.AddSingleton<DemoReplayService>();
+builder.Services.AddHttpClient("saliency");
+builder.Services.AddSingleton<SaliencyProxyService>();
 builder.Services.AddHostedService(serviceProvider => serviceProvider.GetRequiredService<RuntimeSessionManager>());
 
 var app = builder.Build();
@@ -98,6 +100,7 @@ app.MapCommandEndpoints();
 app.MapDemoEndpoints();
 app.MapLogsEndpoints();
 app.MapModelEndpoints();
+app.MapSaliencyEndpoints();
 app.MapScenarioEndpoints();
 app.MapSensorsEndpoints();
 app.MapSessionEndpoints();
