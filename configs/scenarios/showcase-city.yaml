@@ -1,0 +1,108 @@
+scenarioId: showcase-city
+displayName: Showcase City (cinematic demo)
+description: |
+  Cinematic demo scenario over the POLYGON City Pack intersection. One Prometeo
+  sports car acts as the AI ego (driven via OnnxTrafficLightAwareController gate
+  in-scene), and four arcade racing cars circulate as NPC traffic with ground-truth
+  TrafficLightAwareController gates. All five vehicles consume the city.default
+  waypoint graph through WaypointFollowerVehicle. Camera is meant to be driven by
+  the CinematicCameraController on the showcase camera rig (ShowcaseAngles asset)
+  with the ShowcaseVolume URP post-processing profile attached.
+version: 1
+
+runtime:
+  runtimeMode: unity-sim
+  headless: false
+  timeScale: 1.0
+  seed: 42
+
+world:
+  trackId: track.city_polygon.v1
+
+vehicle:
+  vehicleId: vehicle.prometeo.sport.v1
+  params:
+    camera.profile: high
+
+# Waypoint route is shared across agents through the city.default graph wired in the
+# scene; the explicit waypoint list below is a navigational hint for the editor
+# preview and the WaypointFollowerVehicle fallback path when the graph reference is
+# missing.
+route:
+  params:
+    spawn.position: 0.000,0.200,-12.000
+    controller.profile: waypoint_follower
+    waypoint.graph: city.default
+  waypoints:
+    - [0.0, -12.0]
+    - [0.0, -2.0]
+    - [10.0, 0.0]
+    - [10.0, 10.0]
+    - [-10.0, 10.0]
+    - [-10.0, -10.0]
+    - [0.0, -12.0]
+  loop: true
+  reachDistanceM: 1.5
+
+agents:
+  isolated: false
+  seeEachOther: true
+  collisionsEnabled: false
+  # Per-vehicle gate wiring is currently a scene-side concern: WaypointFollowerVehicle
+  # picks up an IMovementGate (TrafficLightAwareController or
+  # OnnxTrafficLightAwareController) via inspector slot or GetComponent fallback.
+  # The scenario loader does not yet deserialize a `gates:` block — once Plan B.4
+  # follow-up wires that through, swap the agent entries to declare gate kind
+  # ("onnx" for ego, "ground_truth" for NPCs) here. For now the prefabs themselves
+  # carry the gate component and this YAML just provisions the right vehicles.
+  vehicles:
+    - agentId: ego
+      vehicleId: vehicle.prometeo.sport.v1
+      primary: true
+      spawnPose:
+        position: [0.0, 0.2, -12.0]
+        yawDeg: 0
+      params:
+        controller.profile: waypoint_follower
+        waypoint.graph: city.default
+        gate.kind: onnx
+    - agentId: npc-blue
+      vehicleId: vehicle.arcade.blue.v1
+      spawnPose:
+        position: [12.0, 0.2, 0.0]
+        yawDeg: -90
+      params:
+        controller.profile: waypoint_follower
+        waypoint.graph: city.default
+        gate.kind: ground_truth
+    - agentId: npc-red
+      vehicleId: vehicle.arcade.red.v1
+      spawnPose:
+        position: [0.0, 0.2, 12.0]
+        yawDeg: 180
+      params:
+        controller.profile: waypoint_follower
+        waypoint.graph: city.default
+        gate.kind: ground_truth
+    - agentId: npc-gray
+      vehicleId: vehicle.arcade.gray.v1
+      spawnPose:
+        position: [-12.0, 0.2, 0.0]
+        yawDeg: 90
+      params:
+        controller.profile: waypoint_follower
+        waypoint.graph: city.default
+        gate.kind: ground_truth
+    - agentId: npc-purple
+      vehicleId: vehicle.arcade.purple.v1
+      spawnPose:
+        position: [-6.0, 0.2, -12.0]
+        yawDeg: 0
+      params:
+        controller.profile: waypoint_follower
+        waypoint.graph: city.default
+        gate.kind: ground_truth
+
+logging:
+  enabled: true
+  tag: showcase-city

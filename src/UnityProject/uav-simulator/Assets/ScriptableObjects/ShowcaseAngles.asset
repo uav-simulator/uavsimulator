@@ -1,0 +1,35 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4cda4d9652324ea4bf42b83f1545c54f, type: 3}
+  m_Name: ShowcaseAngles
+  m_EditorClassIdentifier:
+  angles:
+  - name: WideOverhead
+    position: {x: 0, y: 40, z: 0}
+    eulerAngles: {x: 90, y: 0, z: 0}
+    fov: 60
+    durationSec: 6
+  - name: FollowAi
+    position: {x: 0, y: 2.5, z: -6}
+    eulerAngles: {x: 10, y: 0, z: 0}
+    fov: 45
+    durationSec: 5
+  - name: IntersectionCloseUp
+    position: {x: 5, y: 1.5, z: 5}
+    eulerAngles: {x: 5, y: -135, z: 0}
+    fov: 35
+    durationSec: 4
+  - name: HeroSpin
+    position: {x: 10, y: 8, z: -10}
+    eulerAngles: {x: 25, y: -45, z: 0}
+    fov: 50
+    durationSec: 8
