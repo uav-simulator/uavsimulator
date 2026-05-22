@@ -29,6 +29,7 @@ training = [
   "Pillow>=10.0",
   "stable-baselines3>=2.3",
   "sb3-contrib>=2.3",
+  "scipy>=1.11",
   "torch>=2.2",
   "tensorboard>=2.16",
   "opencv-python>=4.9",
