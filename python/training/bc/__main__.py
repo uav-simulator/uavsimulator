@@ -34,10 +34,13 @@ def main() -> None:
             seed=args.seed,
         )
         trainer = BcTrainer(cfg)
-        trainer.fit(samples)
+        history = trainer.fit(samples)
         args.output.parent.mkdir(parents=True, exist_ok=True)
         trainer.export_sb3(args.output)
         print(f"Saved BC checkpoint: {args.output}")
+        final_acc = history["train_accuracy"][-1]
+        final_loss = history["train_loss"][-1]
+        print(f"Final train: loss={final_loss:.4f}  accuracy={final_acc:.3f}")
 
 
 if __name__ == "__main__":

@@ -196,6 +196,20 @@ class BcTrainer:
         # branch is a bare Flatten with no parameters, hence no copy.
         policy = model.policy
         src = self.model
+        # Guard: if SB3 changes its layer layout in a future upgrade, fail
+        # with an actionable message instead of a cryptic RuntimeError from load_state_dict.
+        extractors = policy.features_extractor.extractors
+        assert "image" in extractors and "ultrasonic" in extractors, (
+            "SB3 CombinedExtractor layout changed: expected keys 'image' and 'ultrasonic', "
+            f"got {list(extractors.keys())}"
+        )
+        assert hasattr(extractors["image"], "cnn") and hasattr(extractors["image"], "linear"), (
+            "SB3 NatureCNN layout changed: expected attributes 'cnn' and 'linear' on image extractor"
+        )
+        assert extractors["image"].linear[0].out_features == CNN_OUTPUT_DIM, (
+            f"cnn_output_dim mismatch: SB3 produced {extractors['image'].linear[0].out_features}, "
+            f"trainer expects {CNN_OUTPUT_DIM}"
+        )
         with torch.no_grad():
             policy.features_extractor.extractors["image"].cnn.load_state_dict(src.cnn.state_dict())
             policy.features_extractor.extractors["image"].linear.load_state_dict(src.linear.state_dict())
