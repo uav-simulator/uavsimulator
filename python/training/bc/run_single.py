@@ -48,19 +48,35 @@ def main():
 
     rc = subprocess.call(cmd)
     if rc != 0:
+        # Crucial: do NOT rename any zip on failure. A partial checkpoint
+        # left behind by a crashed train script would be silently treated
+        # as a completed run on the next sweep invocation, breaking
+        # idempotency. Just bubble up the train script's RC.
         sys.exit(rc)
 
-    # Ensure sb3.zip exists at expected name (sweep idempotency contract).
-    # train_cardboard_corridor_v9 saves as <slug>_sb3.zip via default_sb3_stem;
-    # rename whatever it produced to plain sb3.zip.
+    # Rename the canonical SB3 zip to a name the sweep runner recognises
+    # (sweep idempotency contract: sb3.zip exists == run completed).
+    # train_cardboard_corridor_v9 saves as <default_sb3_stem(model_name)>.zip
+    # — match it by exact name rather than glob('*.zip'), which is
+    # ordering-unsafe and could grab unrelated zips (e.g. best_model.zip
+    # if EvalCallback config changes).
     sb3_zip = args.output_dir / "sb3.zip"
     if not sb3_zip.exists():
-        candidates = list(args.output_dir.glob("*.zip"))
-        if candidates:
-            shutil.move(str(candidates[0]), str(sb3_zip))
+        from training.model_artifacts import default_sb3_stem
+        expected = args.output_dir / f"{default_sb3_stem('cardboard-corridor-ppo-v9')}.zip"
+        if expected.exists():
+            shutil.move(str(expected), str(sb3_zip))
         else:
-            print(f"FATAL: no SB3 zip produced in {args.output_dir}", file=sys.stderr)
-            sys.exit(2)
+            # Last-resort: pick the largest zip in output_dir that's not
+            # a best_model.zip (those come from EvalCallback, not the
+            # final checkpoint).
+            candidates = [p for p in args.output_dir.glob("*.zip") if "best_model" not in p.name]
+            if candidates:
+                best = max(candidates, key=lambda p: p.stat().st_size)
+                shutil.move(str(best), str(sb3_zip))
+            else:
+                print(f"FATAL: no SB3 zip produced in {args.output_dir}", file=sys.stderr)
+                sys.exit(2)
 
 
 if __name__ == "__main__":

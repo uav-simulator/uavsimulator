@@ -13,12 +13,19 @@ from training.bc.multi_seed_sweep import SweepPlan, plan_pending_runs
 
 
 def test_plan_pending_skips_completed_seeds(tmp_path):
-    """If seed-N/sb3.zip exists for a seed, that seed is skipped."""
+    """If seed-N/sb3.zip exists for a seed, that seed is skipped.
+
+    seed-20 has a sweep_metadata.json snapshot (started but never
+    produced sb3.zip — e.g. SIGTERM mid-run): it must still be pending.
+    The snapshot file is named `sweep_metadata.json` (not
+    `metadata.json`) because the underlying train script writes its own
+    `metadata.json` and we must not let it clobber the sweep evidence.
+    """
     branch_dir = tmp_path / "bc-ppo"
     (branch_dir / "seed-10").mkdir(parents=True)
     (branch_dir / "seed-10" / "sb3.zip").write_bytes(b"fake")
     (branch_dir / "seed-20").mkdir()
-    (branch_dir / "seed-20" / "metadata.json").write_text("{}")
+    (branch_dir / "seed-20" / "sweep_metadata.json").write_text("{}")
 
     plan = SweepPlan(
         branch_name="bc-ppo",

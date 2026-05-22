@@ -2,15 +2,21 @@
 
 Each run writes evidence to:
   evidence_root/<branch>/seed-<N>/
-    metadata.json       - hyperparameters snapshot
+    sweep_metadata.json - sweep-level snapshot (branch, seed, started_at_unix)
+    metadata.json       - SB3 model metadata written by train_cardboard_corridor_v9
     metrics.json        - final eval results (success rate, mean reward, ...)
     sb3.zip             - trained SB3 checkpoint (existence == run completed)
     train.log           - full training log
 
+The sweep snapshot is intentionally named `sweep_metadata.json` (not
+`metadata.json`) because the underlying training script writes its own
+`metadata.json` (the SB3 model metadata) into the same output_dir, and we
+must not let it clobber the sweep evidence.
+
 Idempotency contract: a seed is considered "done" iff sb3.zip exists in its
 run directory. This lets the sweep survive SIGTERM mid-run (the partial run
-directory will have metadata.json but no sb3.zip, so the next invocation
-will re-execute it).
+directory will have sweep_metadata.json but no sb3.zip, so the next
+invocation will re-execute it).
 """
 from __future__ import annotations
 
@@ -62,9 +68,12 @@ def plan_pending_runs(plan: SweepPlan) -> list[PendingRun]:
 def execute_run(plan: SweepPlan, run: PendingRun) -> int:
     """Spawn one training run as a subprocess, capturing log to disk.
 
-    Writes metadata.json before the subprocess starts so partial-failure
+    Writes sweep_metadata.json before the subprocess starts so partial-failure
     runs are still traceable (you can see when they started even if no
-    sb3.zip got produced).
+    sb3.zip got produced). We intentionally do NOT call this file
+    `metadata.json` because train_cardboard_corridor_v9 writes its own
+    `metadata.json` (the SB3 model metadata) into output_dir, which would
+    silently overwrite the sweep snapshot.
     """
     run.run_dir.mkdir(parents=True, exist_ok=True)
 
@@ -77,7 +86,7 @@ def execute_run(plan: SweepPlan, run: PendingRun) -> int:
         "ent_coef": 0.1,
         "started_at_unix": int(time.time()),
     }
-    (run.run_dir / "metadata.json").write_text(json.dumps(metadata, indent=2))
+    (run.run_dir / "sweep_metadata.json").write_text(json.dumps(metadata, indent=2))
 
     cmd = [
         sys.executable,
@@ -127,6 +136,12 @@ def run_sweep(plans: list[SweepPlan]) -> None:
             print(f"[sweep] starting branch={run.branch} seed={run.seed}", flush=True)
             rc = execute_run(plan, run)
             print(f"[sweep] finished branch={run.branch} seed={run.seed} rc={rc}", flush=True)
+            if rc != 0:
+                print(
+                    f"[sweep] WARNING: branch={run.branch} seed={run.seed} failed with rc={rc}; "
+                    f"sb3.zip not written, will retry on next run.",
+                    flush=True,
+                )
 
 
 def main():
