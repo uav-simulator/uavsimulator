@@ -1,0 +1,208 @@
+"""Supervised trainer for behavior cloning on (frame, ultrasonic) -> action_logits.
+
+Architecture mirrors SB3's NatureCNN + CombinedExtractor + ActorCriticPolicy so the
+trained weights can be lifted verbatim into a `stable_baselines3.PPO` checkpoint:
+
+    image (3, 84, 84) uint8  ─┐
+                              ├─► CombinedExtractor ─► MlpExtractor(pi) ─► action_net
+    ultrasonic (1,)          ─┘     │  (NatureCNN+Flatten)       │  (Tanh)
+                                    │                            │
+                                    └── 512 + 1 = 513 features ──┘
+
+Image branch: Conv2d(3,32,8,4) → Conv2d(32,64,4,2) → Conv2d(64,64,3,1) → Flatten → Linear(64*7*7, 512) → ReLU.
+Ultrasonic:   nn.Flatten() (identity for shape-(1,) input).
+Policy MLP:   Linear(513, 64) → Tanh → Linear(64, 64) → Tanh.
+Action head:  Linear(64, 5).
+
+`export_sb3()` builds a stub PPO over a dummy env that matches the observation /
+action spaces, copies our trained state dicts into the policy submodules, and
+calls `model.save(...)` to produce a standard SB3 archive (`policy.pth` inside).
+"""
+from __future__ import annotations
+
+import random
+from dataclasses import dataclass
+from pathlib import Path
+
+import numpy as np
+import torch
+import torch.nn as nn
+from torch.utils.data import DataLoader, Dataset
+
+from .dataset import BcSample
+
+N_ACTIONS = 5
+FRAME_SIZE = 84
+CNN_OUTPUT_DIM = 512
+MLP_HIDDEN = 64
+
+
+@dataclass
+class BcConfig:
+    epochs: int = 30
+    batch_size: int = 64
+    lr: float = 3e-4
+    device: str = "cpu"
+    seed: int = 42
+    log_every: int = 1
+
+
+class _BcTorchDataset(Dataset):
+    def __init__(self, samples: list[BcSample]) -> None:
+        self._samples = samples
+
+    def __len__(self) -> int:
+        return len(self._samples)
+
+    def __getitem__(self, idx: int):
+        s = self._samples[idx]
+        frame = torch.from_numpy(np.ascontiguousarray(s.frame.transpose(2, 0, 1))).float() / 255.0
+        ultra = torch.tensor([s.ultrasonic], dtype=torch.float32)
+        action = torch.tensor(s.action_idx, dtype=torch.long)
+        return frame, ultra, action
+
+
+class _NatureCnnHead(nn.Module):
+    """Mirrors SB3's NatureCNN + CombinedExtractor + Tanh MLP head."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.cnn = nn.Sequential(
+            nn.Conv2d(3, 32, kernel_size=8, stride=4, padding=0),
+            nn.ReLU(),
+            nn.Conv2d(32, 64, kernel_size=4, stride=2, padding=0),
+            nn.ReLU(),
+            nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=0),
+            nn.ReLU(),
+            nn.Flatten(),
+        )
+        with torch.no_grad():
+            n_flatten = self.cnn(torch.zeros(1, 3, FRAME_SIZE, FRAME_SIZE)).shape[1]
+        self.linear = nn.Sequential(nn.Linear(n_flatten, CNN_OUTPUT_DIM), nn.ReLU())
+        # +1 for the concatenated ultrasonic scalar.
+        self.policy_net = nn.Sequential(
+            nn.Linear(CNN_OUTPUT_DIM + 1, MLP_HIDDEN),
+            nn.Tanh(),
+            nn.Linear(MLP_HIDDEN, MLP_HIDDEN),
+            nn.Tanh(),
+        )
+        self.action_net = nn.Linear(MLP_HIDDEN, N_ACTIONS)
+
+    def forward(self, frame: torch.Tensor, ultra: torch.Tensor) -> torch.Tensor:
+        img_features = self.linear(self.cnn(frame))
+        combined = torch.cat([img_features, ultra], dim=1)
+        latent = self.policy_net(combined)
+        return self.action_net(latent)
+
+
+def _seed_everything(seed: int) -> None:
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+
+
+class BcTrainer:
+    def __init__(self, cfg: BcConfig) -> None:
+        self.cfg = cfg
+        _seed_everything(cfg.seed)
+        self.device = torch.device(cfg.device)
+        self.model = _NatureCnnHead().to(self.device)
+
+    def fit(self, samples: list[BcSample]) -> dict[str, list[float]]:
+        dataset = _BcTorchDataset(samples)
+        loader = DataLoader(
+            dataset,
+            batch_size=self.cfg.batch_size,
+            shuffle=True,
+            drop_last=False,
+            generator=torch.Generator().manual_seed(self.cfg.seed),
+        )
+        optimizer = torch.optim.Adam(self.model.parameters(), lr=self.cfg.lr)
+        loss_fn = nn.CrossEntropyLoss()
+
+        history: dict[str, list[float]] = {"train_loss": [], "train_accuracy": []}
+        for epoch in range(self.cfg.epochs):
+            self.model.train()
+            running_loss = 0.0
+            correct = 0
+            total = 0
+            for frame, ultra, action in loader:
+                frame = frame.to(self.device)
+                ultra = ultra.to(self.device)
+                action = action.to(self.device)
+                logits = self.model(frame, ultra)
+                loss = loss_fn(logits, action)
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+                running_loss += loss.item() * action.size(0)
+                correct += (logits.argmax(dim=1) == action).sum().item()
+                total += action.size(0)
+            avg_loss = running_loss / max(total, 1)
+            accuracy = correct / max(total, 1)
+            history["train_loss"].append(avg_loss)
+            history["train_accuracy"].append(accuracy)
+            if self.cfg.log_every and (epoch % self.cfg.log_every == 0 or epoch == self.cfg.epochs - 1):
+                print(f"[bc] epoch {epoch + 1}/{self.cfg.epochs}  loss={avg_loss:.4f}  acc={accuracy:.3f}")
+        return history
+
+    def export_sb3(self, output_zip: Path) -> None:
+        """Lift trained weights into a real SB3 PPO and save the standard archive."""
+        import gymnasium as gym
+        from gymnasium import spaces
+        from stable_baselines3 import PPO
+        from stable_baselines3.common.vec_env import DummyVecEnv
+
+        class _StubEnv(gym.Env):
+            metadata = {"render_modes": []}
+
+            def __init__(self) -> None:
+                super().__init__()
+                self.observation_space = spaces.Dict(
+                    {
+                        "image": spaces.Box(low=0, high=255, shape=(3, FRAME_SIZE, FRAME_SIZE), dtype=np.uint8),
+                        "ultrasonic": spaces.Box(low=0.0, high=1.0, shape=(1,), dtype=np.float32),
+                    }
+                )
+                self.action_space = spaces.Discrete(N_ACTIONS)
+
+            def _zero_obs(self):
+                return {
+                    "image": np.zeros((3, FRAME_SIZE, FRAME_SIZE), dtype=np.uint8),
+                    "ultrasonic": np.zeros((1,), dtype=np.float32),
+                }
+
+            def reset(self, *, seed=None, options=None):
+                super().reset(seed=seed)
+                return self._zero_obs(), {}
+
+            def step(self, action):
+                return self._zero_obs(), 0.0, True, False, {}
+
+        venv = DummyVecEnv([lambda: _StubEnv()])
+        # `cnn_output_dim=CNN_OUTPUT_DIM` overrides SB3's default of 256 so the
+        # NatureCNN linear layer shape matches our trained head (1×3136 → 512).
+        model = PPO(
+            "MultiInputPolicy",
+            venv,
+            device=self.cfg.device,
+            seed=self.cfg.seed,
+            policy_kwargs={"features_extractor_kwargs": {"cnn_output_dim": CNN_OUTPUT_DIM}},
+        )
+
+        # Copy our trained submodules into the SB3 policy. Names mirror SB3's
+        # MultiInputActorCriticPolicy graph (verified against
+        # stable_baselines3.common.{policies,torch_layers}). The ultrasonic
+        # branch is a bare Flatten with no parameters, hence no copy.
+        policy = model.policy
+        src = self.model
+        with torch.no_grad():
+            policy.features_extractor.extractors["image"].cnn.load_state_dict(src.cnn.state_dict())
+            policy.features_extractor.extractors["image"].linear.load_state_dict(src.linear.state_dict())
+            policy.mlp_extractor.policy_net.load_state_dict(src.policy_net.state_dict())
+            policy.action_net.load_state_dict(src.action_net.state_dict())
+
+        output_zip = Path(output_zip)
+        output_zip.parent.mkdir(parents=True, exist_ok=True)
+        model.save(output_zip)
+        venv.close()

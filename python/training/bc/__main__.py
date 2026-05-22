@@ -1,0 +1,44 @@
+"""CLI: python -m training.bc fit --demos <dir> --output <bc.zip>."""
+from __future__ import annotations
+
+import argparse
+from pathlib import Path
+
+from .dataset import discover_pairs, load_dataset
+from .trainer import BcConfig, BcTrainer
+
+
+def main() -> None:
+    p = argparse.ArgumentParser()
+    sub = p.add_subparsers(dest="command", required=True)
+
+    fit = sub.add_parser("fit", help="Train BC on operator demos.")
+    fit.add_argument("--demos", type=Path, required=True, help="Directory with session_*.jsonl + .mp4")
+    fit.add_argument("--output", type=Path, required=True, help="Output bc.zip (SB3-compatible).")
+    fit.add_argument("--epochs", type=int, default=30)
+    fit.add_argument("--batch-size", type=int, default=64)
+    fit.add_argument("--lr", type=float, default=3e-4)
+    fit.add_argument("--device", default="cpu")
+    fit.add_argument("--seed", type=int, default=42)
+
+    args = p.parse_args()
+    if args.command == "fit":
+        pairs = discover_pairs(args.demos)
+        samples = load_dataset(pairs)
+        print(f"Loaded {len(samples)} samples from {len(pairs)} sessions")
+        cfg = BcConfig(
+            epochs=args.epochs,
+            batch_size=args.batch_size,
+            lr=args.lr,
+            device=args.device,
+            seed=args.seed,
+        )
+        trainer = BcTrainer(cfg)
+        trainer.fit(samples)
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        trainer.export_sb3(args.output)
+        print(f"Saved BC checkpoint: {args.output}")
+
+
+if __name__ == "__main__":
+    main()
