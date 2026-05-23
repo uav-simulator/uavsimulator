@@ -353,7 +353,25 @@ namespace UavSimulator.Tracks
             var instance = Instantiate(prefab, position, rotation, transform);
             instance.name = name;
             ReplaceIncompatibleMaterials(instance);
+            EnsureMeshColliders(instance);
             return instance;
+        }
+
+        /// <summary>
+        /// Add a MeshCollider to every child MeshFilter that lacks any Collider.
+        /// POLYGON City prefabs ship visual-only — without this the Prometeo physics
+        /// vehicle falls through the road on spawn.
+        /// </summary>
+        private static void EnsureMeshColliders(GameObject root)
+        {
+            var filters = root.GetComponentsInChildren<MeshFilter>(includeInactive: true);
+            foreach (var mf in filters)
+            {
+                if (mf == null || mf.sharedMesh == null) continue;
+                if (mf.GetComponent<Collider>() != null) continue;
+                var mc = mf.gameObject.AddComponent<MeshCollider>();
+                mc.sharedMesh = mf.sharedMesh;
+            }
         }
 
         private static void ReplaceIncompatibleMaterials(GameObject root)
