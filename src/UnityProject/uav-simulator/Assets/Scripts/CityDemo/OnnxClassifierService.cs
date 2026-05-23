@@ -30,7 +30,28 @@ namespace UavSimulator.CityDemo
                 throw new ArgumentException("modelPath must not be empty", nameof(modelPath));
             }
 
+            // NOTE: Sentis 2.x ModelLoader.Load(string) expects a *.sentis archive,
+            // not a raw PyTorch-exported .onnx file. The standard workflow is to
+            // drop the .onnx into Assets/, let Sentis's editor importer convert
+            // it to a ModelAsset, and load via the ModelAsset ctor below.
+            // String-path ctor still works for already-converted .sentis files
+            // on disk (e.g. StreamingAssets/something.sentis).
             _model = ModelLoader.Load(modelPath);
+            _worker = new Worker(_model, BackendType.CPU);
+        }
+
+        /// <summary>
+        /// Editor-friendly ctor accepting a Sentis ModelAsset — produced when
+        /// you drag a .onnx into the Unity project and Sentis's importer
+        /// converts it to a ModelAsset. Prefer this in production setups.
+        /// </summary>
+        public OnnxClassifierService(ModelAsset asset)
+        {
+            if (asset == null)
+            {
+                throw new ArgumentNullException(nameof(asset));
+            }
+            _model = ModelLoader.Load(asset);
             _worker = new Worker(_model, BackendType.CPU);
         }
 

@@ -1,7 +1,8 @@
 {
   "name": "UavSimulator.EditModeTests",
   "references": [
-    "UavSimulator.Runtime"
+    "UavSimulator.Runtime",
+    "Unity.Sentis"
   ],
   "includePlatforms": [ "Editor" ],
   "excludePlatforms": [],
