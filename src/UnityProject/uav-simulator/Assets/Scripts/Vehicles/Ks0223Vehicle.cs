@@ -109,6 +109,16 @@ namespace UavSimulator.Vehicles
             body.angularDamping = 1.5f;
             body.mass = 1.0f;
 
+            // KNOWN ISSUE: KS0223 has no body collider, so when the rigidbody
+            // pushes against a wall the camera mast (at z=0.12) physically
+            // penetrates the wall mesh and renders skybox/floor through it. We
+            // tried adding a BoxCollider here but it stalls the velocity-driven
+            // motion (any contact with floor mesh applies friction that opposes
+            // body.linearVelocity even when set directly each FixedUpdate; the
+            // wheels are visual-only with no PhysicMaterial). For now, demo
+            // recorders should avoid contact; PPO/BC training uses position-based
+            // OOB termination so the policy never relies on wall-contact frames.
+
             EnsureFrontCamera();
             if (!HasImportedVisualModel())
             {
