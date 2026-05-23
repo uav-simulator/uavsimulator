@@ -34,27 +34,61 @@ class TlSample:
     distance_m: float
 
 
-# NOTE: `state.extensions` is populated by CityVehicleTelemetryExtender
-# (Plan B Task 1) — wiring into the runtime telemetry pipeline is the
-# remaining piece. Until that lands, this function will return None
-# for all states (consistent with the "no light visible" case).
+# The traffic-light ground-truth is published by CityVehicleTelemetryExtender
+# through the IVehicleStateExtender plug-in interface, aggregated by
+# VehicleBase.ReadState into VehicleState.telemetry. The real wire format is
+# ConfigKeyValue[] (a flat list of {key, value} string pairs).
+# Legacy test fixtures use a nested-dict form under either `telemetry` or
+# `extensions`; this parser accepts all three shapes.
 def parse_state_sample(state: dict) -> TlSample | None:
     """Extract (frame_bytes_empty, label, distance) from a VehicleState dict.
 
     Returns None if no traffic light is in view. Frame bytes are filled by the
     caller using the companion frame stream — this function just produces the label.
     """
-    extensions = state.get("extensions") or {}
-    nlt = extensions.get("nearestTrafficLight")
-    if not nlt or not nlt.get("hasLight"):
+    # Real wire field is `telemetry`; older fixtures may use `extensions`.
+    payload = state.get("telemetry")
+    if payload is None:
+        payload = state.get("extensions")
+    if payload is None:
         return None
-    label_str = nlt.get("state", "None")
+
+    if isinstance(payload, dict):
+        nlt = payload.get("nearestTrafficLight")
+        if not nlt or not nlt.get("hasLight"):
+            return None
+        label_str = nlt.get("state", "None")
+        try:
+            distance = float(nlt.get("distanceM", 0.0))
+        except (TypeError, ValueError):
+            distance = 0.0
+    elif isinstance(payload, list):
+        flat: dict[str, str] = {}
+        for kv in payload:
+            if not isinstance(kv, dict):
+                continue
+            k = kv.get("key")
+            v = kv.get("value")
+            if k is None:
+                continue
+            flat[k] = v
+        has = (flat.get("nearestTrafficLight.hasLight", "false") or "").lower() == "true"
+        if not has:
+            return None
+        label_str = flat.get("nearestTrafficLight.state", "None")
+        try:
+            distance = float(flat.get("nearestTrafficLight.distanceM", "0"))
+        except (TypeError, ValueError):
+            distance = 0.0
+    else:
+        return None
+
     if label_str not in GROUND_TRUTH_LABELS:
         return None
     return TlSample(
         frame_bytes=b"",
         label=GROUND_TRUTH_LABELS.index(label_str),
-        distance_m=float(nlt.get("distanceM", 0.0)),
+        distance_m=distance,
     )
 
 

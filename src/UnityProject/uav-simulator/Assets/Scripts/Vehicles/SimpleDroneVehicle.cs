@@ -116,6 +116,7 @@ namespace UavSimulator.Vehicles
                 KV("drone.cmd.thrust_norm", thrustCmd),
             };
 
+            state.telemetry = MergeTelemetry(state.telemetry);
             return state;
         }
 

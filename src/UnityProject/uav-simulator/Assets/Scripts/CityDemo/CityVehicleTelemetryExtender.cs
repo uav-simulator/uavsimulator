@@ -1,16 +1,16 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UavSimulator.Contracts;
 using UavSimulator.Vehicles;
 
 namespace UavSimulator.CityDemo
 {
     /// <summary>
-    /// Sits next to a vehicle's TrafficLightAwareController and publishes nearest
-    /// traffic-light state into VehicleState.extensions on every telemetry tick.
-    /// Consumed by auto_label.py and by article 2 confusion-matrix-vs-distance analysis.
+    /// Publishes nearest-traffic-light ground-truth into VehicleState.extensions
+    /// every telemetry tick. Consumed by auto_label.py (Plan B Task 5).
     /// </summary>
     [RequireComponent(typeof(TrafficLightAwareController))]
-    public sealed class CityVehicleTelemetryExtender : MonoBehaviour
+    public sealed class CityVehicleTelemetryExtender : MonoBehaviour, IVehicleStateExtender
     {
         private TrafficLightAwareController controller;
 
@@ -19,18 +19,13 @@ namespace UavSimulator.CityDemo
             controller = GetComponent<TrafficLightAwareController>();
         }
 
-        public Dictionary<string, object> BuildExtensions()
+        public IEnumerable<ConfigKeyValue> BuildExtensions()
         {
-            var dict = new Dictionary<string, object>();
-            if (controller == null) return dict;
+            if (controller == null) yield break;
             var snap = controller.GetNearestLightSnapshot();
-            dict["nearestTrafficLight"] = new
-            {
-                hasLight = snap.hasLight,
-                state = snap.state,
-                distanceM = snap.distanceM,
-            };
-            return dict;
+            yield return new ConfigKeyValue { key = "nearestTrafficLight.hasLight", value = snap.hasLight ? "true" : "false" };
+            yield return new ConfigKeyValue { key = "nearestTrafficLight.state",    value = snap.state };
+            yield return new ConfigKeyValue { key = "nearestTrafficLight.distanceM", value = snap.distanceM.ToString("F3", System.Globalization.CultureInfo.InvariantCulture) };
         }
     }
 }

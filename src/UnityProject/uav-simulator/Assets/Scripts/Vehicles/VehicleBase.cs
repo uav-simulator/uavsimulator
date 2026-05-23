@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UavSimulator.Contracts;
 using UnityEngine;
 
@@ -41,7 +42,35 @@ namespace UavSimulator.Vehicles
                 timeBase = "unix_ms",
             };
 
+            state.telemetry = MergeTelemetry(state.telemetry);
             return state;
+        }
+
+        /// <summary>
+        /// Combine vehicle-specific telemetry (if any) with entries produced by
+        /// every <see cref="IVehicleStateExtender"/> component on this GameObject.
+        /// Subclasses that fill <c>state.telemetry</c> in their own override should
+        /// call this with their telemetry array so plug-in extender entries are
+        /// preserved on the wire.
+        /// </summary>
+        protected ConfigKeyValue[] MergeTelemetry(ConfigKeyValue[] existing)
+        {
+            var extenders = GetComponents<IVehicleStateExtender>();
+            if (extenders.Length == 0) return existing;
+
+            var list = new List<ConfigKeyValue>();
+            if (existing != null) list.AddRange(existing);
+
+            foreach (var e in extenders)
+            {
+                var entries = e.BuildExtensions();
+                if (entries == null) continue;
+                foreach (var kv in entries)
+                {
+                    if (kv != null) list.Add(kv);
+                }
+            }
+            return list.Count > 0 ? list.ToArray() : existing;
         }
 
         public virtual bool TryReadCameraFrame(out CameraFrame frame)

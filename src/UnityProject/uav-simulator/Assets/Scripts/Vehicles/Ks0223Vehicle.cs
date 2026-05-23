@@ -199,6 +199,7 @@ namespace UavSimulator.Vehicles
                 KV("power.motor.estimated_w", estimatedPowerW),
             };
 
+            state.telemetry = MergeTelemetry(state.telemetry);
             return state;
         }
 
