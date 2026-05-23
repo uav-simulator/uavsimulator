@@ -317,6 +317,19 @@ namespace UavSimulator.Tracks
                 adapter.SetMaterials(redOff, redOn, yellow, yellow, greenOff, greenOn);
                 adapter.Bind(fsm, renderer);
                 lights.Add(fsm);
+
+                // Stop-zone trigger: ~4m wide, ~0.5m tall, ~2m deep slab in front
+                // of the light, so TrafficLightAwareController raycasts intercept
+                // it and CityVehicleTelemetryExtender publishes ground-truth state.
+                var zoneGo = new GameObject($"TLZone_{nameSuffix}_{i}");
+                zoneGo.transform.SetParent(instance.transform, worldPositionStays: false);
+                zoneGo.transform.localPosition = new Vector3(0f, -trafficLightYOffset + 0.25f, -trafficLightOffset * 0.5f);
+                zoneGo.transform.localRotation = Quaternion.identity;
+                var box = zoneGo.AddComponent<BoxCollider>();
+                box.size = new Vector3(4f, 0.5f, 2f);
+                box.isTrigger = true;
+                var zone = zoneGo.AddComponent<UavSimulator.CityDemo.TrafficLightTriggerZone>();
+                zone.SetTrafficLight(fsm);
             }
 
             if (lights.Count < 4) return null;
