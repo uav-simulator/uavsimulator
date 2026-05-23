@@ -49,8 +49,12 @@ namespace UavSimulator.Vehicles
         [SerializeField] private float maxSpeedMps = 0.73f;
         [SerializeField] private float accelerationMps2 = 4.0f;
         [SerializeField] private float brakeDecelerationMps2 = 6.5f;
-        [SerializeField] private float maxYawRateDegPerSec = 380f;
-        [SerializeField] private float yawAccelerationDegPerSec2 = 1900f;
+        // Yaw tuning — original 380°/s + 1900°/s² felt jerky to human operators
+        // (sub-second full rotation). Halved values give smoother manual driving
+        // for BC recording while still matching the open-loop characteristic of
+        // the real KS0223 (~90-180°/s effective per DirLeft/DirRight tick).
+        [SerializeField] private float maxYawRateDegPerSec = 180f;
+        [SerializeField] private float yawAccelerationDegPerSec2 = 700f;
         [SerializeField] private Vector3 spawnPosition = new Vector3(0f, 0.2f, -6f);
         [SerializeField] private Vector3 spawnRotationEuler = Vector3.zero;
         [SerializeField] private float ultrasonicMaxDistanceM = 3.5f;
@@ -344,7 +348,11 @@ namespace UavSimulator.Vehicles
                     leftMotorMult = 1f;
                     rightMotorMult = 1f;
                 }
-                if (cameraPitchJitterDeg > 0f && frontCamera != null)
+                // Pitch jitter is a sim-to-real domain-randomisation knob that only
+                // makes sense for the driver-mode camera. Top-down / chase / spectator
+                // modes have their own deliberate poses set by ApplyCameraMode — we
+                // must not stomp them with the driver base euler here.
+                if (cameraPitchJitterDeg > 0f && frontCamera != null && cameraMode == "driver")
                 {
                     var pitchOffset = ((float)rng.NextDouble() - 0.5f) * 2f * cameraPitchJitterDeg;
                     var jittered = new Vector3(cameraLocalEuler.x + pitchOffset,
