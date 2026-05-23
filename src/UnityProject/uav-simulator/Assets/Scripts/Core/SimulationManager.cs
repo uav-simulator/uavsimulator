@@ -192,6 +192,7 @@ namespace UavSimulator.Core
                 vehicle.ApplyVehicleConfig(agent.VehicleParams);
                 vehicle.ResetVehicle(config.seed + index);
                 ApplyVehicleSpawn(vehicle, agent.TrackParams, index, config.seed);
+                AttachCityGate(vehicle, agent.VehicleParams);
 
                 activeAgents.Add(new ActiveAgentRuntime
                 {
@@ -347,6 +348,53 @@ namespace UavSimulator.Core
             }
 
             return vehicle;
+        }
+
+        /// <summary>
+        /// Attach IMovementGate + IVehicleStateExtender components based on the
+        /// scenario's <c>gate.kind</c> vehicle param. Runs after spawn so the
+        /// vehicle GameObject (including its in-scene camera) is fully built.
+        ///
+        /// Recognised kinds:
+        ///   "ground_truth" → TrafficLightAwareController (raycast-based).
+        ///   "onnx"         → OnnxTrafficLightAwareController + the ground-truth controller
+        ///                    so telemetry still publishes nearest-light snapshot.
+        /// Either kind also gets a CityVehicleTelemetryExtender so VehicleState.telemetry
+        /// publishes nearestTrafficLight.* entries for auto_label and observers.
+        /// </summary>
+        private static void AttachCityGate(VehicleBase vehicle, ConfigKeyValue[] vehicleParams)
+        {
+            if (vehicle == null || vehicleParams == null) return;
+            string kind = null;
+            foreach (var kv in vehicleParams)
+            {
+                if (kv == null || string.IsNullOrEmpty(kv.key)) continue;
+                if (kv.key == "gate.kind")
+                {
+                    kind = kv.value?.Trim().ToLowerInvariant();
+                    break;
+                }
+            }
+            if (string.IsNullOrEmpty(kind)) return;
+
+            var go = vehicle.gameObject;
+
+            // Always attach the ground-truth controller — it provides the telemetry snapshot
+            // via raycast against TrafficLightTriggerZone (no-op if none in scene).
+            if (go.GetComponent<UavSimulator.Vehicles.TrafficLightAwareController>() == null)
+            {
+                go.AddComponent<UavSimulator.Vehicles.TrafficLightAwareController>();
+            }
+            if (go.GetComponent<UavSimulator.CityDemo.CityVehicleTelemetryExtender>() == null)
+            {
+                go.AddComponent<UavSimulator.CityDemo.CityVehicleTelemetryExtender>();
+            }
+
+            // Onnx kind layers an ONNX-driven gate on top.
+            if (kind == "onnx" && go.GetComponent<UavSimulator.CityDemo.OnnxTrafficLightAwareController>() == null)
+            {
+                go.AddComponent<UavSimulator.CityDemo.OnnxTrafficLightAwareController>();
+            }
         }
 
         private TrackBase InstantiateTrack(TrackPluginDescriptor descriptor)

@@ -1,4 +1,4 @@
-using System.IO;
+using Unity.Sentis;
 using UnityEngine;
 
 namespace UavSimulator.CityDemo
@@ -10,14 +10,16 @@ namespace UavSimulator.CityDemo
     /// the decision is produced by running an ONNX model on a downsampled
     /// camera frame instead of a raycast.
     ///
-    /// When no model file is available at <see cref="modelStreamingAssetsPath"/>
-    /// the gate falls back to a permanently-Green verdict (no braking). This
-    /// keeps the component safe to drop into scenes during development before
-    /// the classifier (Plan B.6) is trained.
+    /// Loads the ModelAsset via <see cref="Resources.Load"/> — drop the
+    /// classifier ONNX at Assets/Resources/Models/tl-classifier.onnx and the
+    /// Sentis importer auto-converts it to a ModelAsset Unity can load.
+    ///
+    /// When no model is available the gate falls back to a permanently-Green
+    /// verdict (no braking), keeping the component safe in development scenes.
     /// </summary>
     public sealed class OnnxTrafficLightAwareController : MonoBehaviour, IMovementGate
     {
-        [SerializeField] private string modelStreamingAssetsPath = "tl-classifier.onnx";
+        [SerializeField] private string modelResourcesPath = "Models/tl-classifier";
         [SerializeField] private Camera cameraSource;
         [SerializeField] private float predictHz = 4f;
 
@@ -32,16 +34,16 @@ namespace UavSimulator.CityDemo
 
         private void Awake()
         {
-            var modelPath = Path.Combine(Application.streamingAssetsPath, modelStreamingAssetsPath);
-            if (File.Exists(modelPath))
+            var modelAsset = Resources.Load<ModelAsset>(modelResourcesPath);
+            if (modelAsset != null)
             {
-                svc = new OnnxClassifierService(modelPath);
+                svc = new OnnxClassifierService(modelAsset);
             }
             else
             {
                 Debug.LogWarning(
-                    $"[OnnxTrafficLightAwareController] ONNX not found at {modelPath}; " +
-                    "gate will default to Green.");
+                    $"[OnnxTrafficLightAwareController] ModelAsset not found at " +
+                    $"Resources/{modelResourcesPath}; gate will default to Green.");
             }
             renderTex = new RenderTexture(84, 84, 0, RenderTextureFormat.ARGB32);
             readback = new Texture2D(84, 84, TextureFormat.RGBA32, false);
