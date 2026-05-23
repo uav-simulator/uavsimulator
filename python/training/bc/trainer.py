@@ -147,11 +147,20 @@ class BcTrainer:
         return history
 
     def export_sb3(self, output_zip: Path) -> None:
-        """Lift trained weights into a real SB3 PPO and save the standard archive."""
+        """Lift trained weights into a real SB3 PPO and save the standard archive.
+
+        Bakes the canonical BC->PPO hyperparameters (from BcToPpoConfig defaults)
+        into the saved archive so that PPO.load() allocates a correctly sized
+        rollout_buffer. Without this, SB3 defaults (n_steps=2048) get persisted
+        and a later n_steps=256 override would NOT reallocate the buffer,
+        causing an AssertionError on the first train() call.
+        """
         import gymnasium as gym
         from gymnasium import spaces
         from stable_baselines3 import PPO
         from stable_baselines3.common.vec_env import DummyVecEnv
+
+        from .bc_to_ppo import BcToPpoConfig
 
         class _StubEnv(gym.Env):
             metadata = {"render_modes": []}
@@ -182,9 +191,18 @@ class BcTrainer:
         venv = DummyVecEnv([lambda: _StubEnv()])
         # `cnn_output_dim=CNN_OUTPUT_DIM` overrides SB3's default of 256 so the
         # NatureCNN linear layer shape matches our trained head (1×3136 → 512).
+        ppo_cfg = BcToPpoConfig()
         model = PPO(
             "MultiInputPolicy",
             venv,
+            learning_rate=ppo_cfg.learning_rate,
+            n_steps=ppo_cfg.n_steps,
+            batch_size=ppo_cfg.batch_size,
+            n_epochs=ppo_cfg.n_epochs,
+            gamma=ppo_cfg.gamma,
+            clip_range=ppo_cfg.clip_range,
+            ent_coef=ppo_cfg.ent_coef,
+            target_kl=ppo_cfg.target_kl,
             device=self.cfg.device,
             seed=self.cfg.seed,
             policy_kwargs={"features_extractor_kwargs": {"cnn_output_dim": CNN_OUTPUT_DIM}},
