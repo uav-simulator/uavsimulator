@@ -16,10 +16,10 @@ world:
   trackId: track.cardboard_maze.v1
   params:
     maze.seed: 42
-    maze.length_cells: 25
-    maze.corridor_width_m: 0.60
-    maze.left_turns: 5
-    maze.right_turns: 5
+    maze.length_cells: 40           # was 25 — longer total path → real start-to-finish navigation
+    maze.corridor_width_m: 0.45     # was 0.60 — tighter, more realistic navigation challenge
+    maze.left_turns: 3              # was 5 — fewer turns → longer corridor segments between them
+    maze.right_turns: 3             # was 5
     maze.wall_height_m: 0.25
 
 vehicle:
