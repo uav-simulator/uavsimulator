@@ -296,6 +296,24 @@ function App() {
   const [unityCollisionsEnabled, setUnityCollisionsEnabled] = useState(() => readStoredBool(UNITY_COLLISIONS_ENABLED_STORAGE_KEY, false))
   const [unitySeeEachOther, setUnitySeeEachOther] = useState(() => readStoredBool(UNITY_SEE_EACH_OTHER_STORAGE_KEY, true))
   const [unityPendingSelection, setUnityPendingSelection] = useState<UnityPendingSelection | null>(null)
+  // Monitor mode: when true, handleConnect skips applyUnitySelection so the
+  // user can attach to a running simulation (e.g. live training run) without
+  // resetting the active scenario.
+  //
+  // Toggle from browser devtools:
+  //   window.uavSetMonitorMode(true)   // attach without reset
+  //   window.uavSetMonitorMode(false)  // back to normal apply-on-connect
+  const [unityMonitorMode, setUnityMonitorMode] = useState<boolean>(() => readStoredBool('unityMonitorMode', false))
+  useEffect(() => {
+    try {
+      if (unityMonitorMode) {
+        localStorage.setItem('unityMonitorMode', 'true')
+      } else {
+        localStorage.removeItem('unityMonitorMode')
+      }
+    } catch { /* localStorage unavailable */ }
+    ;(window as unknown as { uavSetMonitorMode?: (v: boolean) => void }).uavSetMonitorMode = setUnityMonitorMode
+  }, [unityMonitorMode])
 
   const [driveSpeedPercent, setDriveSpeedPercent] = useState(() => readStoredNumber(DRIVE_SPEED_STORAGE_KEY, 80, 0, 100))
   const [cameraSpeedPercent, setCameraSpeedPercent] = useState(() => readStoredNumber(CAMERA_SPEED_STORAGE_KEY, 70, 0, 100))
@@ -727,7 +745,7 @@ function App() {
 
       if (selectedRuntimeMode === 'unity-sim') {
         const catalog = await syncUnityCatalog(normalizedHost, Number(normalizedPort))
-        if (unityPendingSelection) {
+        if (unityPendingSelection && !unityMonitorMode) {
           await applyUnitySelection(
             unityPendingSelection.trackId || catalog.selectedTrackId,
             unityPendingSelection.vehicleId || catalog.selectedVehicleId,
@@ -736,6 +754,11 @@ function App() {
             unityPendingSelection.collisionsEnabled,
             unityPendingSelection.seeEachOther,
           )
+        }
+        // In monitor mode we deliberately discard any pending selection so
+        // subsequent connects also stay no-reset.
+        if (unityMonitorMode) {
+          setUnityPendingSelection(null)
         }
       }
     })
@@ -747,6 +770,7 @@ function App() {
     syncUnityCatalog,
     targetHost,
     targetPort,
+    unityMonitorMode,
     unityPendingSelection,
     waitForConnectionOutcome,
   ])
