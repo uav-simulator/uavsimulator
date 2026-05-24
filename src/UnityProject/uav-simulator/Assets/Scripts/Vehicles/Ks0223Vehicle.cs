@@ -247,6 +247,11 @@ namespace UavSimulator.Vehicles
                     }
                 }
 
+                if (cameraMode == "top_down")
+                {
+                    PositionTopDownOverTrack();
+                }
+
                 frontCamera.targetTexture = frontCameraRt;
                 frontCamera.Render();
 
@@ -567,6 +572,45 @@ namespace UavSimulator.Vehicles
             frontCamera.transform.localPosition = localPosition;
             frontCamera.transform.localRotation = Quaternion.Euler(localEuler);
             frontCamera.fieldOfView = fieldOfView;
+        }
+
+        /// <summary>
+        /// Re-positions the front camera in world space to frame the entire active
+        /// track from directly above. Called every render tick when cameraMode ==
+        /// "top_down" so the view doesn't follow the robot — operators see the whole
+        /// maze + the green dot wherever the agent currently is.
+        /// </summary>
+        private void PositionTopDownOverTrack()
+        {
+            var track = FindFirstObjectByType<UavSimulator.Tracks.TrackBase>();
+            if (track == null) return;
+            var renderers = track.GetComponentsInChildren<Renderer>(includeInactive: false);
+            if (renderers == null || renderers.Length == 0) return;
+
+            bool hasBounds = false;
+            Bounds combined = default;
+            foreach (var r in renderers)
+            {
+                if (r == null || r.gameObject == null) continue;
+                // Filter out the surrounding gray floor + ambient lights — they would
+                // inflate bounds and shrink the maze itself in the framed view.
+                var name = r.gameObject.name;
+                if (name.StartsWith("SurroundFloor") || name.StartsWith("TrackLight")) continue;
+                if (!hasBounds) { combined = r.bounds; hasBounds = true; }
+                else combined.Encapsulate(r.bounds);
+            }
+            if (!hasBounds) return;
+
+            var center = new Vector3(combined.center.x, 0f, combined.center.z);
+            var maxExtent = Mathf.Max(combined.size.x, combined.size.z);
+            // Height required to frame maxExtent at the current camera FOV (vertical).
+            var fovRad = frontCamera.fieldOfView * Mathf.Deg2Rad;
+            var paddingRatio = 0.25f;
+            var visibleSpan = maxExtent * (1f + paddingRatio);
+            var height = Mathf.Max(2f, (visibleSpan * 0.5f) / Mathf.Tan(fovRad * 0.5f));
+
+            frontCamera.transform.position = new Vector3(center.x, height, center.z);
+            frontCamera.transform.rotation = Quaternion.Euler(90f, 0f, 0f);
         }
 
         private void ApplyCameraProfile(string profileRaw)
