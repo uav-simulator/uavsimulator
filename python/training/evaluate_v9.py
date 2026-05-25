@@ -164,26 +164,43 @@ def evaluate(args):
 
     predict, model_kind = build_discrete_predictor(model_path)
 
-    # Peek at the saved model's obs_space to auto-detect whether the trained
-    # policy expects the occupancy modality. If yes, wrap the eval env in
-    # EgoOccupancyMapWrapper — otherwise the policy's first call to
-    # `observations["occupancy"]` would KeyError.
+    # Peek at the saved model's obs_space to auto-detect:
+    #   (a) whether the policy expects an `occupancy` modality
+    #       (was the model trained with EgoOccupancyMapWrapper?)
+    #   (b) whether the policy expects frame-stacked observations
+    #       (was the model trained under SB3's VecFrameStack?)
     #
-    # We auto-detect (rather than require a --with-occupancy CLI flag) so
-    # this works transparently for any sb3.zip the sweep produces, without
-    # the sweep runner needing to plumb a flag through evaluate_v9.
+    # We auto-detect (rather than require CLI flags) so this works
+    # transparently for any sb3.zip the sweep produces, without the
+    # sweep runner needing to plumb extra flags through evaluate_v9.
     needs_occupancy = False
+    auto_frame_stack = 1
     if model_path.suffix.lower() == ".zip":
         try:
             from stable_baselines3 import PPO
             _peek = PPO.load(str(model_path), device="cpu")
             needs_occupancy = "occupancy" in _peek.observation_space.spaces
+            # Ultrasonic shape after VecFrameStack(k) is (k,) — single-frame
+            # baseline is (1,). Read k from there since it's unambiguous;
+            # the image shape would have to be parsed for channel-count and
+            # is ambiguous if the model uses non-3-channel imagery.
+            if "ultrasonic" in _peek.observation_space.spaces:
+                ultra_shape = _peek.observation_space.spaces["ultrasonic"].shape
+                if len(ultra_shape) == 1 and ultra_shape[0] > 1:
+                    auto_frame_stack = int(ultra_shape[0])
             del _peek
         except Exception:
             # If the peek fails for any reason, fall through to the no-
-            # occupancy path; the predictor itself will produce a clean
-            # error message later if there's a real arch mismatch.
+            # occupancy / no-frame-stack path; the predictor itself will
+            # produce a clean error message later if there's a real arch
+            # mismatch.
             pass
+    # Auto-detected frame_stack overrides the CLI default unless the user
+    # explicitly passed --frame-stack on the command line. We detect
+    # `explicit user value` by checking it's != 1 (the argparse default).
+    if args.frame_stack == 1 and auto_frame_stack > 1:
+        print(f"  Auto-detected frame_stack={auto_frame_stack} from saved model obs_space")
+        args.frame_stack = auto_frame_stack
 
     base_env = ABCorridorVisionEnv(
         base_url=args.base_url,
