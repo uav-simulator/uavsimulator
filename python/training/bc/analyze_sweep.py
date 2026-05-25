@@ -213,6 +213,89 @@ def _render_one_metric(
     plt.close(fig)
 
 
+def _parse_train_log_curve(log_path: Path) -> tuple[list[int], list[float]]:
+    """Pull (timestep, ep_rew_mean) series from a train_cardboard_corridor_v9 log.
+
+    The training script writes SB3's default tabular logger format:
+        |    ep_rew_mean     | -244     |
+        |    total_timesteps | 512      |
+    Each rollout block has both fields; we pair them in lock-step.
+
+    Returns ([], []) if the log doesn't yet have any rollout blocks (early
+    crash / training not started).
+    """
+    import re
+
+    ts_pat = re.compile(r"\|\s*total_timesteps\s*\|\s*([0-9.eE+-]+)\s*\|")
+    rew_pat = re.compile(r"\|\s*ep_rew_mean\s*\|\s*(-?[0-9.eE+-]+)\s*\|")
+    timesteps: list[int] = []
+    rewards: list[float] = []
+    if not log_path.exists():
+        return timesteps, rewards
+    text = log_path.read_text()
+    ts_matches = ts_pat.findall(text)
+    rew_matches = rew_pat.findall(text)
+    n = min(len(ts_matches), len(rew_matches))
+    for i in range(n):
+        try:
+            timesteps.append(int(float(ts_matches[i])))
+            rewards.append(float(rew_matches[i]))
+        except ValueError:
+            continue
+    return timesteps, rewards
+
+
+def _render_learning_curves(evidence_root: Path, output_dir: Path) -> None:
+    """Per-branch learning-curve plot: ep_rew_mean over total_timesteps.
+
+    Each seed is drawn as a thin line; the per-branch mean (interpolated to
+    a common grid) is overlaid as a bold line. Makes the variance story
+    visual even when end-of-training SR is zero — you can see *whether* the
+    BC-initialised curves are tighter around their mean than the pure-PPO
+    curves.
+    """
+    import numpy as np
+
+    by_branch: dict[str, list[tuple[list[int], list[float]]]] = {}
+    for branch_dir in sorted(evidence_root.iterdir()):
+        if not branch_dir.is_dir():
+            continue
+        curves: list[tuple[list[int], list[float]]] = []
+        for seed_dir in sorted(branch_dir.glob("seed-*")):
+            ts, rew = _parse_train_log_curve(seed_dir / "train.log")
+            if ts and rew:
+                curves.append((ts, rew))
+        if curves:
+            by_branch[branch_dir.name] = curves
+    if not by_branch:
+        return
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+    colors = {"pure-ppo-baseline": "#1f77b4", "bc-ppo": "#ff7f0e"}
+    for branch_name, curves in by_branch.items():
+        color = colors.get(branch_name, "#666666")
+        # Plot each seed as a thin transparent line.
+        for ts, rew in curves:
+            ax.plot(ts, rew, color=color, alpha=0.35, linewidth=1)
+        # Interpolate all curves to a common grid for the bold mean.
+        max_ts = max(max(ts) for ts, _ in curves)
+        grid = np.linspace(0, max_ts, num=100)
+        means_at_grid = []
+        for ts, rew in curves:
+            means_at_grid.append(np.interp(grid, ts, rew, left=rew[0], right=rew[-1]))
+        mean_curve = np.mean(means_at_grid, axis=0)
+        ax.plot(grid, mean_curve, color=color, linewidth=2.5,
+                label=f"{branch_name} (n={len(curves)})")
+    ax.set_xlabel("Total timesteps")
+    ax.set_ylabel("Mean episode reward (training)")
+    ax.set_title("Learning curves: per-seed (thin) + per-branch mean (bold)")
+    ax.legend(loc="lower right")
+    ax.grid(True, alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(output_dir / "plot-learning-curves.png", dpi=160)
+    plt.close(fig)
+
+
 def render_report(evidence_root: Path, output_dir: Path) -> None:
     """Render variance-table.md + welch-t-test.md + plots for headline SR plus
     auxiliary mean_reward / avgProgress / avgSteps tables, so a pilot run with
@@ -223,6 +306,7 @@ def render_report(evidence_root: Path, output_dir: Path) -> None:
         _render_one_metric(
             evidence_root, output_dir, metric_key, display_name, y_limits, val_fmt, is_headline,
         )
+    _render_learning_curves(evidence_root, output_dir)
 
 
 def main():
