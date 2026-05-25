@@ -21,13 +21,14 @@ calls `model.save(...)` to produce a standard SB3 archive (`policy.pth` inside).
 from __future__ import annotations
 
 import random
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader, Dataset, WeightedRandomSampler
 
 from .dataset import BcSample
 
@@ -45,6 +46,14 @@ class BcConfig:
     device: str = "cpu"
     seed: int = 42
     log_every: int = 1
+    # When True: draw each batch with WeightedRandomSampler so every action class
+    # is sampled with equal probability per batch. Counteracts the mode-collapse
+    # failure mode where the model just learns the action prior (e.g. always
+    # predicting DirForward when ~38% of demo labels are forward) instead of
+    # learning the visual cue → turn mapping. Cost: minority-class samples
+    # (DirStop ~2% of the corpus) get repeated ~15× per epoch, so add a small
+    # amount of overfitting risk; use modest epochs.
+    class_balanced: bool = False
 
 
 class _BcTorchDataset(Dataset):
@@ -110,13 +119,37 @@ class BcTrainer:
 
     def fit(self, samples: list[BcSample]) -> dict[str, list[float]]:
         dataset = _BcTorchDataset(samples)
-        loader = DataLoader(
-            dataset,
-            batch_size=self.cfg.batch_size,
-            shuffle=True,
-            drop_last=False,
-            generator=torch.Generator().manual_seed(self.cfg.seed),
-        )
+        if self.cfg.class_balanced:
+            # WeightedRandomSampler with per-sample weight = 1/freq(class) makes
+            # batches class-uniform in expectation. Action classes never observed
+            # in the corpus (typically DirBack on KS0223) get sampler weight 0
+            # — they remain unsampleable, which matches the runtime constraint
+            # that the robot cannot execute them.
+            class_counts = Counter(s.action_idx for s in samples)
+            sample_weights = [
+                1.0 / class_counts[s.action_idx] if class_counts[s.action_idx] > 0 else 0.0
+                for s in samples
+            ]
+            gen = torch.Generator().manual_seed(self.cfg.seed)
+            sampler = WeightedRandomSampler(
+                sample_weights, num_samples=len(samples), replacement=True, generator=gen,
+            )
+            loader = DataLoader(
+                dataset, batch_size=self.cfg.batch_size, sampler=sampler, drop_last=False,
+            )
+            print(
+                f"[bc] class-balanced sampling enabled. Per-epoch class weights "
+                f"(inverse freq): { {k: round(1.0 / v, 4) for k, v in class_counts.items()} }",
+                flush=True,
+            )
+        else:
+            loader = DataLoader(
+                dataset,
+                batch_size=self.cfg.batch_size,
+                shuffle=True,
+                drop_last=False,
+                generator=torch.Generator().manual_seed(self.cfg.seed),
+            )
         optimizer = torch.optim.Adam(self.model.parameters(), lr=self.cfg.lr)
         loss_fn = nn.CrossEntropyLoss()
 

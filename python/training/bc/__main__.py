@@ -20,6 +20,13 @@ def main() -> None:
     fit.add_argument("--lr", type=float, default=3e-4)
     fit.add_argument("--device", default="cpu")
     fit.add_argument("--seed", type=int, default=42)
+    fit.add_argument(
+        "--class-balanced",
+        action="store_true",
+        help="Use WeightedRandomSampler so each batch has class-uniform expectation. "
+             "Prevents mode collapse on imbalanced action corpora (e.g. when ~38%% of "
+             "labels are DirForward and the model would otherwise just learn the prior).",
+    )
 
     args = p.parse_args()
     if args.command == "fit":
@@ -32,6 +39,7 @@ def main() -> None:
             lr=args.lr,
             device=args.device,
             seed=args.seed,
+            class_balanced=args.class_balanced,
         )
         trainer = BcTrainer(cfg)
         history = trainer.fit(samples)
