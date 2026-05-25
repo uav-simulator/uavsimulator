@@ -65,23 +65,14 @@ def test_update_from_raycast_marks_wall_and_free_cells():
     assert m.grid[1].sum() > 0.0, "free channel should be marked along the ray"
 
 
-@pytest.mark.xfail(
-    reason=(
-        "Known bug in update_from_raycast: the marcher's `if (gx, gz) == "
-        "last_cell: continue` de-dup short-circuits the terminal wall-marking "
-        "branch when the ray's final cell coincides with the second-to-last "
-        "step's cell. For a 1.0 m ray along +Z, step k=8 (t=0.9 m) and step "
-        "k=9 (t=1.0 m) both round to grid Z=44 and the wall mark is dropped. "
-        "Fix queued via spawned task; remove @xfail once landed."
-    ),
-    strict=True,
-)
 def test_update_from_raycast_wall_at_one_meter_marks_wall_cell():
-    """Regression test for the marcher de-dup wall-skip bug.
+    """Regression: wall at exactly 1.0 m straight ahead must be marked.
 
-    Currently expected to fail (xfail/strict). When the bug is fixed in
-    occupancy.py the test will start passing and pytest's strict=True will
-    flip it to XPASS → loud error so we don't forget to remove the marker.
+    Earlier, the marcher's `if (gx, gz) == last_cell: continue` de-dup
+    short-circuited the terminal wall-marking branch when the ray's final
+    cell coincided with the second-to-last step's cell. For a 1.0 m ray
+    along +Z, step k=8 (t=0.9 m) and step k=9 (t=1.0 m) both round to grid
+    Z=44, so the wall mark at cell (gx=40, gz=44) was silently dropped.
     """
     m = OccupancyMap.empty()
     m.update_from_raycast(world_x=0.0, world_z=0.0, yaw_deg=0.0, ultrasonic_distance_m=1.0)
