@@ -103,19 +103,23 @@ class OccupancyMap:
             gx, gz = self._world_to_grid(wx, wz)
             if not (0 <= gx < _GRID_SIZE and 0 <= gz < _GRID_SIZE):
                 break
+            if t >= d_total:
+                # Terminal cell at ray-hit point — bypasses the last_cell dedup
+                # so the wall mark isn't dropped when the ray's final step lands
+                # in the same cell as the previous step (e.g. d_total = 1.0 m
+                # along +Z: steps k=8 at t=0.9 and k=9 at t=1.0 both round to
+                # the same grid cell).
+                if ultrasonic_distance_m < _ULTRASONIC_MAX_M - 1e-3:
+                    self.grid[2, gz, gx] = min(1.0, self.grid[2, gz, gx] + _WALL_INCREMENT)
+                elif (gx, gz) != last_cell:
+                    # No obstacle within range — treat last cell as free too
+                    self.grid[1, gz, gx] = min(1.0, self.grid[1, gz, gx] + _FREE_INCREMENT)
+                break
             if (gx, gz) == last_cell:
                 continue
             last_cell = (gx, gz)
-            if t < d_total:
-                # Free cell along ray
-                self.grid[1, gz, gx] = min(1.0, self.grid[1, gz, gx] + _FREE_INCREMENT)
-            else:
-                # Final cell at ray-hit point — wall, unless we hit the max range
-                if ultrasonic_distance_m < _ULTRASONIC_MAX_M - 1e-3:
-                    self.grid[2, gz, gx] = min(1.0, self.grid[2, gz, gx] + _WALL_INCREMENT)
-                else:
-                    # No obstacle within range — treat last cell as free too
-                    self.grid[1, gz, gx] = min(1.0, self.grid[1, gz, gx] + _FREE_INCREMENT)
+            # Free cell along ray
+            self.grid[1, gz, gx] = min(1.0, self.grid[1, gz, gx] + _FREE_INCREMENT)
 
     def ego_window(self, world_x: float, world_z: float, yaw_deg: float) -> np.ndarray:
         """Extract a 21 × 21 × 3 window centered on the robot, rotated so the
