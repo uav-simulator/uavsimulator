@@ -47,6 +47,15 @@ class MultiModalOccupancyExtractor(BaseFeaturesExtractor):
             raise ValueError("MultiModalOccupancyExtractor requires 'ultrasonic' key in observation")
         if "occupancy" not in observation_space.spaces:
             raise ValueError("MultiModalOccupancyExtractor requires 'occupancy' key in observation")
+        # distances_8 (8-d structured raycast) is plumbed offline into
+        # the demo dataset (BcSample.distances_8, training.bc.occupancy.
+        # directional_distances_8) but is intentionally NOT consumed here:
+        # the production BC checkpoint is 641-d (image:512 + ultra:1 +
+        # map:128) and the wrapper's obs_space matches. Re-enabling
+        # distances_8 is a coordinated 5-touch change — wrapper obs_space
+        # + extractor features_dim + trainer combined_dim + dataset/fit
+        # batching + retrain BC to 649-d.
+        self._has_distances_8 = False
 
         # We must compute the features_dim before super().__init__ in SB3's
         # BaseFeaturesExtractor.
@@ -107,4 +116,5 @@ class MultiModalOccupancyExtractor(BaseFeaturesExtractor):
         occ = observations["occupancy"].float()
         map_features = self.map_linear(self.map_cnn(occ))
 
+        # distances_8 not yet wired into this extractor (see __init__ note).
         return torch.cat([img_features, ultra, map_features], dim=1)

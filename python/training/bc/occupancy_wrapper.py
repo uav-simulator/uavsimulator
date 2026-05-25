@@ -69,6 +69,14 @@ class EgoOccupancyMapWrapper(gym.Wrapper):
         new_spaces["occupancy"] = spaces.Box(
             low=0.0, high=1.0, shape=(3, _EGO_SIZE, _EGO_SIZE), dtype=np.float32,
         )
+        # NOTE: an 8-direction raycast modality (front, FR, R, BR, back, BL,
+        # L, FL — `directional_distances_8` in training.bc.occupancy) is
+        # available offline (npy artifacts saved next to demo MP4s) and
+        # plumbed through BcSample, but is NOT currently exposed in the env
+        # obs_space because the current SB3 MultiModalOccupancyExtractor is
+        # 641-d (image+ultrasonic+occupancy) and the BC checkpoint matches.
+        # Re-enabling it is a future coordinated upgrade (wrapper obs_space
+        # + extractor features_dim + trainer + retrain BC).
         self.observation_space = spaces.Dict(new_spaces)
         self._wall_cells = wall_cells
         self._occupancy = OccupancyMap.empty()

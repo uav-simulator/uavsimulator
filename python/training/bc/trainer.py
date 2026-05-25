@@ -84,6 +84,13 @@ class _BcTorchDataset(Dataset):
         action = torch.tensor(s.action_idx, dtype=torch.long)
         if self._use_occupancy:
             occ = torch.from_numpy(np.ascontiguousarray(s.occupancy)).float()
+            # NOTE: BcSample also carries an optional `distances_8` (8-d
+            # structured raycast) — present in the loaded dataset but NOT
+            # consumed by the trainer in this codebase version. The
+            # MultiModalOccupancyExtractor in policies.py is 641-d
+            # (image:512 + ultra:1 + map:128) and so is _MultiModalHead
+            # below; adding distances_8 is a future coordinated change
+            # (wrapper obs_space + extractor + trainer + retrain BC).
             return frame, ultra, occ, action
         return frame, ultra, action
 
@@ -154,7 +161,13 @@ class _MapCnn(nn.Module):
 
 
 class _MultiModalHead(nn.Module):
-    """NatureCNN(image) + ultrasonic + MapCNN(occupancy) → MLP → action logits."""
+    """NatureCNN(image) + ultrasonic + MapCNN(occupancy) → MLP → action logits.
+
+    Feature dim = CNN_OUTPUT_DIM (512) + 1 (ultrasonic) + MAP_CNN_OUTPUT_DIM
+    (128) = 641. Matches MultiModalOccupancyExtractor in policies.py exactly
+    so the BC checkpoint can be lifted into an SB3 PPO with weight-for-weight
+    correspondence.
+    """
 
     def __init__(self) -> None:
         super().__init__()

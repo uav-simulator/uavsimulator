@@ -53,6 +53,8 @@ class BcSample:
     action_idx: int    # 0..4 (cf. ACTION_NAMES)
     occupancy: np.ndarray | None = None  # (3, 21, 21) float32 ego-centric occupancy
                                          # (None for pre-occupancy demos / when not requested)
+    distances_8: np.ndarray | None = None  # (8,) float32 normalised 8-direction raycast
+                                           # (front, FR, R, BR, back, BL, L, FL), [0..1] of 2 m max
 
 
 def _parse_ts(ts: str) -> float:
@@ -132,6 +134,7 @@ def load_session(jsonl_path: Path, video_path: Path) -> list[BcSample]:
     # the multi-modal trainer treats None as "skip occupancy input" for
     # backwards compatibility with sprint-3 demos.
     occupancy_array: np.ndarray | None = None
+    distances_8_array: np.ndarray | None = None
     # MP4 layout: autopilot_<YYYYMMDD>_<HHMMSS>_<tag>.mp4 where <tag> itself
     # can contain underscores. We strip the autopilot_ prefix and the
     # YYYYMMDD_HHMMSS to recover <tag>.
@@ -141,6 +144,12 @@ def load_session(jsonl_path: Path, video_path: Path) -> list[BcSample]:
         occ_path = video_path.parent / f"occupancy_{tag}.npy"
         if occ_path.exists():
             occupancy_array = np.load(occ_path)
+        # 8-direction raycast modality (training.bc.occupancy.
+        # reconstruct_distances_8_for_demo). Same tick-alignment contract
+        # as occupancy: index k matches MP4 frame k.
+        dist_path = video_path.parent / f"distances_8_{tag}.npy"
+        if dist_path.exists():
+            distances_8_array = np.load(dist_path)
 
     # Sequential read: events are sorted by timestamp (monotonic), so we advance the
     # decoder forward instead of `cap.set(CAP_PROP_POS_FRAMES, k)` per sample
@@ -167,16 +176,22 @@ def load_session(jsonl_path: Path, video_path: Path) -> list[BcSample]:
             # Pull the occupancy slice that corresponds to this frame index.
             # next_frame_idx − 1 is the last frame we read (= `target`).
             occ_slice = None
+            dist_slice = None
             if occupancy_array is not None:
                 idx = min(next_frame_idx - 1, occupancy_array.shape[0] - 1)
                 if idx >= 0:
                     occ_slice = occupancy_array[idx]
+            if distances_8_array is not None:
+                idx = min(next_frame_idx - 1, distances_8_array.shape[0] - 1)
+                if idx >= 0:
+                    dist_slice = distances_8_array[idx]
             samples.append(
                 BcSample(
                     frame=_resize_frame(current_bgr),
                     ultrasonic=ultra,
                     action_idx=ACTION_TO_INDEX[cmd],
                     occupancy=occ_slice,
+                    distances_8=dist_slice,
                 )
             )
     finally:

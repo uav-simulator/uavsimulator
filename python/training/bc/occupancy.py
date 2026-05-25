@@ -160,7 +160,16 @@ def _synthetic_ultrasonic(
     convention shared with CardboardMazeTrack and path_encoded). Returns the
     distance in meters in [0, _ULTRASONIC_MAX_M].
     """
-    yaw_rad = math.radians(yaw_deg)
+    return _raycast_in_direction(world_x, world_z, yaw_deg, wall_cells)
+
+
+def _raycast_in_direction(
+    world_x: float, world_z: float, ray_yaw_deg: float, wall_cells: set[tuple[int, int]],
+) -> float:
+    """Single ray from (world_x, world_z) in world-frame heading ray_yaw_deg.
+    Returns the distance in meters to the first wall cell hit, capped at
+    _ULTRASONIC_MAX_M."""
+    yaw_rad = math.radians(ray_yaw_deg)
     dx = math.sin(yaw_rad)
     dz = math.cos(yaw_rad)
     step_m = 0.05
@@ -169,13 +178,94 @@ def _synthetic_ultrasonic(
         t = k * step_m
         wx = world_x + dx * t
         wz = world_z + dz * t
-        # Maze cell coords (same convention as CardboardMazeTrack):
-        # cell at (gx, gz) covers world x ∈ [(gx-20-0.5)*0.45, (gx-20+0.5)*0.45].
         cx = int(round(wx / _MAZE_CELL_M)) + 20
         cz = int(round(wz / _MAZE_CELL_M)) + 20
         if (cx, cz) in wall_cells:
             return t
     return _ULTRASONIC_MAX_M
+
+
+# Eight directional offsets in robot-ego frame, in degrees.
+# 0° = front, +45° each rotation clockwise:
+#   front, front-right, right, back-right, back, back-left, left, front-left
+_DIST_8_OFFSETS_DEG = (0.0, 45.0, 90.0, 135.0, 180.0, -135.0, -90.0, -45.0)
+
+
+def directional_distances_8(
+    world_x: float, world_z: float, yaw_deg: float, wall_cells: set[tuple[int, int]],
+) -> "np.ndarray":
+    """8-direction raycast in the robot's ego frame, normalised to [0, 1] of
+    _ULTRASONIC_MAX_M.
+
+    Order of the returned vector:
+        [0] front          (0°)
+        [1] front-right    (+45°)
+        [2] right          (+90°)
+        [3] back-right     (+135°)
+        [4] back           (180°)
+        [5] back-left      (-135° = +225°)
+        [6] left           (-90°)
+        [7] front-left     (-45°)
+
+    This gives the policy a complete instantaneous "lidar ring" of distances
+    around the robot — a structured-perception alternative to having the
+    network reverse-engineer the same information from raw pixels.
+    """
+    out = np.zeros(8, dtype=np.float32)
+    for i, offset_deg in enumerate(_DIST_8_OFFSETS_DEG):
+        d = _raycast_in_direction(world_x, world_z, yaw_deg + offset_deg, wall_cells)
+        out[i] = min(1.0, d / _ULTRASONIC_MAX_M)
+    return out
+
+
+def _load_wall_cells_from_manifest(manifest_path: Path) -> set[tuple[int, int]]:
+    """Read maze.path_encoded from a demo manifest and derive a 3-cell padded
+    wall set around the path. Shared helper used by both the occupancy
+    reconstructor and the directional-distance reconstructor."""
+    manifest = json.loads(manifest_path.read_text())
+    path_encoded = manifest["maze"]["path_encoded"]
+    path_cells: set[tuple[int, int]] = {
+        tuple(int(v) for v in p.split(",")) for p in path_encoded.split(";") if p
+    }
+    wall_cells: set[tuple[int, int]] = set()
+    for (cx, cz) in path_cells:
+        for dx in range(-3, 4):
+            for dz in range(-3, 4):
+                n = (cx + dx, cz + dz)
+                if n not in path_cells:
+                    wall_cells.add(n)
+    return wall_cells
+
+
+def reconstruct_distances_8_for_demo(
+    jsonl_path: Path, manifest_path: Path,
+) -> np.ndarray:
+    """Replay a demo's pose snapshots and return a (T, 8) array of
+    distances_8 vectors (front, FR, R, BR, back, BL, L, FL — normalised
+    to [0, 1] of 2 m max range), aligned 1-to-1 with the MP4 frames.
+
+    Used by the BC dataset loader to pair each demo command with the
+    same 8-direction raycast the policy will see at runtime (which the
+    EgoOccupancyMapWrapper computes online).
+    """
+    wall_cells = _load_wall_cells_from_manifest(manifest_path)
+    out: list[np.ndarray] = []
+    for raw in jsonl_path.read_text(encoding="utf-8").splitlines():
+        line = raw.lstrip("﻿").strip()
+        if not line:
+            continue
+        try:
+            ev = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if ev.get("type") != "pose.snapshot":
+            continue
+        p = ev["payload"]
+        wx, wz, yaw = float(p["pos_x"]), float(p["pos_z"]), float(p["yaw_deg"])
+        out.append(directional_distances_8(wx, wz, yaw, wall_cells))
+    if not out:
+        return np.zeros((0, 8), dtype=np.float32)
+    return np.stack(out, axis=0)
 
 
 def reconstruct_for_demo(
