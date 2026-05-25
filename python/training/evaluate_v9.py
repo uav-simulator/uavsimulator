@@ -243,10 +243,20 @@ def evaluate(args):
     ultra_buffer: deque | None = deque(maxlen=frame_stack_k) if frame_stack_k > 1 else None
 
     def stack_obs(raw_obs):
-        """Apply frame stacking to obs.image and obs.ultrasonic if k>1; passthrough otherwise."""
+        """Apply frame stacking to obs.image and obs.ultrasonic if k>1; passthrough otherwise.
+
+        The training-time pipeline applied SB3's VecFrameStack(channels_order='last')
+        followed by VecTransposeImage, so the saved model's `image` obs_space is
+        (k*3, H, W) — CHW. We mirror that: concatenate the buffered HWC frames
+        along the last axis, then transpose HWC→CHW so the layout matches the
+        model exactly. PPO.predict otherwise auto-detects but the cost of
+        getting this wrong is silent garbage predictions, so we do the
+        transpose explicitly.
+        """
         if image_buffer is None:
             return raw_obs
-        stacked_image = np.concatenate(list(image_buffer), axis=-1)
+        stacked_image_hwc = np.concatenate(list(image_buffer), axis=-1)
+        stacked_image = np.transpose(stacked_image_hwc, (2, 0, 1))  # → CHW
         stacked_ultra = np.concatenate(list(ultra_buffer), axis=-1).astype(np.float32)
         return {"image": stacked_image, "ultrasonic": stacked_ultra}
 
