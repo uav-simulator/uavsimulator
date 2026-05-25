@@ -307,28 +307,10 @@ class BcTrainer:
         causing an AssertionError on the first train() call.
         """
         if self.cfg.use_occupancy:
-            # SB3 lift requires a custom features_extractor that knows about the
-            # occupancy modality. For now, just save the torch state_dict; the
-            # multi-modal SB3 integration lives in MAP-3 (env wrapper) so that
-            # we register the same custom extractor for both BC export and PPO
-            # init. Until then, the multi-modal BC checkpoint is consumable via
-            # `torch.load(...)`.
-            output = Path(output_zip).with_suffix(".pt")
-            output.parent.mkdir(parents=True, exist_ok=True)
-            torch.save({
-                "model_state_dict": self.model.state_dict(),
-                "modality": "image+ultrasonic+occupancy",
-                "config": {
-                    "epochs": self.cfg.epochs,
-                    "batch_size": self.cfg.batch_size,
-                    "lr": self.cfg.lr,
-                    "seed": self.cfg.seed,
-                    "class_balanced": self.cfg.class_balanced,
-                    "use_occupancy": True,
-                },
-            }, output)
-            print(f"[bc] saved multi-modal torch checkpoint: {output}", flush=True)
-            print(f"[bc] SB3 export skipped — needs custom features_extractor for occupancy modality (MAP-3 task).", flush=True)
+            # Multi-modal export: build an SB3 PPO with MultiModalOccupancyExtractor,
+            # copy weights from our _MultiModalHead, save the SB3 archive. Also dump
+            # the raw torch state dict alongside so non-SB3 consumers can load too.
+            self._export_sb3_multimodal(output_zip)
             return
         import gymnasium as gym
         from gymnasium import spaces
@@ -413,3 +395,97 @@ class BcTrainer:
         output_zip.parent.mkdir(parents=True, exist_ok=True)
         model.save(output_zip)
         venv.close()
+
+    def _export_sb3_multimodal(self, output_zip: Path) -> None:
+        """Lift the multi-modal BC model into an SB3 PPO checkpoint.
+
+        Builds an SB3 PPO around a stub env that exposes
+        Dict({image, ultrasonic, occupancy}) and registers our custom
+        MultiModalOccupancyExtractor as the features_extractor. Then
+        copies the trained weights submodule-by-submodule from our
+        _MultiModalHead into the SB3 policy graph.
+
+        Also dumps the raw state_dict to `<output>.pt` so non-SB3
+        consumers (e.g. the WebUI live-inference path that bypasses
+        the PPO wrapper) can load it directly.
+        """
+        import gymnasium as gym
+        from gymnasium import spaces
+        from stable_baselines3 import PPO
+        from stable_baselines3.common.vec_env import DummyVecEnv
+
+        from .bc_to_ppo import BcToPpoConfig
+        from .policies import MultiModalOccupancyExtractor
+
+        class _StubMultiModalEnv(gym.Env):
+            metadata = {"render_modes": []}
+
+            def __init__(self) -> None:
+                super().__init__()
+                self.observation_space = spaces.Dict(
+                    {
+                        "image": spaces.Box(low=0, high=255, shape=(3, FRAME_SIZE, FRAME_SIZE), dtype=np.uint8),
+                        "ultrasonic": spaces.Box(low=0.0, high=1.0, shape=(1,), dtype=np.float32),
+                        "occupancy": spaces.Box(low=0.0, high=1.0, shape=(3, 21, 21), dtype=np.float32),
+                    }
+                )
+                self.action_space = spaces.Discrete(N_ACTIONS)
+
+            def _zero_obs(self):
+                return {
+                    "image": np.zeros((3, FRAME_SIZE, FRAME_SIZE), dtype=np.uint8),
+                    "ultrasonic": np.zeros((1,), dtype=np.float32),
+                    "occupancy": np.zeros((3, 21, 21), dtype=np.float32),
+                }
+
+            def reset(self, *, seed=None, options=None):
+                super().reset(seed=seed)
+                return self._zero_obs(), {}
+
+            def step(self, action):
+                return self._zero_obs(), 0.0, True, False, {}
+
+        venv = DummyVecEnv([lambda: _StubMultiModalEnv()])
+        ppo_cfg = BcToPpoConfig()
+        model = PPO(
+            "MultiInputPolicy",
+            venv,
+            learning_rate=ppo_cfg.learning_rate,
+            n_steps=ppo_cfg.n_steps,
+            batch_size=ppo_cfg.batch_size,
+            n_epochs=ppo_cfg.n_epochs,
+            gamma=ppo_cfg.gamma,
+            clip_range=ppo_cfg.clip_range,
+            ent_coef=ppo_cfg.ent_coef,
+            target_kl=ppo_cfg.target_kl,
+            device=self.cfg.device,
+            seed=self.cfg.seed,
+            policy_kwargs={"features_extractor_class": MultiModalOccupancyExtractor},
+        )
+
+        policy = model.policy
+        src = self.model
+        extractor = policy.features_extractor
+        assert hasattr(extractor, "image_cnn") and hasattr(extractor, "map_cnn"), (
+            "MultiModalOccupancyExtractor layout changed: expected image_cnn / map_cnn"
+        )
+        with torch.no_grad():
+            extractor.image_cnn.load_state_dict(src.cnn.state_dict())
+            extractor.image_linear.load_state_dict(src.linear.state_dict())
+            extractor.map_cnn.load_state_dict(src.map_cnn.cnn.state_dict())
+            extractor.map_linear.load_state_dict(src.map_cnn.linear.state_dict())
+            policy.mlp_extractor.policy_net.load_state_dict(src.policy_net.state_dict())
+            policy.action_net.load_state_dict(src.action_net.state_dict())
+
+        output_zip = Path(output_zip)
+        output_zip.parent.mkdir(parents=True, exist_ok=True)
+        model.save(output_zip)
+        # Also save the raw torch state_dict — non-SB3 inference paths
+        # (WebUI live, ablation forensics) read the .pt directly.
+        torch.save({
+            "model_state_dict": self.model.state_dict(),
+            "modality": "image+ultrasonic+occupancy",
+        }, output_zip.with_suffix(".pt"))
+        venv.close()
+        print(f"[bc] saved multi-modal SB3 checkpoint: {output_zip}", flush=True)
+        print(f"[bc] saved raw torch state_dict:       {output_zip.with_suffix('.pt')}", flush=True)

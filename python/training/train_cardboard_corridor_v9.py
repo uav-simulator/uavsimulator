@@ -167,6 +167,11 @@ def parse_args() -> argparse.Namespace:
                    help="default = SB3 NatureCNN; r3m = frozen pretrained ResNet18 backbone")
     p.add_argument("--feature-dim", type=int, default=256,
                    help="Output dim of feature extractor head")
+    p.add_argument("--with-occupancy", action="store_true",
+                   help="Wrap env in EgoOccupancyMapWrapper, add 'occupancy' modality to "
+                        "the observation dict, and use MultiModalOccupancyExtractor as "
+                        "the SB3 features_extractor. Required when --bc-init points at a "
+                        "multi-modal BC checkpoint (trained with --use-occupancy).")
     # Plan 5 (rev40): RecurrentPPO (LSTM policy) for memory across maze
     # junctions ("I just turned left at last junction; now in second
     # segment"). Critical for non-Markovian random-maze navigation.
@@ -356,8 +361,10 @@ def _wrap_env(
     enable_discrete: bool = True,
     strong_aug: bool = False,
     latency_max: int = -1,
+    enable_occupancy: bool = False,
+    occupancy_wall_cells: set | None = None,
 ):
-    """Apply v9 wrapper stack: Discrete -> Latency -> AntiSpin -> ImageAug."""
+    """Apply v9 wrapper stack: Discrete -> Latency -> AntiSpin -> ImageAug -> [Occupancy]."""
     env = base_env
     if enable_discrete:
         env = DiscreteActionWrapper(env)
@@ -385,6 +392,11 @@ def _wrap_env(
             )
         else:
             env = ImageAugObservationWrapper(env, enable=True, seed=seed)
+    if enable_occupancy:
+        # Outermost so the occupancy map is built on the un-augmented physics
+        # pose, not on whatever the image-aug wrapper might do to the obs dict.
+        from training.bc.occupancy_wrapper import EgoOccupancyMapWrapper
+        env = EgoOccupancyMapWrapper(env, wall_cells=occupancy_wall_cells)
     return env
 
 
@@ -410,6 +422,8 @@ def _make_env(
     ultrasonic_dropout_prob: float = 0.0,
     strong_aug: bool = False,
     real_cam_postprocess: bool = False,
+    enable_occupancy: bool = False,
+    occupancy_wall_cells: set | None = None,
 ):
     def _init():
         base_env = ABCorridorVisionEnv(
@@ -437,10 +451,45 @@ def _make_env(
             seed=seed + rank,
             enable_discrete=enable_discrete,
             strong_aug=strong_aug,
+            enable_occupancy=enable_occupancy,
+            occupancy_wall_cells=occupancy_wall_cells,
         )
         wrapped.reset(seed=seed + rank)
         return wrapped
     return _init
+
+
+def _occupancy_wall_cells_from_scenario(scenario_path: str) -> set | None:
+    """Read maze.path_encoded from a scenario YAML and derive the set of
+    non-path cells around the path (used by EgoOccupancyMapWrapper for the
+    synthetic-perfect raycast).
+
+    Returns None if the scenario doesn't contain a `maze.path_encoded`
+    field — the wrapper then falls back to the env's noisy ultrasonic
+    reading.
+    """
+    try:
+        import yaml
+    except ImportError:
+        return None
+    try:
+        with open(scenario_path) as f:
+            data = yaml.safe_load(f) or {}
+    except (FileNotFoundError, yaml.YAMLError):
+        return None
+    params = ((data.get("world") or {}).get("params") or {})
+    encoded = params.get("maze.path_encoded")
+    if not encoded:
+        return None
+    path_cells = {tuple(int(v) for v in p.split(",")) for p in encoded.split(";") if p}
+    walls: set = set()
+    for (cx, cz) in path_cells:
+        for dx in range(-3, 4):
+            for dz in range(-3, 4):
+                n = (cx + dx, cz + dz)
+                if n not in path_cells:
+                    walls.add(n)
+    return walls
 
 
 def _build_eval_env(args):
@@ -467,6 +516,7 @@ def _build_eval_env(args):
         ultrasonic_dropout_prob=0.0,
         real_cam_postprocess=False,
     )
+    wall_cells = _occupancy_wall_cells_from_scenario(args.scenario) if args.with_occupancy else None
     wrapped = _wrap_env(
         base_env,
         enable_aug=False,
@@ -477,6 +527,8 @@ def _build_eval_env(args):
         seed=args.seed + 9999,
         enable_discrete=not args.disable_discrete,
         strong_aug=False,
+        enable_occupancy=args.with_occupancy,
+        occupancy_wall_cells=wall_cells,
     )
     eval_seed = args.seed + 9999
     wrapped.reset(seed=eval_seed)
@@ -649,6 +701,7 @@ def main() -> int:
             ultrasonic_dropout_prob=args.ultrasonic_dropout_prob,
             real_cam_postprocess=args.real_cam_postprocess,
         )
+        train_wall_cells = _occupancy_wall_cells_from_scenario(args.scenario) if args.with_occupancy else None
         wrapped = _wrap_env(
             base_env,
             enable_aug=enable_aug,
@@ -659,6 +712,8 @@ def main() -> int:
             seed=args.seed,
             enable_discrete=not args.disable_discrete,
             strong_aug=args.strong_aug,
+            enable_occupancy=args.with_occupancy,
+            occupancy_wall_cells=train_wall_cells,
         )
         train_env = Monitor(wrapped, filename=str(log_dir / "train_v9_monitor"))
         probe_track = base_env._reset_config["selectedTrackId"]
@@ -671,6 +726,7 @@ def main() -> int:
         for i, url in enumerate(env_urls):
             print(f"    env[{i}]: {url}")
         print()
+        vec_wall_cells = _occupancy_wall_cells_from_scenario(args.scenario) if args.with_occupancy else None
         vec_env = SubprocVecEnv([
             _make_env(
                 base_url=env_urls[i],
@@ -694,6 +750,8 @@ def main() -> int:
                 ultrasonic_dropout_prob=args.ultrasonic_dropout_prob,
                 strong_aug=args.strong_aug,
                 real_cam_postprocess=args.real_cam_postprocess,
+                enable_occupancy=args.with_occupancy,
+                occupancy_wall_cells=vec_wall_cells,
             )
             for i in range(num_envs)
         ])
@@ -778,6 +836,10 @@ def main() -> int:
         extra_policy_kwargs["features_extractor_class"] = R3MFeatureExtractor
         extra_policy_kwargs["features_extractor_kwargs"] = dict(features_dim=args.feature_dim)
         print(f"  Feature extractor: R3M (frozen ResNet18) -> {args.feature_dim}-d")
+    elif args.with_occupancy:
+        from training.bc.policies import MultiModalOccupancyExtractor
+        extra_policy_kwargs["features_extractor_class"] = MultiModalOccupancyExtractor
+        print(f"  Feature extractor: MultiModalOccupancy (NatureCNN+MapCNN, 641-d)")
     else:
         print("  Feature extractor: SB3 default (NatureCNN)")
 
