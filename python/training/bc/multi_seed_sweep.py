@@ -43,6 +43,7 @@ class SweepPlan:
     scenario: str = ""
     env_kwargs: dict = field(default_factory=dict)
     eval_kwargs: dict = field(default_factory=dict)
+    with_occupancy: bool = False
 
 
 @dataclass
@@ -99,6 +100,8 @@ def execute_run(plan: SweepPlan, run: PendingRun) -> int:
     ]
     if plan.init_from:
         cmd += ["--bc-init", str(plan.init_from)]
+    if plan.with_occupancy:
+        cmd += ["--with-occupancy"]
     if plan.env_kwargs:
         cmd += ["--env-kwargs-json", json.dumps(plan.env_kwargs)]
     if plan.eval_kwargs:
@@ -163,6 +166,7 @@ def main():
             scenario=cfg["scenario"],
             env_kwargs=cfg.get("env", {}),
             eval_kwargs=cfg.get("eval", {}),
+            with_occupancy=bool(branch.get("with_occupancy", False)),
         ))
     run_sweep(plans)
 

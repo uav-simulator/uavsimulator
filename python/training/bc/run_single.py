@@ -35,6 +35,10 @@ def main():
     # not consumed by train_cardboard_corridor_v9 (which takes flat args).
     p.add_argument("--env-kwargs-json", type=str, default="{}")
     p.add_argument("--eval-kwargs-json", type=str, default="{}")
+    p.add_argument("--with-occupancy", action="store_true",
+                   help="Pass --with-occupancy to train_cardboard_corridor_v9 so the env "
+                        "gains the occupancy modality and the policy uses the multi-modal "
+                        "features extractor. Required when --bc-init is a multi-modal BC.")
     args = p.parse_args()
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
@@ -53,6 +57,8 @@ def main():
     ]
     if args.bc_init:
         cmd += ["--bc-init", str(args.bc_init)]
+    if args.with_occupancy:
+        cmd += ["--with-occupancy"]
 
     rc = subprocess.call(cmd)
     if rc != 0:
