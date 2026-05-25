@@ -117,6 +117,39 @@ def build_discrete_predictor(model_path: Path):
     raise ValueError(f"Unsupported model format: {model_path}")
 
 
+def _occupancy_wall_cells_from_scenario(scenario_path: str) -> set | None:
+    """Read maze.path_encoded from a scenario YAML and derive the set of
+    non-path cells around the path. Mirror of the helper in
+    train_cardboard_corridor_v9.py — kept duplicated rather than imported
+    so this file remains a stand-alone CLI without train_v9's heavy deps.
+
+    Returns None if the scenario doesn't contain a `maze.path_encoded`
+    field — the wrapper then falls back to the env's noisy ultrasonic.
+    """
+    try:
+        import yaml
+    except ImportError:
+        return None
+    try:
+        with open(scenario_path) as f:
+            data = yaml.safe_load(f) or {}
+    except (FileNotFoundError, Exception):
+        return None
+    params = ((data.get("world") or {}).get("params") or {})
+    encoded = params.get("maze.path_encoded")
+    if not encoded:
+        return None
+    path_cells = {tuple(int(v) for v in p.split(",")) for p in encoded.split(";") if p}
+    walls: set = set()
+    for (cx, cz) in path_cells:
+        for dx in range(-3, 4):
+            for dz in range(-3, 4):
+                n = (cx + dx, cz + dz)
+                if n not in path_cells:
+                    walls.add(n)
+    return walls
+
+
 def evaluate(args):
     if args.model.strip():
         model_path = Path(args.model).expanduser().resolve()
@@ -130,6 +163,27 @@ def evaluate(args):
         raise FileNotFoundError(f"Model file not found: {model_path}")
 
     predict, model_kind = build_discrete_predictor(model_path)
+
+    # Peek at the saved model's obs_space to auto-detect whether the trained
+    # policy expects the occupancy modality. If yes, wrap the eval env in
+    # EgoOccupancyMapWrapper — otherwise the policy's first call to
+    # `observations["occupancy"]` would KeyError.
+    #
+    # We auto-detect (rather than require a --with-occupancy CLI flag) so
+    # this works transparently for any sb3.zip the sweep produces, without
+    # the sweep runner needing to plumb a flag through evaluate_v9.
+    needs_occupancy = False
+    if model_path.suffix.lower() == ".zip":
+        try:
+            from stable_baselines3 import PPO
+            _peek = PPO.load(str(model_path), device="cpu")
+            needs_occupancy = "occupancy" in _peek.observation_space.spaces
+            del _peek
+        except Exception:
+            # If the peek fails for any reason, fall through to the no-
+            # occupancy path; the predictor itself will produce a clean
+            # error message later if there's a real arch mismatch.
+            pass
 
     base_env = ABCorridorVisionEnv(
         base_url=args.base_url,
@@ -148,6 +202,19 @@ def evaluate(args):
     if args.latency_steps > 0:
         env = DelayedActionWrapper(env, delay_steps=args.latency_steps)
         print(f"  DelayedActionWrapper enabled: delay_steps={args.latency_steps}")
+    if needs_occupancy:
+        # Apply the same wrapper as training so the eval env produces the
+        # `occupancy` key in obs. wall_cells from the scenario's static
+        # path_encoded enables a clean synthetic raycast; when the scenario
+        # has no maze.path_encoded (or randomized geometry) the wrapper
+        # falls back to obs["ultrasonic"].
+        from training.bc.occupancy_wrapper import EgoOccupancyMapWrapper
+        wall_cells = _occupancy_wall_cells_from_scenario(args.scenario)
+        env = EgoOccupancyMapWrapper(env, wall_cells=wall_cells)
+        print(
+            f"  EgoOccupancyMapWrapper enabled (auto-detected from model obs_space). "
+            f"wall_cells={'derived from scenario' if wall_cells else 'None — fallback to noisy ultrasonic'}"
+        )
 
     # Plan 2 (rev38): frame stacking buffer — concat last k frames channel-wise
     # for image AND last k ultrasonic readings concat-axis-0 for sonar.
