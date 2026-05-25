@@ -54,11 +54,25 @@ class BcConfig:
     # (DirStop ~2% of the corpus) get repeated ~15× per epoch, so add a small
     # amount of overfitting risk; use modest epochs.
     class_balanced: bool = False
+    # When True: train a multi-modal policy that consumes the ego-centric
+    # occupancy map in addition to (image, ultrasonic). Requires every sample
+    # in the corpus to carry an `occupancy` tensor (see training.bc.occupancy
+    # for the offline reconstructor that adds these to existing demos).
+    use_occupancy: bool = False
 
 
 class _BcTorchDataset(Dataset):
-    def __init__(self, samples: list[BcSample]) -> None:
+    def __init__(self, samples: list[BcSample], use_occupancy: bool = False) -> None:
         self._samples = samples
+        self._use_occupancy = use_occupancy
+        if use_occupancy:
+            missing = sum(1 for s in samples if s.occupancy is None)
+            if missing:
+                raise ValueError(
+                    f"use_occupancy=True but {missing}/{len(samples)} samples have no "
+                    f"occupancy tensor. Run training.bc.occupancy.reconstruct_for_demo "
+                    f"to build occupancy_<tag>.npy next to each MP4 first."
+                )
 
     def __len__(self) -> int:
         return len(self._samples)
@@ -68,6 +82,9 @@ class _BcTorchDataset(Dataset):
         frame = torch.from_numpy(np.ascontiguousarray(s.frame.transpose(2, 0, 1))).float() / 255.0
         ultra = torch.tensor([s.ultrasonic], dtype=torch.float32)
         action = torch.tensor(s.action_idx, dtype=torch.long)
+        if self._use_occupancy:
+            occ = torch.from_numpy(np.ascontiguousarray(s.occupancy)).float()
+            return frame, ultra, occ, action
         return frame, ultra, action
 
 
@@ -104,6 +121,74 @@ class _NatureCnnHead(nn.Module):
         return self.action_net(latent)
 
 
+# Occupancy-aware multi-modal model: same NatureCNN over the image branch
+# (so the BC checkpoint is structurally compatible with the existing PPO
+# starting point), plus a small CNN branch over the 21×21×3 ego-centric
+# map, plus the ultrasonic scalar. Features concatenate and feed the same
+# Tanh-MLP head as _NatureCnnHead. Output dim and final action_net are
+# identical so the SB3 lift in export_sb3 can reuse the same weights for
+# the image/policy/action submodules.
+MAP_CNN_OUTPUT_DIM = 128
+
+
+class _MapCnn(nn.Module):
+    """Compact CNN over a (3, 21, 21) ego-centric occupancy window."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.cnn = nn.Sequential(
+            nn.Conv2d(3, 32, kernel_size=3, stride=1, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),
+            nn.ReLU(),
+            nn.Conv2d(64, 64, kernel_size=3, stride=2, padding=1),
+            nn.ReLU(),
+            nn.Flatten(),
+        )
+        with torch.no_grad():
+            n_flatten = self.cnn(torch.zeros(1, 3, 21, 21)).shape[1]
+        self.linear = nn.Sequential(nn.Linear(n_flatten, MAP_CNN_OUTPUT_DIM), nn.ReLU())
+
+    def forward(self, occ: torch.Tensor) -> torch.Tensor:
+        return self.linear(self.cnn(occ))
+
+
+class _MultiModalHead(nn.Module):
+    """NatureCNN(image) + ultrasonic + MapCNN(occupancy) → MLP → action logits."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        # Reuse NatureCNN architecture verbatim for the image branch.
+        self.cnn = nn.Sequential(
+            nn.Conv2d(3, 32, kernel_size=8, stride=4, padding=0),
+            nn.ReLU(),
+            nn.Conv2d(32, 64, kernel_size=4, stride=2, padding=0),
+            nn.ReLU(),
+            nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=0),
+            nn.ReLU(),
+            nn.Flatten(),
+        )
+        with torch.no_grad():
+            n_flatten = self.cnn(torch.zeros(1, 3, FRAME_SIZE, FRAME_SIZE)).shape[1]
+        self.linear = nn.Sequential(nn.Linear(n_flatten, CNN_OUTPUT_DIM), nn.ReLU())
+        self.map_cnn = _MapCnn()
+        combined_dim = CNN_OUTPUT_DIM + 1 + MAP_CNN_OUTPUT_DIM
+        self.policy_net = nn.Sequential(
+            nn.Linear(combined_dim, MLP_HIDDEN),
+            nn.Tanh(),
+            nn.Linear(MLP_HIDDEN, MLP_HIDDEN),
+            nn.Tanh(),
+        )
+        self.action_net = nn.Linear(MLP_HIDDEN, N_ACTIONS)
+
+    def forward(self, frame: torch.Tensor, ultra: torch.Tensor, occ: torch.Tensor) -> torch.Tensor:
+        img_features = self.linear(self.cnn(frame))
+        map_features = self.map_cnn(occ)
+        combined = torch.cat([img_features, ultra, map_features], dim=1)
+        latent = self.policy_net(combined)
+        return self.action_net(latent)
+
+
 def _seed_everything(seed: int) -> None:
     random.seed(seed)
     np.random.seed(seed)
@@ -115,10 +200,13 @@ class BcTrainer:
         self.cfg = cfg
         _seed_everything(cfg.seed)
         self.device = torch.device(cfg.device)
-        self.model = _NatureCnnHead().to(self.device)
+        if cfg.use_occupancy:
+            self.model = _MultiModalHead().to(self.device)
+        else:
+            self.model = _NatureCnnHead().to(self.device)
 
     def fit(self, samples: list[BcSample]) -> dict[str, list[float]]:
-        dataset = _BcTorchDataset(samples)
+        dataset = _BcTorchDataset(samples, use_occupancy=self.cfg.use_occupancy)
         if self.cfg.class_balanced:
             # WeightedRandomSampler with per-sample weight = 1/freq(class) makes
             # batches class-uniform in expectation. Action classes never observed
@@ -151,7 +239,23 @@ class BcTrainer:
                 generator=torch.Generator().manual_seed(self.cfg.seed),
             )
         optimizer = torch.optim.Adam(self.model.parameters(), lr=self.cfg.lr)
-        loss_fn = nn.CrossEntropyLoss()
+        if self.cfg.class_balanced:
+            # In addition to the WeightedRandomSampler that balances *batch
+            # composition*, also class-weight the loss itself: each sample's
+            # gradient gets scaled by 1/freq(class). Together they fight the
+            # mode-collapse-to-majority failure mode on long training runs,
+            # where the sampler alone is insufficient because the model's
+            # action_net bias still drifts toward the majority class once
+            # CNN features stop discriminating.
+            class_counts = Counter(s.action_idx for s in samples)
+            total_samples = sum(class_counts.values())
+            weights = torch.zeros(N_ACTIONS, device=self.device)
+            for k, v in class_counts.items():
+                weights[k] = total_samples / (N_ACTIONS * max(v, 1))
+            loss_fn = nn.CrossEntropyLoss(weight=weights)
+            print(f"[bc] class-weighted CE loss: {weights.tolist()}", flush=True)
+        else:
+            loss_fn = nn.CrossEntropyLoss()
 
         history: dict[str, list[float]] = {"train_loss": [], "train_accuracy": []}
         for epoch in range(self.cfg.epochs):
@@ -159,11 +263,20 @@ class BcTrainer:
             running_loss = 0.0
             correct = 0
             total = 0
-            for frame, ultra, action in loader:
-                frame = frame.to(self.device)
-                ultra = ultra.to(self.device)
-                action = action.to(self.device)
-                logits = self.model(frame, ultra)
+            for batch in loader:
+                if self.cfg.use_occupancy:
+                    frame, ultra, occ, action = batch
+                    frame = frame.to(self.device)
+                    ultra = ultra.to(self.device)
+                    occ = occ.to(self.device)
+                    action = action.to(self.device)
+                    logits = self.model(frame, ultra, occ)
+                else:
+                    frame, ultra, action = batch
+                    frame = frame.to(self.device)
+                    ultra = ultra.to(self.device)
+                    action = action.to(self.device)
+                    logits = self.model(frame, ultra)
                 loss = loss_fn(logits, action)
                 optimizer.zero_grad()
                 loss.backward()
@@ -188,6 +301,30 @@ class BcTrainer:
         and a later n_steps=256 override would NOT reallocate the buffer,
         causing an AssertionError on the first train() call.
         """
+        if self.cfg.use_occupancy:
+            # SB3 lift requires a custom features_extractor that knows about the
+            # occupancy modality. For now, just save the torch state_dict; the
+            # multi-modal SB3 integration lives in MAP-3 (env wrapper) so that
+            # we register the same custom extractor for both BC export and PPO
+            # init. Until then, the multi-modal BC checkpoint is consumable via
+            # `torch.load(...)`.
+            output = Path(output_zip).with_suffix(".pt")
+            output.parent.mkdir(parents=True, exist_ok=True)
+            torch.save({
+                "model_state_dict": self.model.state_dict(),
+                "modality": "image+ultrasonic+occupancy",
+                "config": {
+                    "epochs": self.cfg.epochs,
+                    "batch_size": self.cfg.batch_size,
+                    "lr": self.cfg.lr,
+                    "seed": self.cfg.seed,
+                    "class_balanced": self.cfg.class_balanced,
+                    "use_occupancy": True,
+                },
+            }, output)
+            print(f"[bc] saved multi-modal torch checkpoint: {output}", flush=True)
+            print(f"[bc] SB3 export skipped — needs custom features_extractor for occupancy modality (MAP-3 task).", flush=True)
+            return
         import gymnasium as gym
         from gymnasium import spaces
         from stable_baselines3 import PPO

@@ -51,6 +51,8 @@ class BcSample:
     frame: np.ndarray  # (84, 84, 3) uint8 RGB
     ultrasonic: float  # normalised distance in [0, 1]
     action_idx: int    # 0..4 (cf. ACTION_NAMES)
+    occupancy: np.ndarray | None = None  # (3, 21, 21) float32 ego-centric occupancy
+                                         # (None for pre-occupancy demos / when not requested)
 
 
 def _parse_ts(ts: str) -> float:
@@ -124,6 +126,22 @@ def load_session(jsonl_path: Path, video_path: Path) -> list[BcSample]:
         fps = DEFAULT_FPS  # rare: container lacked FPS metadata
     frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
 
+    # If an occupancy_<tag>.npy lives next to the MP4 (offline-reconstructed
+    # by training.bc.occupancy), load it and align each command to its
+    # corresponding map frame. Falls back to None silently when absent —
+    # the multi-modal trainer treats None as "skip occupancy input" for
+    # backwards compatibility with sprint-3 demos.
+    occupancy_array: np.ndarray | None = None
+    # MP4 layout: autopilot_<YYYYMMDD>_<HHMMSS>_<tag>.mp4 where <tag> itself
+    # can contain underscores. We strip the autopilot_ prefix and the
+    # YYYYMMDD_HHMMSS to recover <tag>.
+    stem_parts = video_path.stem.split("_")
+    if len(stem_parts) >= 4 and stem_parts[0] == "autopilot":
+        tag = "_".join(stem_parts[3:])
+        occ_path = video_path.parent / f"occupancy_{tag}.npy"
+        if occ_path.exists():
+            occupancy_array = np.load(occ_path)
+
     # Sequential read: events are sorted by timestamp (monotonic), so we advance the
     # decoder forward instead of `cap.set(CAP_PROP_POS_FRAMES, k)` per sample
     # (the latter forces seek-to-keyframe + decode-forward, 10-100× slower on H.264).
@@ -146,11 +164,19 @@ def load_session(jsonl_path: Path, video_path: Path) -> list[BcSample]:
                 next_frame_idx += 1
             if not ok or current_bgr is None:
                 continue
+            # Pull the occupancy slice that corresponds to this frame index.
+            # next_frame_idx − 1 is the last frame we read (= `target`).
+            occ_slice = None
+            if occupancy_array is not None:
+                idx = min(next_frame_idx - 1, occupancy_array.shape[0] - 1)
+                if idx >= 0:
+                    occ_slice = occupancy_array[idx]
             samples.append(
                 BcSample(
                     frame=_resize_frame(current_bgr),
                     ultrasonic=ultra,
                     action_idx=ACTION_TO_INDEX[cmd],
+                    occupancy=occ_slice,
                 )
             )
     finally:

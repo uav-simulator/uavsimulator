@@ -27,6 +27,14 @@ def main() -> None:
              "Prevents mode collapse on imbalanced action corpora (e.g. when ~38%% of "
              "labels are DirForward and the model would otherwise just learn the prior).",
     )
+    fit.add_argument(
+        "--use-occupancy",
+        action="store_true",
+        help="Train a multi-modal policy that consumes the ego-centric occupancy map "
+             "alongside (image, ultrasonic). Each demo MP4 must have a paired "
+             "occupancy_<tag>.npy in the same directory (see training.bc.occupancy "
+             "for the offline reconstructor).",
+    )
 
     args = p.parse_args()
     if args.command == "fit":
@@ -40,6 +48,7 @@ def main() -> None:
             device=args.device,
             seed=args.seed,
             class_balanced=args.class_balanced,
+            use_occupancy=args.use_occupancy,
         )
         trainer = BcTrainer(cfg)
         history = trainer.fit(samples)
