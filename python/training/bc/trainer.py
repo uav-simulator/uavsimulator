@@ -242,18 +242,23 @@ class BcTrainer:
         if self.cfg.class_balanced:
             # In addition to the WeightedRandomSampler that balances *batch
             # composition*, also class-weight the loss itself: each sample's
-            # gradient gets scaled by 1/freq(class). Together they fight the
-            # mode-collapse-to-majority failure mode on long training runs,
-            # where the sampler alone is insufficient because the model's
-            # action_net bias still drifts toward the majority class once
-            # CNN features stop discriminating.
+            # gradient gets scaled by sqrt(median_freq / freq(class)). Standard
+            # `median-frequency balancing` (Eigen & Fergus 2015) — less
+            # aggressive than full inverse-frequency, which over-shoots
+            # toward minority classes (e.g. 47× weight on DirStop when it's
+            # 5 % of the corpus, pushing the model to over-predict Stop).
+            # Square root tempers the imbalance so the rare classes still
+            # get up-weighted but no class dominates by more than ~3×.
+            import math as _math
             class_counts = Counter(s.action_idx for s in samples)
-            total_samples = sum(class_counts.values())
+            present_counts = [v for v in class_counts.values() if v > 0]
+            median_freq = sorted(present_counts)[len(present_counts) // 2]
             weights = torch.zeros(N_ACTIONS, device=self.device)
             for k, v in class_counts.items():
-                weights[k] = total_samples / (N_ACTIONS * max(v, 1))
+                if v > 0:
+                    weights[k] = _math.sqrt(median_freq / v)
             loss_fn = nn.CrossEntropyLoss(weight=weights)
-            print(f"[bc] class-weighted CE loss: {weights.tolist()}", flush=True)
+            print(f"[bc] sqrt median-freq CE weights: {weights.tolist()}", flush=True)
         else:
             loss_fn = nn.CrossEntropyLoss()
 
