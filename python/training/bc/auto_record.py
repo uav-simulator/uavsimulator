@@ -262,15 +262,27 @@ def drive_episode(
     If video_path is provided, writes an MP4 with one frame per command tick
     so bc.dataset.load_session can pair frames to actions by timestamp.
     """
-    # Wider Forward band (25°) + tight recovery band (5°): see choose_action
-    # docstring. Empirically eliminates the bang-bang zigzag that the previous
-    # one-band (15°) controller produced.
-    forward_band_deg = 25.0
-    recovery_band_deg = 5.0
-    last_cmd = "DirStop"  # threaded into choose_action for hysteresis
+    # Two-phase controller per segment:
+    #   ALIGN  — rotate (with steer ±1) until heading is within ALIGN_TOL of
+    #            the line-to-target. While aligning, throttle=0.5 (the wrapper's
+    #            DirLeft/Right physics), so robot also drifts forward — fine,
+    #            this just shortens the subsequent DRIVE.
+    #   DRIVE  — pure Forward (throttle=1) until the target's reach_distance
+    #            is met. NO heading correction during DRIVE: the BC student
+    #            sees a long sequence of clean Forward labels on identical
+    #            "corridor-straight-ahead" frames. Drift inside the 0.45 m
+    #            corridor is bounded by the walls and self-corrects on the
+    #            next ALIGN phase. This matches what a human operator does
+    #            — point the robot, drive, point the robot, drive — and
+    #            avoids the mid-segment L/R micro-corrections that earlier
+    #            single-phase controllers produced.
+    align_tol_deg = 6.0
+    last_cmd = "DirStop"
+    phase = "ALIGN"
     wp_index = 0
     last_progress_step = 0
     steps_taken = 0
+    min_dist_to_target = float("inf")  # per-segment minimum, resets when target switches
     actions_sent: dict[str, int] = {a: 0 for a in ACTIONS}
     video_writer = None  # initialised on first frame (size known from /step response)
 
@@ -306,16 +318,59 @@ def drive_episode(
             wp_index += 1
             last_progress_step = steps_taken
             last_pose = None
+            phase = "ALIGN"  # new segment → re-enter align phase
+            min_dist_to_target = float("inf")
             continue
 
-        cmd = choose_action(
-            pose, target_x, target_z,
-            forward_band_deg=forward_band_deg, rng=rng,
-            spurious_turn_prob=spurious_turn_prob,
-            spurious_stop_prob=spurious_stop_prob,
-            last_cmd=last_cmd,
-            recovery_band_deg=recovery_band_deg,
-        )
+        # Track min-dist this segment. If current dist exceeds 1.5× the
+        # minimum we've seen, the robot has visibly drifted past the
+        # target and pure Forward will never recover — drop back to ALIGN.
+        if dist < min_dist_to_target:
+            min_dist_to_target = dist
+        elif phase == "DRIVE" and dist > min_dist_to_target * 1.5 and min_dist_to_target < 1.0:
+            phase = "ALIGN"
+
+        # Heading error to current target
+        px, pz = pose["position"]["x"], pose["position"]["z"]
+        yaw = quaternion_to_yaw_deg(pose["rotation"])
+        desired_yaw = math.degrees(math.atan2(target_x - px, target_z - pz))
+        err = angle_diff(yaw, desired_yaw)
+
+        # Operator-noise (zero on curated demos).
+        if spurious_turn_prob > 0 and rng.random() < spurious_turn_prob:
+            cmd = rng.choice(["DirLeft", "DirRight"])
+        elif spurious_stop_prob > 0 and rng.random() < spurious_stop_prob:
+            cmd = "DirStop"
+        elif phase == "ALIGN":
+            # Rotate toward target; transition to DRIVE only once within
+            # tight ALIGN_TOL. Hysteresis is implicit in the phase
+            # variable — we don't drop back to ALIGN until either
+            # reach_distance is hit or the robot overshoots the target.
+            if abs(err) <= align_tol_deg:
+                phase = "DRIVE"
+                cmd = "DirForward"
+            elif err > 0:
+                cmd = "DirRight"
+            else:
+                cmd = "DirLeft"
+        else:  # DRIVE
+            # Pure forward unless heading has wandered far enough that the
+            # robot will hit a corridor wall. We tolerate up to drive_band_deg
+            # of drift — wider than ALIGN_TOL because mid-segment small
+            # heading errors are fine: the corridor (0.45 m wide) rails the
+            # robot back and the next ALIGN at the corner cleans up. Only
+            # commit to a corrective turn if drift is large enough that the
+            # robot is heading clearly off-axis. This keeps the action
+            # sequence "F F F F F F F F" for most of each segment with at
+            # most one brief Turn correction in the middle, rather than
+            # the bang-bang L-F-R-F-L-F pattern of the earlier single-band
+            # controller.
+            drive_band_deg = 18.0
+            if abs(err) > drive_band_deg:
+                cmd = "DirRight" if err > 0 else "DirLeft"
+            else:
+                cmd = "DirForward"
+
         last_cmd = cmd
         # Apply the command via /step (actually moves the robot) AND through
         # WebUI /api/command (logs it to session JSONL for BC training).
@@ -413,19 +468,29 @@ _START_X = 20
 _START_Z = 20
 
 
-def _waypoints_from_path_encoded(path_encoded: str, corridor_width_m: float = _CELL_M) -> list[tuple[float, float]]:
+def _waypoints_from_path_encoded(
+    path_encoded: str, corridor_width_m: float = _CELL_M, *, corners_only: bool = False,
+) -> list[tuple[float, float]]:
     """Convert a maze.path_encoded grid-cell string into world (x, z) waypoint coords.
 
     Matches the formula in maze_generator._build_geometry — the C# track
     builder uses the same offset (start at grid cell (20, 20)) so cells line
     up with the geometry on both sides.
+
+    `corners_only=True` filters to just the cells where the cardinal direction
+    changes (plus start and goal). Targeting only these eliminates the
+    every-half-meter retarget that produces mid-segment heading wobble: the
+    auto-pilot aligns to the new segment direction at the corner, drives a
+    pure Forward run to the next corner, aligns again. See `control_points`
+    in curated_paths.py.
     """
-    waypoints: list[tuple[float, float]] = []
-    for pair in path_encoded.split(";"):
-        gx, gz = pair.split(",")
-        waypoints.append(((int(gx) - _START_X) * corridor_width_m,
-                          (int(gz) - _START_Z) * corridor_width_m))
-    return waypoints
+    if corners_only:
+        from training.bc.curated_paths import control_points
+        cells = control_points(path_encoded)
+    else:
+        cells = [tuple(int(v) for v in pair.split(",")) for pair in path_encoded.split(";")]
+    return [((gx - _START_X) * corridor_width_m,
+             (gz - _START_Z) * corridor_width_m) for (gx, gz) in cells]
 
 
 def _render_topology_preview(path_encoded: str, png_path: Path, title: str) -> None:
@@ -473,11 +538,23 @@ def _record_one_episode(
     max_steps: int, reach: float, rng: random.Random,
     spurious_turn_prob: float, spurious_stop_prob: float,
     manifest_extras: dict,
+    corners_only: bool = True,
 ) -> dict:
-    """Reset sim to the given maze topology, record one episode, write manifest."""
-    waypoints = _waypoints_from_path_encoded(path_encoded)
+    """Reset sim to the given maze topology, record one episode, write manifest.
+
+    `corners_only=True` (default for curated demos) makes the auto-pilot
+    target only direction-change cells in the path, not every grid cell —
+    this gives clean align-at-corner / drive-straight-between-corners
+    behaviour instead of the bang-bang-around-every-cell pattern the
+    full-waypoint targeting was producing.
+    """
+    waypoints = _waypoints_from_path_encoded(path_encoded, corners_only=corners_only)
+    all_cells = len(path_encoded.split(";"))
     print(f"\n=== Episode {i}/{total} — tag={tag} ===", flush=True)
-    print(f"  waypoints: {len(waypoints)} cells", flush=True)
+    if corners_only:
+        print(f"  targets: {len(waypoints)} corner cells (path has {all_cells} cells total)", flush=True)
+    else:
+        print(f"  targets: {len(waypoints)} cells", flush=True)
 
     patch_yaml_seed_and_path(yaml_path, manifest_extras.get("seed", 42), path_encoded)
     reset_info = reset_scenario(yaml_path)

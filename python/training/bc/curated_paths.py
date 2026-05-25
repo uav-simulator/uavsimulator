@@ -83,3 +83,28 @@ def turn_count(path: str) -> tuple[int, int]:
         if delta == 1: right += 1
         elif delta == 3: left += 1
     return left, right
+
+
+def control_points(path: str) -> list[tuple[int, int]]:
+    """Pull the corner cells from a path — everywhere the cardinal direction
+    changes, plus the start and the goal.
+
+    Why: the BC auto-pilot uses these as its target sequence rather than every
+    grid cell. Targeting *every* cell means the controller re-aims every ~5
+    ticks (cell side is 0.45 m, robot moves ~0.1 m/tick) and the discrete
+    L/R/F commands oscillate around a moving heading reference — the BC
+    student sees the same straight-corridor frame labeled F, then L, then F,
+    then R, then F, with no consistent visual cue for the noise. Targeting
+    only corners gives long pure-Forward runs along each straight segment and
+    one sustained Turn at each corner: clean, learnable.
+    """
+    cells = [tuple(int(v) for v in pair.split(",")) for pair in path.split(";")]
+    if len(cells) < 2:
+        return cells
+    moves = turn_sequence(path)
+    pts: list[tuple[int, int]] = [cells[0]]
+    for i in range(1, len(cells) - 1):
+        if moves[i - 1] != moves[i]:  # incoming direction != outgoing → corner
+            pts.append(cells[i])
+    pts.append(cells[-1])
+    return pts
