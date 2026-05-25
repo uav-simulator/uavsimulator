@@ -15,11 +15,12 @@ runtime:
 world:
   trackId: track.cardboard_maze.v1
   params:
-    maze.seed: 42
-    maze.length_cells: 40           # 40 cells = 18m total path
+    maze.seed: 43
+    maze.length_cells: 30           # 30 cells × 0.45m = 13.5m total navigation path
     maze.corridor_width_m: 0.45     # tight enough to demand deliberate steering (14cm clearance each side)
-    maze.left_turns: 5              # 3+3 turns hangs the drunk-walk generator for L=40; 5+5 works
-    maze.right_turns: 5             # avg ~5 cells = 2.3m per straight segment; longest segment ~3.6m
+    maze.left_turns: 6              # L=30 with T=6 works for 25/29 seeds in 42..70; L=40 was pathological
+    maze.right_turns: 6
+    maze.path_encoded: "20,20;20,21;19,21;18,21;18,22;17,22;16,22;16,23;17,23;17,24;17,25;18,25;18,26;19,26;19,25;19,24;19,23;19,22;20,22;21,22;22,22;23,22;24,22;24,23;24,24;24,25;24,26;24,27;24,28;24,29"
     maze.wall_height_m: 0.25
 
 vehicle:
