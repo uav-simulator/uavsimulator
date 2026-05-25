@@ -279,6 +279,7 @@ def drive_episode(
     align_tol_deg = 6.0
     last_cmd = "DirStop"
     phase = "ALIGN"
+    settle_ticks_left = 0  # countdown for STOP-to-kill-angular-momentum sub-phase
     wp_index = 0
     last_progress_step = 0
     steps_taken = 0
@@ -342,17 +343,33 @@ def drive_episode(
         elif spurious_stop_prob > 0 and rng.random() < spurious_stop_prob:
             cmd = "DirStop"
         elif phase == "ALIGN":
-            # Rotate toward target; transition to DRIVE only once within
-            # tight ALIGN_TOL. Hysteresis is implicit in the phase
-            # variable — we don't drop back to ALIGN until either
-            # reach_distance is hit or the robot overshoots the target.
+            # Rotate toward target; once within ALIGN_TOL, brake hard for a
+            # couple ticks to kill the rotational momentum (otherwise the
+            # robot keeps spinning past target for ~20° while we already
+            # commanded DirForward — see the right-L pilot demo where this
+            # left the robot 10-13 cm off the corridor centreline for the
+            # entire east segment).
             if abs(err) <= align_tol_deg:
-                phase = "DRIVE"
-                cmd = "DirForward"
+                phase = "SETTLE"
+                settle_ticks_left = 2
+                cmd = "DirStop"
             elif err > 0:
                 cmd = "DirRight"
             else:
                 cmd = "DirLeft"
+        elif phase == "SETTLE":
+            # Brake-hold for `settle_ticks_left` ticks to kill the rotational
+            # momentum, then go straight to DRIVE regardless of any small
+            # residual heading drift — the DRIVE phase's own ±18° band
+            # tolerates residuals, and re-entering ALIGN here just thrashes
+            # the controller through an ALIGN→SETTLE→ALIGN loop driven by
+            # the momentum we were trying to kill.
+            settle_ticks_left -= 1
+            if settle_ticks_left <= 0:
+                phase = "DRIVE"
+                cmd = "DirForward"
+            else:
+                cmd = "DirStop"
         else:  # DRIVE
             # Pure forward unless heading has wandered far enough that the
             # robot will hit a corridor wall. We tolerate up to drive_band_deg
