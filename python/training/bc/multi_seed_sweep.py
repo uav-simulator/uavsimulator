@@ -44,6 +44,12 @@ class SweepPlan:
     env_kwargs: dict = field(default_factory=dict)
     eval_kwargs: dict = field(default_factory=dict)
     with_occupancy: bool = False
+    # Frame-stacking k (1 = no stacking, single frame). Plumbed through
+    # train_cardboard_corridor_v9 which wraps train_env in SB3's VecFrameStack.
+    # Camera-only alternative to with_occupancy — feasible on KS0223 (which
+    # has no pose sensor and would need pose estimation for the occupancy
+    # accumulator).
+    frame_stack: int = 1
 
 
 @dataclass
@@ -102,6 +108,8 @@ def execute_run(plan: SweepPlan, run: PendingRun) -> int:
         cmd += ["--bc-init", str(plan.init_from)]
     if plan.with_occupancy:
         cmd += ["--with-occupancy"]
+    if plan.frame_stack > 1:
+        cmd += ["--frame-stack", str(plan.frame_stack)]
     if plan.env_kwargs:
         cmd += ["--env-kwargs-json", json.dumps(plan.env_kwargs)]
     if plan.eval_kwargs:
@@ -167,6 +175,7 @@ def main():
             env_kwargs=cfg.get("env", {}),
             eval_kwargs=cfg.get("eval", {}),
             with_occupancy=bool(branch.get("with_occupancy", False)),
+            frame_stack=int(branch.get("frame_stack", 1)),
         ))
     run_sweep(plans)
 

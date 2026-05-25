@@ -39,6 +39,13 @@ def main():
                    help="Pass --with-occupancy to train_cardboard_corridor_v9 so the env "
                         "gains the occupancy modality and the policy uses the multi-modal "
                         "features extractor. Required when --bc-init is a multi-modal BC.")
+    p.add_argument("--frame-stack", type=int, default=1,
+                   help="Pass --frame-stack k to train_cardboard_corridor_v9 so the env "
+                        "wraps in VecFrameStack(k) — the policy then sees k channel-wise "
+                        "concatenated frames as its image observation. k=1 (default) "
+                        "is single-frame; k=4 is the standard DQN/Atari memory mechanism. "
+                        "Camera-only memory alternative to --with-occupancy (the latter "
+                        "needs robot pose which isn't sensed on real KS0223).")
     args = p.parse_args()
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
@@ -59,6 +66,8 @@ def main():
         cmd += ["--bc-init", str(args.bc_init)]
     if args.with_occupancy:
         cmd += ["--with-occupancy"]
+    if args.frame_stack > 1:
+        cmd += ["--frame-stack", str(args.frame_stack)]
 
     rc = subprocess.call(cmd)
     if rc != 0:
