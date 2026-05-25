@@ -91,6 +91,7 @@ namespace UavSimulator.Tracks
 
         public override void ResetTrack(int fallbackSeed)
         {
+            Debug.Log($"[MazeTrack] ResetTrack START seed={seed} L={lengthCells} W={corridorWidth} T={leftTurns}+{rightTurns}");
             // rev37: DestroyImmediate so children are gone *this* frame; Destroy()
             // pending objects make Unity report transform.childCount > 0 and the
             // build can be skipped silently. Same trick as CardboardCorridorTrack.
@@ -98,6 +99,7 @@ namespace UavSimulator.Tracks
             {
                 UnityEngine.Object.DestroyImmediate(transform.GetChild(i).gameObject);
             }
+            Debug.Log("[MazeTrack] children destroyed");
 
             // rev37: per-reset RNG. `seed` comes from trackParams ("maze.seed")
             // when Python sets it; otherwise SerializeField default applies.
@@ -108,6 +110,7 @@ namespace UavSimulator.Tracks
             {
                 JitterPalette();
             }
+            Debug.Log("[MazeTrack] palette jittered");
 
             var parameters = new MazeParams
             {
@@ -149,8 +152,10 @@ namespace UavSimulator.Tracks
                 }
             }
             geometry = g;
+            Debug.Log($"[MazeTrack] geometry ready: {g.FloorCells?.Length ?? 0} floor cells, {g.Walls?.Length ?? 0} walls");
 
             BuildFromGeometry(g);
+            Debug.Log("[MazeTrack] ResetTrack DONE");
         }
 
         public override Vector3? GetDefaultSpawnPosition() => geometry?.SpawnPosition;
@@ -161,11 +166,17 @@ namespace UavSimulator.Tracks
 
         private void BuildFromGeometry(MazeGeometry g)
         {
+            Debug.Log("[MazeTrack] BuildFromGeometry: surround floor");
             CreateSurroundingFloor(g);
+            Debug.Log("[MazeTrack] BuildFromGeometry: corridor floor");
             CreateCorridorFloor(g);
+            Debug.Log("[MazeTrack] BuildFromGeometry: walls");
             CreateWalls(g);
+            Debug.Log("[MazeTrack] BuildFromGeometry: finish marker");
             CreateFinishMarker(g);
+            Debug.Log("[MazeTrack] BuildFromGeometry: lighting");
             CreateLighting(g);
+            Debug.Log("[MazeTrack] BuildFromGeometry: ALL DONE");
         }
 
         private void CreateSurroundingFloor(MazeGeometry g)

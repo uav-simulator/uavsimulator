@@ -62,11 +62,32 @@ namespace UavSimulator.Tracks
             int rightBudget = Mathf.Max(0, parameters.RightTurns);
             var turnHistory = new List<int>(); // 0=forward, -1=left, +1=right per step (length = path.Count - 1)
 
-            int failStreak = 0;
             int targetLength = Mathf.Clamp(parameters.LengthCells, 2, 200);
+            // Two safeguards against pathological seeds:
+            //  1. `maxLengthSeen` — actual progress watermark. failStreak only
+            //     bounds the backtrack burst, but with this algorithm a single
+            //     successful step resets it, so it can "make 1 step, undo 20,
+            //     make 1, undo 20" forever. We track the longest path ever
+            //     reached and stop trying once we backtrack 30+ steps below
+            //     that watermark — that's a real loss of progress, not a
+            //     legitimate exploration burst.
+            //  2. Hard iteration cap (targetLength × 50) as a final wall-clock
+            //     guard regardless of progress metric.
+            int failStreak = 0;
+            int maxLengthSeen = path.Count;
+            int sinceProgress = 0;
+            int maxIterations = targetLength * 50;
+            int iter = 0;
 
             while (path.Count < targetLength)
             {
+                if (++iter > maxIterations)
+                {
+                    throw new InvalidOperationException(
+                        $"Maze generation aborted after {iter} iterations for seed={parameters.Seed} " +
+                        $"length={targetLength} turns=L{parameters.LeftTurns}/R{parameters.RightTurns}. " +
+                        "Reduce length, increase turn budget, or try a different seed.");
+                }
                 var last = path[path.Count - 1];
                 var candidates = new List<(Dir dir, int turn)>();
 
@@ -104,10 +125,23 @@ namespace UavSimulator.Tracks
                     // Rewind direction: reverse the sequence of turns from start
                     direction = RewindDirection(turnHistory);
                     failStreak++;
+                    sinceProgress++;
                     if (failStreak > MaxBacktracks)
                     {
                         throw new InvalidOperationException(
                             "Maze generation failed after too many backtracks. Change seed or reduce path length.");
+                    }
+                    // Real-progress guard: if we've been backtracking far below
+                    // our high-water mark without ever exceeding it, the search
+                    // space below is genuinely exhausted — abort instead of
+                    // looping forever.
+                    if (sinceProgress > MaxBacktracks * 2)
+                    {
+                        throw new InvalidOperationException(
+                            "Maze generation stalled: longest path reached " +
+                            $"{maxLengthSeen} cells (target {targetLength}) but no new progress " +
+                            $"after {sinceProgress} steps without watermark advance. " +
+                            "Reduce length or increase turn budget.");
                     }
                     continue;
                 }
@@ -133,6 +167,12 @@ namespace UavSimulator.Tracks
                 if (chosen.turn == -1) leftBudget--;
                 else if (chosen.turn == +1) rightBudget--;
                 failStreak = 0;
+                // Watermark advances → real progress, reset stall counter.
+                if (path.Count > maxLengthSeen)
+                {
+                    maxLengthSeen = path.Count;
+                    sinceProgress = 0;
+                }
             }
 
             return BuildGeometry(path, parameters);

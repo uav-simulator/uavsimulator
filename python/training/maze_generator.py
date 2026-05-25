@@ -50,9 +50,19 @@ def generate(params: MazeParams) -> MazeGeometry:
     right_budget = max(0, params.right_turns)
     turn_history: list[int] = []  # 0/+1/-1 per step
     fail_streak = 0
+    max_length_seen = len(path)
+    since_progress = 0
     target = max(2, min(200, params.length_cells))
+    max_iter = target * 50
+    iter_count = 0
 
     while len(path) < target:
+        iter_count += 1
+        if iter_count > max_iter:
+            raise RuntimeError(
+                f"Maze generation aborted after {iter_count} iterations for "
+                f"seed={params.seed} length={target} turns=L{params.left_turns}/R{params.right_turns}"
+            )
         last_x, last_z = path[-1]
         # Candidates: forward (0), left (-1) if budget, right (+1) if budget
         candidates: list[tuple[int, int]] = [(direction, 0)]
@@ -88,8 +98,14 @@ def generate(params: MazeParams) -> MazeGeometry:
                 elif t == +1:
                     direction = (direction + 1) % 4
             fail_streak += 1
+            since_progress += 1
             if fail_streak > _MAX_BACKTRACKS:
                 raise RuntimeError("Maze generation failed: too many backtracks")
+            if since_progress > _MAX_BACKTRACKS * 2:
+                raise RuntimeError(
+                    f"Maze generation stalled: reached {max_length_seen}/{target} cells, "
+                    f"no progress in {since_progress} steps"
+                )
             continue
 
         # Weighted pick: forward=2, turn=1
@@ -116,6 +132,9 @@ def generate(params: MazeParams) -> MazeGeometry:
         elif t == +1:
             right_budget -= 1
         fail_streak = 0
+        if len(path) > max_length_seen:
+            max_length_seen = len(path)
+            since_progress = 0
 
     return _build_geometry(path, params)
 
