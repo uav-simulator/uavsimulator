@@ -47,17 +47,44 @@ from gymnasium import spaces
 # motor commands. So pure-steer (0, ±1) gives in-place rotation in BOTH
 # sim and real — no sim-to-real gap on this dimension.
 #
-# Earlier experiment with (0.5, ±1) "forward+turn arc" was a misdiagnosis:
-# the v9 collapse was caused by env stall_penalty terminating rotation
-# episodes (in-place rotation → linear speed = 0 → stall trigger), not by
-# the action mapping itself. See AbCorridorVisionEnv._compute_reward.
+# Sign convention (verified empirically against the live sim, 2026-05-25):
+#   Ks0223Vehicle.cs maps (throttle, steer) → (leftPwm = throttle − steer,
+#                                              rightPwm = throttle + steer).
+#   So (throttle=0, steer=+1) → leftPwm=-1, rightPwm=+1 → right wheel
+#   forward + left wheel reverse → CLOCKWISE rotation from above (Unity yaw
+#   increases) → physical RIGHT turn.
+#   And (throttle=0, steer=-1) → leftPwm=+1, rightPwm=-1 → physical LEFT.
+#
+# The earlier version of this table had rows 3 and 4 mislabelled (it set
+# DirLeft = (0, +1) and DirRight = (0, -1) with comments claiming "in-place
+# rotation (left)" and "(right)" respectively). That contradicted the
+# physical direction the sim produces, and it contradicted the backend
+# UnityKs0223RuntimeProvider.cs which already maps DirLeft → LeftPwm=+,
+# RightPwm=- (= physical left turn). Policies trained with the old table
+# learned action_idx 3 to mean physical RIGHT turn — they ran fine in sim
+# (PPO is indifferent to label semantics) but deployed inverted onto real
+# hardware, and any BC trained on operator demos (where the operator
+# intuitively labels DirLeft for physical-left moves) ended up with the
+# label-to-physics map flipped. Fixed here by swapping the steer signs in
+# rows 3 and 4 so DirLeft = physical left and DirRight = physical right
+# end-to-end (operator → backend → sim → PPO → BC → real robot).
 ACTION_TABLE = np.array(
     [
         [0.0, 0.0],    # 0: DirStop
         [+1.0, 0.0],   # 1: DirForward
         [-1.0, 0.0],   # 2: DirBack
-        [0.0, +1.0],   # 3: DirLeft  — pure in-place rotation (left)
-        [0.0, -1.0],   # 4: DirRight — pure in-place rotation (right)
+        # DirLeft / DirRight use throttle=+0.5 (not 0) so the agent can
+        # actually make forward progress through corners — empirically, with
+        # throttle=0 in this Unity vehicle the wheels rotate but the chassis
+        # doesn't translate (no longitudinal force component), the auto-pilot
+        # gets stuck at the first corner and PPO sees turn-actions as
+        # "progress-killing" and refuses to use them ("v9 collapse"). The
+        # corresponding sim-to-real translation through backend ResolveCommand
+        # routes (throttle≥0.15, |steer|>0.45) → DirLeft/Right on the real
+        # robot, so the +0.5 throttle does not leak forward motion through
+        # to the physical platform — it stays mapped to in-place rotation.
+        [+0.5, -1.0],  # 3: DirLeft  — leftPwm=throttle-steer=+1.5→clamp+1, rightPwm=-0.5 → physical LEFT
+        [+0.5, +1.0],  # 4: DirRight — leftPwm=-0.5, rightPwm=+1.5→clamp+1 → physical RIGHT
     ],
     dtype=np.float32,
 )

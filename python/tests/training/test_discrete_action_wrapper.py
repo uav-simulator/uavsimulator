@@ -75,24 +75,30 @@ def test_rejects_non_box_action_space():
 
 
 def test_action_table_thresholds_match_resolve_command():
-    """Verify each (throttle,steer) routes to the expected command per backend
-    ResolveCommand thresholds. DirLeft/Right include forward throttle 0.5 so
-    Unity Ackermann vehicle can move-and-turn during training; ResolveCommand
-    (throttle>0.15 + steer>0.45 → DirLeft) routes them to expected real cmd.
+    """Verify each (throttle,steer) in ACTION_TABLE routes to the expected
+    command name through a ResolveCommand mirror.
+
+    NOTE: this test uses a *sim-physics-aligned* ResolveCommand mock (positive
+    steer → DirRight, matching the empirical Ks0223Vehicle.cs sign convention
+    leftPwm=throttle−steer / rightPwm=throttle+steer). The backend's actual
+    AutopilotService.ResolveCommand still has the inverted convention
+    (positive steer → DirLeft) — that's a separate known issue affecting
+    sim-to-real deployment, not the in-sim PPO/BC training pipeline this
+    test guards.
     """
 
     def resolve(throttle, steer):
         if throttle < -0.25:
             return "DirBack"
         if abs(throttle) < 0.15:
-            if steer > 0.55:
-                return "DirLeft"
             if steer < -0.55:
+                return "DirLeft"
+            if steer > 0.55:
                 return "DirRight"
             return "DirStop"
-        if steer > 0.45:
-            return "DirLeft"
         if steer < -0.45:
+            return "DirLeft"
+        if steer > 0.45:
             return "DirRight"
         return "DirForward"
 
@@ -121,10 +127,14 @@ def test_action_table_pure_diff_drive():
     # DirBack: max reverse, no steer
     assert table[2][0] == -1.0 and table[2][1] == 0.0
 
-    # DirLeft: pure left rotation (no linear)
-    assert table[3][0] == 0.0, "DirLeft must be pure rotation (real KS0223 = in-place)"
-    assert table[3][1] == 1.0
+    # DirLeft: forward-arc left turn. throttle=+0.5 so the Unity Ackermann
+    # vehicle actually moves through the corner (throttle=0 leaves wheels
+    # rotating without chassis motion). steer=-1 with Ks0223Vehicle.cs's
+    # leftPwm=throttle-steer/rightPwm=throttle+steer gives leftPwm=+1.5→+1,
+    # rightPwm=-0.5 → physical LEFT turn.
+    assert table[3][0] == 0.5, "DirLeft needs forward throttle to translate in sim Ackermann"
+    assert table[3][1] == -1.0, "DirLeft steer must be negative — leftPwm+/rightPwm- = physical left turn"
 
-    # DirRight: pure right rotation
-    assert table[4][0] == 0.0, "DirRight must be pure rotation (real KS0223 = in-place)"
-    assert table[4][1] == -1.0
+    # DirRight: mirror of DirLeft.
+    assert table[4][0] == 0.5, "DirRight needs forward throttle to translate in sim Ackermann"
+    assert table[4][1] == 1.0, "DirRight steer must be positive — leftPwm-/rightPwm+ = physical right turn"

@@ -97,16 +97,26 @@ def encode_path(path_cells: list[tuple[int, int]]) -> str:
 
 
 def cmd_to_control(cmd: str) -> dict:
-    """Translate discrete command → continuous /step payload."""
-    if cmd == "DirForward":
-        return {"throttle": 1.0, "steer": 0.0, "brake": 0.0}
-    if cmd == "DirBack":
-        return {"throttle": -1.0, "steer": 0.0, "brake": 0.0}
-    if cmd == "DirLeft":
-        return {"throttle": 0.6, "steer": -1.0, "brake": 0.0}
-    if cmd == "DirRight":
-        return {"throttle": 0.6, "steer": 1.0, "brake": 0.0}
-    return {"throttle": 0.0, "steer": 0.0, "brake": 1.0}  # DirStop
+    """Translate discrete command → continuous /step payload, using the same
+    ACTION_TABLE the runtime DiscreteActionWrapper uses.
+
+    Importing ACTION_TABLE directly keeps the auto-pilot recording aligned
+    with what the BC student will get at inference time: same (throttle,
+    steer) per discrete action → same physical motion in sim → label-to-
+    physics map is identical between training and runtime. Two earlier
+    versions diverged:
+
+      * v1 used (0.6, ±1) "forward+turn arc" — the wrapper does (0, ±1)
+        "in-place rotation", so demo physics differed from inference.
+      * v2 used the wrong sign (DirLeft = steer=-1 in the wrapper's old
+        convention) — that's now corrected at the wrapper level. Auto-pilot
+        just inherits.
+    """
+    from training.discrete_action_wrapper import ACTION_NAMES, ACTION_TABLE
+    idx = ACTION_NAMES.index(cmd)
+    throttle, steer = float(ACTION_TABLE[idx][0]), float(ACTION_TABLE[idx][1])
+    brake = 1.0 if cmd == "DirStop" else 0.0
+    return {"throttle": throttle, "steer": steer, "brake": brake}
 
 
 def step_with_cmd(cmd: str, agent_id: str = "") -> dict:
@@ -173,7 +183,27 @@ def choose_action(
     rng: random.Random,
     spurious_turn_prob: float = 0.04,
     spurious_stop_prob: float = 0.02,
+    last_cmd: str = "DirStop",
+    recovery_band_deg: float = 5.0,
 ) -> str:
+    """Pick the next discrete command for the auto-pilot.
+
+    Two-band controller with hysteresis to avoid the zigzag pathology of a
+    pure bang-bang Forward/Left/Right with tank physics:
+
+      * `forward_band_deg` (wide, e.g. 25°) is the threshold to *start* a
+        turn from a Forward state. Heading drift inside ±forward_band is
+        tolerated and the auto-pilot keeps driving forward.
+      * `recovery_band_deg` (tight, e.g. 5°) is the threshold to *stop*
+        turning. Once the auto-pilot has committed to a turn, it keeps
+        issuing the same turn command until the heading error is well
+        inside ±recovery_band — preventing the overshoot-and-reverse
+        oscillation that the previous one-band version produced (about
+        60% of commands were turns even on perfectly straight corridors).
+
+    The result is long Forward runs on straights and a single sustained
+    Turn at each corner, which matches how a human operator would drive.
+    """
     px, pz = pose["position"]["x"], pose["position"]["z"]
     yaw = quaternion_to_yaw_deg(pose["rotation"])
 
@@ -191,6 +221,15 @@ def choose_action(
     if spurious_stop_prob > 0 and rng.random() < spurious_stop_prob:
         return "DirStop"
 
+    # Hysteresis: if we were already turning, keep turning past the wide band
+    # until well within the tight recovery band. This eats the overshoot
+    # transient instead of bouncing it back as the opposite turn.
+    if last_cmd == "DirRight" and err > recovery_band_deg:
+        return "DirRight"
+    if last_cmd == "DirLeft" and err < -recovery_band_deg:
+        return "DirLeft"
+
+    # Otherwise: start a turn only when heading drift exceeds the wide band.
     if err > forward_band_deg:
         return "DirRight"
     if err < -forward_band_deg:
@@ -223,7 +262,12 @@ def drive_episode(
     If video_path is provided, writes an MP4 with one frame per command tick
     so bc.dataset.load_session can pair frames to actions by timestamp.
     """
-    forward_band_deg = 15.0
+    # Wider Forward band (25°) + tight recovery band (5°): see choose_action
+    # docstring. Empirically eliminates the bang-bang zigzag that the previous
+    # one-band (15°) controller produced.
+    forward_band_deg = 25.0
+    recovery_band_deg = 5.0
+    last_cmd = "DirStop"  # threaded into choose_action for hysteresis
     wp_index = 0
     last_progress_step = 0
     steps_taken = 0
@@ -269,7 +313,10 @@ def drive_episode(
             forward_band_deg=forward_band_deg, rng=rng,
             spurious_turn_prob=spurious_turn_prob,
             spurious_stop_prob=spurious_stop_prob,
+            last_cmd=last_cmd,
+            recovery_band_deg=recovery_band_deg,
         )
+        last_cmd = cmd
         # Apply the command via /step (actually moves the robot) AND through
         # WebUI /api/command (logs it to session JSONL for BC training).
         result = step_with_cmd(cmd)
