@@ -415,6 +415,28 @@ def drive_episode(
                 "type": "command.outgoing",
                 "payload": {"command": cmd, "clientId": "auto-pilot"},
             }) + "\n")
+            # Pose telemetry alongside each command, so a debugger can match a
+            # video frame index back to the world-space position and heading
+            # of the robot at that exact tick. step_index lines up 1:1 with
+            # MP4 frames written above. Used for "did the robot actually
+            # clip the wall at frame N or is that just the camera near-plane
+            # rendering artifact?" forensics.
+            jsonl_fh.write(json.dumps({
+                "timestamp": _utc_iso(),
+                "type": "pose.snapshot",
+                "payload": {
+                    "step_index": steps_taken,
+                    "phase": phase,
+                    "pos_x": float(last_pose["position"]["x"]),
+                    "pos_z": float(last_pose["position"]["z"]),
+                    "yaw_deg": float(quaternion_to_yaw_deg(last_pose["rotation"])),
+                    "target_x": float(target_x),
+                    "target_z": float(target_z),
+                    "target_wp_index": int(wp_index),
+                    "heading_error_deg": float(err),
+                    "dist_to_target_m": float(dist),
+                },
+            }) + "\n")
             jsonl_fh.flush()
 
         actions_sent[cmd] += 1
