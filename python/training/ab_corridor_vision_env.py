@@ -747,8 +747,22 @@ class ABCorridorVisionEnv(gym.Env):
 
     def _build_info(self, step: dict[str, Any]) -> dict[str, Any]:
         pos = self._current_position(step)
+        # Yaw in Unity convention (degrees, 0 = facing +Z = north,
+        # 90 = facing +X = east, clockwise from above). Derived from the
+        # quaternion in step.state.pose.rotation; the EgoOccupancyMapWrapper
+        # consumes this to orient its world-frame map updates.
+        rot = ((step.get("state") or {}).get("pose") or {}).get("rotation") or {}
+        qx = float(rot.get("x", 0.0))
+        qy = float(rot.get("y", 0.0))
+        qz = float(rot.get("z", 0.0))
+        qw = float(rot.get("w", 1.0))
+        yaw_deg = math.degrees(math.atan2(
+            2.0 * (qw * qy + qz * qx),
+            1.0 - 2.0 * (qx * qx + qy * qy),
+        ))
         info = {
             "position": pos,
+            "yaw_deg": yaw_deg,
             "progress": self._route_progress(pos["x"], pos["z"]),
             "lateral_distance": self._nearest_route_distance(pos["x"], pos["z"]),
             "step_count": self._step_count,
