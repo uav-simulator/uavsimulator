@@ -543,12 +543,24 @@ def _build_eval_env(args):
 
 
 def export_to_onnx_discrete(model: PPO, output_path: Path, img_size: int = 84) -> None:
-    """Export discrete-action PPO policy to ONNX with output (1, 5) logits."""
+    """Export discrete-action PPO policy to ONNX with output (1, 5) logits.
+
+    Auto-detects channel count and ultrasonic-stack size from the model's
+    saved observation_space, so a model trained under VecFrameStack(k) gets
+    exported with the right input shape (k*3 channels, k-stacked ultrasonic)
+    instead of the hard-coded k=1 baseline."""
     policy = model.policy
     policy.eval()
 
-    dummy_img = torch.zeros(1, img_size, img_size, 3, dtype=torch.float32)
-    dummy_ultra = torch.zeros(1, 1, dtype=torch.float32)
+    # Inspect saved obs_space to pick the right dummy-input shape.
+    # image is saved CHW (post VecTransposeImage) — first dim is channels.
+    img_space = model.observation_space.spaces["image"]
+    ultra_space = model.observation_space.spaces["ultrasonic"]
+    n_channels = int(img_space.shape[0])  # 3 for k=1, 12 for k=4, etc.
+    n_ultra = int(ultra_space.shape[0])   # 1 for k=1, 4 for k=4, etc.
+
+    dummy_img = torch.zeros(1, img_size, img_size, n_channels, dtype=torch.float32)
+    dummy_ultra = torch.zeros(1, n_ultra, dtype=torch.float32)
 
     class DiscretePolicyWrapper(torch.nn.Module):
         def __init__(self, sb3_policy):
