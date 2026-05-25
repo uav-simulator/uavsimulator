@@ -171,6 +171,8 @@ def choose_action(
     *,
     forward_band_deg: float,
     rng: random.Random,
+    spurious_turn_prob: float = 0.04,
+    spurious_stop_prob: float = 0.02,
 ) -> str:
     px, pz = pose["position"]["x"], pose["position"]["z"]
     yaw = quaternion_to_yaw_deg(pose["rotation"])
@@ -181,11 +183,12 @@ def choose_action(
     desired = math.degrees(math.atan2(dx, dz))  # Unity yaw: 0=north(+Z), 90=east(+X)
     err = angle_diff(yaw, desired)
 
-    # Operator noise: occasional spurious turn even on a straight (mimics twitchy hand)
-    if rng.random() < 0.04:
+    # Operator noise: occasional spurious turn even on a straight (mimics twitchy hand).
+    # Zero on curated/clean demos so the BC student sees exact pose-driven labels.
+    if spurious_turn_prob > 0 and rng.random() < spurious_turn_prob:
         return rng.choice(["DirLeft", "DirRight"])
-    # Operator noise: occasional brief stop-and-look
-    if rng.random() < 0.02:
+    # Operator noise: occasional brief stop-and-look.
+    if spurious_stop_prob > 0 and rng.random() < spurious_stop_prob:
         return "DirStop"
 
     if err > forward_band_deg:
@@ -212,6 +215,8 @@ def drive_episode(
     video_fps: float = 8.0,
     jsonl_path: Path | None = None,
     tag: str = "autopilot",
+    spurious_turn_prob: float = 0.04,
+    spurious_stop_prob: float = 0.02,
 ) -> dict:
     """Drive the robot through the waypoints. Returns episode summary.
 
@@ -259,7 +264,12 @@ def drive_episode(
             last_pose = None
             continue
 
-        cmd = choose_action(pose, target_x, target_z, forward_band_deg=forward_band_deg, rng=rng)
+        cmd = choose_action(
+            pose, target_x, target_z,
+            forward_band_deg=forward_band_deg, rng=rng,
+            spurious_turn_prob=spurious_turn_prob,
+            spurious_stop_prob=spurious_stop_prob,
+        )
         # Apply the command via /step (actually moves the robot) AND through
         # WebUI /api/command (logs it to session JSONL for BC training).
         result = step_with_cmd(cmd)
@@ -340,103 +350,215 @@ def drive_episode(
     }
 
 
+_CELL_M = 0.45
+_START_X = 20
+_START_Z = 20
+
+
+def _waypoints_from_path_encoded(path_encoded: str, corridor_width_m: float = _CELL_M) -> list[tuple[float, float]]:
+    """Convert a maze.path_encoded grid-cell string into world (x, z) waypoint coords.
+
+    Matches the formula in maze_generator._build_geometry — the C# track
+    builder uses the same offset (start at grid cell (20, 20)) so cells line
+    up with the geometry on both sides.
+    """
+    waypoints: list[tuple[float, float]] = []
+    for pair in path_encoded.split(";"):
+        gx, gz = pair.split(",")
+        waypoints.append(((int(gx) - _START_X) * corridor_width_m,
+                          (int(gz) - _START_Z) * corridor_width_m))
+    return waypoints
+
+
+def _render_topology_preview(path_encoded: str, png_path: Path, title: str) -> None:
+    """Save a small top-down PNG showing the maze path on a grid.
+
+    Lets the user validate the trajectory shape without playing the MP4.
+    Start cell is highlighted green, goal red; numbered waypoints between.
+    """
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    cells = [tuple(int(v) for v in pair.split(",")) for pair in path_encoded.split(";")]
+    xs = [c[0] for c in cells]
+    zs = [c[1] for c in cells]
+
+    fig, ax = plt.subplots(figsize=(4.5, 4.5))
+    ax.plot(xs, zs, color="#1f77b4", linewidth=2, marker="o", markersize=6)
+    ax.scatter([xs[0]], [zs[0]], color="#2ca02c", s=180, zorder=3, label="start")
+    ax.scatter([xs[-1]], [zs[-1]], color="#d62728", s=180, zorder=3, label="goal")
+    for idx, (x, z) in enumerate(cells):
+        if 0 < idx < len(cells) - 1:
+            ax.annotate(str(idx), (x, z), textcoords="offset points",
+                        xytext=(5, 5), fontsize=8, color="#666")
+    # Square aspect with a small margin around the path bounding box.
+    margin = 1.5
+    ax.set_xlim(min(xs) - margin, max(xs) + margin)
+    ax.set_ylim(min(zs) - margin, max(zs) + margin)
+    ax.set_aspect("equal", "box")
+    ax.set_xlabel("grid X (cells from origin)")
+    ax.set_ylabel("grid Z (cells from origin)")
+    ax.set_title(f"{title} — {len(cells)} cells")
+    ax.grid(True, alpha=0.3)
+    ax.legend(loc="best", fontsize=9)
+    fig.tight_layout()
+    png_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(png_path, dpi=120)
+    plt.close(fig)
+
+
+def _record_one_episode(
+    *,
+    i: int, total: int, tag: str, path_encoded: str,
+    yaml_path: Path, evidence_dir: Path,
+    max_steps: int, reach: float, rng: random.Random,
+    spurious_turn_prob: float, spurious_stop_prob: float,
+    manifest_extras: dict,
+) -> dict:
+    """Reset sim to the given maze topology, record one episode, write manifest."""
+    waypoints = _waypoints_from_path_encoded(path_encoded)
+    print(f"\n=== Episode {i}/{total} — tag={tag} ===", flush=True)
+    print(f"  waypoints: {len(waypoints)} cells", flush=True)
+
+    patch_yaml_seed_and_path(yaml_path, manifest_extras.get("seed", 42), path_encoded)
+    reset_info = reset_scenario(yaml_path)
+    print(f"  reset → {reset_info.get('selectedTrackId', '?')}", flush=True)
+    time.sleep(1.5)
+
+    ts = time.strftime("%Y%m%d_%H%M%S")
+    video_path = evidence_dir / f"autopilot_{ts}_{tag}.mp4"
+    jsonl_path = evidence_dir / f"session_{ts}_{tag}.jsonl"
+    start_demo(tag)
+    time.sleep(0.3)
+    summary = drive_episode(
+        waypoints,
+        max_steps=max_steps,
+        reach_distance_m=reach,
+        rng=rng,
+        video_path=video_path,
+        jsonl_path=jsonl_path,
+        tag=tag,
+        spurious_turn_prob=spurious_turn_prob,
+        spurious_stop_prob=spurious_stop_prob,
+    )
+    time.sleep(0.3)
+    stop_demo()
+    print(f"  done: {summary}", flush=True)
+    print(f"  video={video_path.name if video_path.exists() else 'MISSING'} "
+          f"jsonl={jsonl_path.name if jsonl_path.exists() else 'MISSING'}", flush=True)
+
+    # Best-effort: copy the backend's session JSONL (skipped by discover_pairs because
+    # its UTC timestamp doesn't match the MP4's local timestamp, but kept for audit).
+    sessions_dir = Path("src/ks0223-web-mac/logs")
+    candidates = sorted(sessions_dir.glob(f"session_*{tag}.jsonl"))
+    if candidates:
+        shutil.copy(candidates[-1], evidence_dir / candidates[-1].name)
+
+    (evidence_dir / f"manifest_{tag}.yaml").write_bytes(yaml_path.read_bytes())
+    (evidence_dir / f"manifest_{tag}.json").write_text(json.dumps({
+        "episode": i,
+        "tag": tag,
+        "maze": {
+            "corridor_width_m": _CELL_M,
+            "path_encoded": path_encoded,
+            **manifest_extras,
+        },
+        "noise": {
+            "spurious_turn_prob": spurious_turn_prob,
+            "spurious_stop_prob": spurious_stop_prob,
+        },
+        "drive_summary": summary,
+    }, indent=2))
+    return summary
+
+
 def main() -> int:
     p = argparse.ArgumentParser()
+    p.add_argument("--curated", action="store_true",
+                   help="Use the 10 hand-designed paths from training.bc.curated_paths "
+                        "instead of procedurally-generated mazes from --seeds.")
     p.add_argument("--seeds", default="42-56", help="Range like '42-56' or comma list '42,43,44'")
     p.add_argument("--yaml", type=Path, default=Path("configs/scenarios/cardboard-maze-bc.yaml"))
     p.add_argument("--evidence", type=Path, default=Path("docs/report/master-thesis/sprint-4-bc-variance-2026-06/demos"))
     p.add_argument("--max-steps", type=int, default=500)
     p.add_argument("--noise-seed", type=int, default=0, help="RNG seed for operator-noise model")
+    p.add_argument("--spurious-turn-prob", type=float, default=0.04,
+                   help="Probability of a spurious turn each tick. Set to 0 with --curated "
+                        "for clean demos with exact pose-driven labels.")
+    p.add_argument("--spurious-stop-prob", type=float, default=0.02,
+                   help="Probability of a spontaneous Stop each tick. Set to 0 with --curated.")
+    p.add_argument("--render-previews", action="store_true",
+                   help="With --curated: also write a top-down PNG preview of each maze "
+                        "layout next to the MP4, so the user can validate path shape "
+                        "without playing every video.")
     args = p.parse_args()
 
-    if "-" in args.seeds:
-        a, b = args.seeds.split("-")
-        seeds = list(range(int(a), int(b) + 1))
-    else:
-        seeds = [int(s) for s in args.seeds.split(",")]
-
     args.evidence.mkdir(parents=True, exist_ok=True)
-
-    # Late import so the script is importable even without the maze module on path
     sys.path.insert(0, "python")
-    from training.maze_generator import generate, MazeParams
-
     rng = random.Random(args.noise_seed)
     reach = 0.20  # m
 
-    for i, seed in enumerate(seeds, start=1):
-        tag = f"bc-maze-ep{i}-seed{seed}"
-        print(f"\n=== Episode {i}/{len(seeds)} — seed {seed}  tag={tag} ===", flush=True)
+    # When --curated, default the noise probabilities to 0 (clean demos) unless
+    # the user explicitly overrode them on the CLI. Detect default via comparing
+    # to argparse's defaults.
+    if args.curated and args.spurious_turn_prob == 0.04 and args.spurious_stop_prob == 0.02:
+        args.spurious_turn_prob = 0.0
+        args.spurious_stop_prob = 0.0
+        print(f"[curated mode] operator noise → 0/0 for clean demos", flush=True)
 
-        # 1. Generate maze via Python so both Python and C# build the IDENTICAL
-        #    topology (C# RNG diverges from Python's for the same seed).
-        try:
-            geo = generate(MazeParams(
-                seed=seed, length_cells=30, corridor_width_m=0.45,
-                left_turns=6, right_turns=6,
-            ))
-        except Exception as e:
-            print(f"  SKIP seed {seed}: maze generation failed ({e})", flush=True)
-            continue
-        waypoints = [(float(x), float(z)) for x, z in geo.waypoints]
-        path_encoded = encode_path(geo.path_cells)
-        print(f"  waypoints: {len(waypoints)} cells (path len={len(geo.path_cells)})", flush=True)
+    if args.curated:
+        from training.bc.curated_paths import CURATED_MAZE_PATHS, turn_count
+        episodes = [
+            (i + 1, name, path, {"layout_name": name, "left_turns": turn_count(path)[0],
+                                  "right_turns": turn_count(path)[1]})
+            for i, (name, path) in enumerate(CURATED_MAZE_PATHS)
+        ]
+        total = len(episodes)
+        for i, name, path_encoded, extras in episodes:
+            tag = f"bc-maze-curated-{name}"
+            if args.render_previews:
+                preview_png = args.evidence / f"preview_{tag}.png"
+                _render_topology_preview(path_encoded, preview_png, title=name)
+                print(f"  preview: {preview_png.name}", flush=True)
+            _record_one_episode(
+                i=i, total=total, tag=tag, path_encoded=path_encoded,
+                yaml_path=args.yaml, evidence_dir=args.evidence,
+                max_steps=args.max_steps, reach=reach, rng=rng,
+                spurious_turn_prob=args.spurious_turn_prob,
+                spurious_stop_prob=args.spurious_stop_prob,
+                manifest_extras=extras,
+            )
+    else:
+        if "-" in args.seeds:
+            a, b = args.seeds.split("-")
+            seeds = list(range(int(a), int(b) + 1))
+        else:
+            seeds = [int(s) for s in args.seeds.split(",")]
+        from training.maze_generator import generate, MazeParams
+        total = len(seeds)
+        for i, seed in enumerate(seeds, start=1):
+            tag = f"bc-maze-ep{i}-seed{seed}"
+            try:
+                geo = generate(MazeParams(
+                    seed=seed, length_cells=30, corridor_width_m=_CELL_M,
+                    left_turns=6, right_turns=6,
+                ))
+            except Exception as e:
+                print(f"\n=== Episode {i}/{total} — seed {seed} ===\n  SKIP: maze generation failed ({e})", flush=True)
+                continue
+            path_encoded = encode_path(geo.path_cells)
+            extras = {"seed": seed, "length_cells": 30, "left_turns": 6, "right_turns": 6}
+            _record_one_episode(
+                i=i, total=total, tag=tag, path_encoded=path_encoded,
+                yaml_path=args.yaml, evidence_dir=args.evidence,
+                max_steps=args.max_steps, reach=reach, rng=rng,
+                spurious_turn_prob=args.spurious_turn_prob,
+                spurious_stop_prob=args.spurious_stop_prob,
+                manifest_extras=extras,
+            )
 
-        # 2. Patch YAML with seed + encoded path, then reset scenario.
-        patch_yaml_seed_and_path(args.yaml, seed, path_encoded)
-        reset_info = reset_scenario(args.yaml)
-        print(f"  reset → {reset_info.get('selectedTrackId', '?')}", flush=True)
-        time.sleep(1.5)
-
-        # 3. Drive episode — auto_record writes both MP4 and JSONL directly into
-        # evidence/demos so we don't depend on the backend's SessionLogger /
-        # SessionVideoRecorder (which require an active WebUI client we don't have).
-        # discover_pairs needs ts in YYYYMMDD_HHMMSS format and MP4 sharing the same ts
-        ts = time.strftime("%Y%m%d_%H%M%S")
-        video_path = args.evidence / f"autopilot_{ts}_{tag}.mp4"
-        jsonl_path = args.evidence / f"session_{ts}_{tag}.jsonl"
-        start_demo(tag)  # still tell backend so any connected WebUI shows the event
-        time.sleep(0.3)
-        summary = drive_episode(
-            waypoints,
-            max_steps=args.max_steps,
-            reach_distance_m=reach,
-            rng=rng,
-            video_path=video_path,
-            jsonl_path=jsonl_path,
-            tag=tag,
-        )
-        time.sleep(0.3)
-        stop_demo()
-        print(f"  done: {summary}", flush=True)
-        print(f"  video={video_path.name if video_path.exists() else 'MISSING'} "
-              f"jsonl={jsonl_path.name if jsonl_path.exists() else 'MISSING'}", flush=True)
-
-        # 4. Copy the backend's session JSONL into evidence (paired with MP4)
-        sessions_dir = Path("src/ks0223-web-mac/logs")
-        candidates = sorted(sessions_dir.glob(f"session_*{tag}.jsonl"))
-        if candidates:
-            shutil.copy(candidates[-1], args.evidence / candidates[-1].name)
-            print(f"  copied session: {candidates[-1].name}", flush=True)
-
-        # 5. Manifest
-        (args.evidence / f"manifest_{tag}.yaml").write_bytes(args.yaml.read_bytes())
-        (args.evidence / f"manifest_{tag}.json").write_text(json.dumps({
-            "episode": i,
-            "tag": tag,
-            "maze": {
-                "seed": seed,
-                "length_cells": 30,
-                "corridor_width_m": 0.45,
-                "left_turns": 6,
-                "right_turns": 6,
-                "path_encoded": path_encoded,
-            },
-            "drive_summary": summary,
-        }, indent=2))
-
-    print(f"\nAll {len(seeds)} episodes recorded.", flush=True)
-    print("Run ./scripts/collect_bc_demos.sh to move session_*.jsonl + .mp4 into evidence.", flush=True)
+    print(f"\nAll episodes recorded.", flush=True)
     return 0
 
 
