@@ -286,8 +286,19 @@ def drive_episode(
                     bgr = cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
                     h, w = bgr.shape[:2]
                     if video_writer is None:
-                        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+                        # 'avc1' = H.264. Don't use 'mp4v' (MPEG-4 Part 2) — it
+                        # encodes at low quality / poor inter-frame compression
+                        # and QuickTime/macOS Preview render the result as
+                        # heavily-blocked corrupt frames despite the file being
+                        # technically valid. cv2 on macOS routes 'avc1' through
+                        # libavcodec which produces clean playback everywhere.
+                        fourcc = cv2.VideoWriter_fourcc(*"avc1")
                         video_writer = cv2.VideoWriter(str(video_path), fourcc, video_fps, (w, h))
+                        if not video_writer.isOpened():
+                            print(f"    avc1 unavailable, falling back to mp4v "
+                                  f"(post-encode with ffmpeg recommended)", flush=True)
+                            fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+                            video_writer = cv2.VideoWriter(str(video_path), fourcc, video_fps, (w, h))
                     video_writer.write(bgr)
                 except Exception as e:
                     if steps_taken < 3:
