@@ -12,6 +12,8 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
 {
     private const string CameraProfile = "high";
     private const string RenderQualityProfile = "high";
+    private const string ModelCaptureModeKey = "camera.model_capture_mode";
+    private const string ModelCaptureModeValue = "driver";
 
     private sealed class AgentControlState
     {
@@ -37,6 +39,15 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
     {
         public string? ClientId { get; set; }
         public DateTimeOffset LeaseUntil { get; set; }
+    }
+
+    private sealed record ActiveRuntimeState(
+        string? TrackId,
+        string? VehicleId,
+        IReadOnlyList<string> AgentIds,
+        IReadOnlyList<string> VehicleIds)
+    {
+        public static ActiveRuntimeState Empty { get; } = new(null, null, Array.Empty<string>(), Array.Empty<string>());
     }
 
     private static readonly string[] PreferredVehicleIds =
@@ -111,6 +122,7 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
     private float brakeNorm;
     private readonly Dictionary<string, AgentControlState> agentControlStates = new(StringComparer.Ordinal);
     private readonly Dictionary<string, AgentFrameState> agentFrameStates = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, AgentFrameState> agentModelFrameStates = new(StringComparer.Ordinal);
     private readonly Dictionary<string, AgentControlOwnerState> agentControlOwners = new(StringComparer.Ordinal);
     private CancellationTokenSource? loopCts;
     private Task? loopTask;
@@ -273,6 +285,49 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
         }
     }
 
+    public async Task<JsonDocument> ResetSimulationWithPayloadAsync(object payload, string? agentId, CancellationToken cancellationToken)
+    {
+        await lifecycleLock.WaitAsync(cancellationToken);
+        try
+        {
+            var shouldRestartLoop = false;
+            lock (stateLock)
+            {
+                shouldRestartLoop = desiredConnection;
+            }
+
+            await StopLoopAsync();
+            using var response = await SendAsync(
+                HttpMethod.Post,
+                "/reset",
+                payload,
+                cancellationToken,
+                timeout: TimeSpan.FromSeconds(60));
+            response.EnsureSuccessStatusCode();
+            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
+
+            var resolvedAgentId = string.IsNullOrWhiteSpace(agentId) ? selectedControlAgentId : agentId.Trim();
+            if (string.IsNullOrWhiteSpace(resolvedAgentId))
+            {
+                resolvedAgentId = "agent-1";
+            }
+
+            UpdateFromStepResult(document, resolvedAgentId, updateSharedState: true);
+            if (shouldRestartLoop)
+            {
+                await StartLoopAsync(cancellationToken);
+            }
+
+            await BroadcastStatusAsync(cancellationToken);
+            return document;
+        }
+        finally
+        {
+            lifecycleLock.Release();
+        }
+    }
+
     public async Task DisconnectAsync(CancellationToken cancellationToken)
     {
         await lifecycleLock.WaitAsync(cancellationToken);
@@ -425,6 +480,25 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
             timestamp = lastFrameAt;
             return true;
         }
+    }
+
+    public bool TryGetLatestModelFrame(string? agentId, out byte[] frame, out string contentType, out long version, out DateTimeOffset? timestamp)
+    {
+        lock (stateLock)
+        {
+            if (!string.IsNullOrWhiteSpace(agentId) &&
+                agentModelFrameStates.TryGetValue(agentId.Trim(), out var agentFrame) &&
+                agentFrame.Bytes is { Length: > 0 })
+            {
+                frame = agentFrame.Bytes.ToArray();
+                contentType = "image/jpeg";
+                version = agentFrame.Version;
+                timestamp = agentFrame.Timestamp;
+                return true;
+            }
+        }
+
+        return TryGetLatestFrame(agentId, out frame, out contentType, out version, out timestamp);
     }
 
     public SensorBridgeStatusDto GetSensorStatus()
@@ -768,6 +842,16 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
             ?? availableVehicleIds.First();
         var resolvedTrackId = ResolveSelected(availableTrackIds, selectedTrackId, PreferredTrackIds)
             ?? availableTrackIds.First();
+        var activeState = await ProbeActiveRuntimeStateForEndpointAsync(host, port, cancellationToken);
+        if (!string.IsNullOrWhiteSpace(activeState.VehicleId) && availableVehicleIds.Contains(activeState.VehicleId))
+        {
+            resolvedVehicleId = activeState.VehicleId;
+        }
+
+        if (!string.IsNullOrWhiteSpace(activeState.TrackId) && availableTrackIds.Contains(activeState.TrackId))
+        {
+            resolvedTrackId = activeState.TrackId;
+        }
 
         lock (stateLock)
         {
@@ -775,7 +859,11 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
             selectedTrackId = resolvedTrackId;
             availableVehicles = vehicleOptions;
             availableTracks = trackOptions;
-            configuredAgents = NormalizeConfiguredAgents(configuredAgents);
+            configuredAgents = ResolveConfiguredAgentsFromActiveState(
+                configuredAgents,
+                activeState,
+                availableVehicleIds,
+                resolvedVehicleId);
             SyncAgentStateDictionariesLocked(configuredAgents);
             selectedControlAgentId = ResolveSelectedControlAgentId(selectedControlAgentId, configuredAgents);
             var selectedDisplayName = vehicleOptions.FirstOrDefault(option => string.Equals(option.Id, resolvedVehicleId, StringComparison.Ordinal))
@@ -787,6 +875,35 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
         }
 
         return BuildCatalogSnapshot();
+    }
+
+    private async Task<ActiveRuntimeState> ProbeActiveRuntimeStateForEndpointAsync(
+        string host,
+        int port,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var response = await SendAsync(HttpMethod.Get, "/health", null, host, port, cancellationToken, updateLastSource: false);
+            if (!response.IsSuccessStatusCode)
+            {
+                return ActiveRuntimeState.Empty;
+            }
+
+            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
+            var root = document.RootElement;
+
+            return new ActiveRuntimeState(
+                TrackId: ReadOptionalString(root, "activeTrackId"),
+                VehicleId: ReadOptionalString(root, "activeVehicleId"),
+                AgentIds: ReadStringArray(root, "activeAgentIds"),
+                VehicleIds: ReadStringArray(root, "activeVehicleIds"));
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException or InvalidOperationException)
+        {
+            return ActiveRuntimeState.Empty;
+        }
     }
 
     private async Task<JsonDocument> ResetSimulationAsync(CancellationToken cancellationToken)
@@ -871,6 +988,7 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
                 new { key = "drive.right_pwm_norm", value = rightPwm.ToString("0.000000", CultureInfo.InvariantCulture) },
                 new { key = "camera.pan_norm", value = NormalizeServo(commandState.CameraPanDeg).ToString("0.000000", CultureInfo.InvariantCulture) },
                 new { key = "camera.tilt_norm", value = NormalizeServo(commandState.CameraTiltDeg).ToString("0.000000", CultureInfo.InvariantCulture) },
+                new { key = ModelCaptureModeKey, value = ModelCaptureModeValue },
             },
         };
 
@@ -969,37 +1087,62 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
             }
         }
 
-        if (root.TryGetProperty("frame", out var frame) &&
-            frame.TryGetProperty("dataBase64", out var dataBase64Element))
+        if (TryReadFrameBytes(root, "frame", out var frameBytes))
         {
-            var dataBase64 = dataBase64Element.GetString();
-            if (!string.IsNullOrWhiteSpace(dataBase64))
+            lock (stateLock)
             {
-                try
-                {
-                    var bytes = Convert.FromBase64String(dataBase64);
-                    lock (stateLock)
-                    {
-                        var frameState = GetOrCreateAgentFrameStateLocked(agentId);
-                        frameState.Bytes = bytes;
-                        frameState.Timestamp = now;
-                        frameState.Version++;
-                        framesReceived++;
-                        bytesReceived += bytes.Length;
+                var frameState = GetOrCreateAgentFrameStateLocked(agentId);
+                frameState.Bytes = frameBytes;
+                frameState.Timestamp = now;
+                frameState.Version++;
+                framesReceived++;
+                bytesReceived += frameBytes.Length;
 
-                        if (updateSharedState)
-                        {
-                            latestFrame = bytes;
-                            lastFrameAt = now;
-                            frameVersion++;
-                        }
-                    }
-                }
-                catch
+                if (updateSharedState)
                 {
-                    // ignore malformed frame payload
+                    latestFrame = frameBytes;
+                    lastFrameAt = now;
+                    frameVersion++;
                 }
             }
+        }
+
+        if (TryReadFrameBytes(root, "modelFrame", out var modelFrameBytes))
+        {
+            lock (stateLock)
+            {
+                var modelFrameState = GetOrCreateAgentModelFrameStateLocked(agentId);
+                modelFrameState.Bytes = modelFrameBytes;
+                modelFrameState.Timestamp = now;
+                modelFrameState.Version++;
+            }
+        }
+    }
+
+    private static bool TryReadFrameBytes(JsonElement root, string propertyName, out byte[] bytes)
+    {
+        bytes = Array.Empty<byte>();
+        if (!root.TryGetProperty(propertyName, out var frame) ||
+            !frame.TryGetProperty("dataBase64", out var dataBase64Element))
+        {
+            return false;
+        }
+
+        var dataBase64 = dataBase64Element.GetString();
+        if (string.IsNullOrWhiteSpace(dataBase64))
+        {
+            return false;
+        }
+
+        try
+        {
+            bytes = Convert.FromBase64String(dataBase64);
+            return bytes.Length > 0;
+        }
+        catch
+        {
+            bytes = Array.Empty<byte>();
+            return false;
         }
     }
 
@@ -1211,6 +1354,18 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
         return state;
     }
 
+    private AgentFrameState GetOrCreateAgentModelFrameStateLocked(string agentId)
+    {
+        var normalizedAgentId = string.IsNullOrWhiteSpace(agentId) ? "agent-1" : agentId.Trim();
+        if (!agentModelFrameStates.TryGetValue(normalizedAgentId, out var state))
+        {
+            state = new AgentFrameState();
+            agentModelFrameStates[normalizedAgentId] = state;
+        }
+
+        return state;
+    }
+
     private void ResetDriveStateLocked(string agentId)
     {
         var state = GetOrCreateAgentControlStateLocked(agentId);
@@ -1234,6 +1389,17 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
         }
     }
 
+    public void ClearDirectDrive(string? agentId)
+    {
+        var resolvedAgentId = ResolveCommandTargetAgentId(agentId) ?? "agent-1";
+        lock (stateLock)
+        {
+            var state = GetOrCreateAgentControlStateLocked(resolvedAgentId);
+            state.DirectThrottle = null;
+            state.DirectSteer = null;
+        }
+    }
+
     private void SyncAgentStateDictionariesLocked(IReadOnlyList<UnityRuntimeAgentSelectionRequest> agents)
     {
         var normalizedAgentIds = new HashSet<string>(
@@ -1246,6 +1412,7 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
         {
             _ = GetOrCreateAgentControlStateLocked(agentId);
             _ = GetOrCreateAgentFrameStateLocked(agentId);
+            _ = GetOrCreateAgentModelFrameStateLocked(agentId);
         }
 
         foreach (var staleAgentId in agentControlStates.Keys.Where(id => !normalizedAgentIds.Contains(id)).ToArray())
@@ -1256,6 +1423,11 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
         foreach (var staleAgentId in agentFrameStates.Keys.Where(id => !normalizedAgentIds.Contains(id)).ToArray())
         {
             agentFrameStates.Remove(staleAgentId);
+        }
+
+        foreach (var staleAgentId in agentModelFrameStates.Keys.Where(id => !normalizedAgentIds.Contains(id)).ToArray())
+        {
+            agentModelFrameStates.Remove(staleAgentId);
         }
 
         foreach (var staleAgentId in agentControlOwners.Keys.Where(id => !normalizedAgentIds.Contains(id)).ToArray())
@@ -1394,6 +1566,53 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
         return result;
     }
 
+    private static List<UnityRuntimeAgentSelectionRequest> ResolveConfiguredAgentsFromActiveState(
+        IReadOnlyList<UnityRuntimeAgentSelectionRequest>? configured,
+        ActiveRuntimeState activeState,
+        HashSet<string> availableVehicleIds,
+        string fallbackVehicleId)
+    {
+        var normalized = NormalizeConfiguredAgents(configured);
+        if (activeState.AgentIds.Count == 0)
+        {
+            return normalized;
+        }
+
+        var activeAgents = new List<UnityRuntimeAgentSelectionRequest>();
+        for (var index = 0; index < activeState.AgentIds.Count; index++)
+        {
+            var agentId = activeState.AgentIds[index]?.Trim();
+            if (string.IsNullOrWhiteSpace(agentId))
+            {
+                continue;
+            }
+
+            var activeVehicleId = index < activeState.VehicleIds.Count ? activeState.VehicleIds[index]?.Trim() : null;
+            var vehicleId = !string.IsNullOrWhiteSpace(activeVehicleId) && availableVehicleIds.Contains(activeVehicleId)
+                ? activeVehicleId
+                : fallbackVehicleId;
+
+            activeAgents.Add(new UnityRuntimeAgentSelectionRequest(agentId, vehicleId, IsPrimary: index == 0));
+        }
+
+        if (activeAgents.Count == 0)
+        {
+            return normalized;
+        }
+
+        if (normalized.Count == 0)
+        {
+            return NormalizeConfiguredAgents(activeAgents);
+        }
+
+        var activeAgentIds = new HashSet<string>(
+            activeAgents.Select(agent => agent.AgentId ?? string.Empty),
+            StringComparer.Ordinal);
+        return normalized.All(agent => !string.IsNullOrWhiteSpace(agent.AgentId) && activeAgentIds.Contains(agent.AgentId))
+            ? normalized
+            : NormalizeConfiguredAgents(activeAgents);
+    }
+
     private static string ResolveSelectedControlAgentId(string? current, IReadOnlyList<UnityRuntimeAgentSelectionRequest> agents)
     {
         if (!string.IsNullOrWhiteSpace(current) &&
@@ -1467,6 +1686,44 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
         }
 
         return null;
+    }
+
+    private static string? ReadOptionalString(JsonElement root, string propertyName)
+    {
+        if (!root.TryGetProperty(propertyName, out var element) ||
+            element.ValueKind is not JsonValueKind.String)
+        {
+            return null;
+        }
+
+        var value = element.GetString()?.Trim();
+        return string.IsNullOrWhiteSpace(value) ? null : value;
+    }
+
+    private static IReadOnlyList<string> ReadStringArray(JsonElement root, string propertyName)
+    {
+        if (!root.TryGetProperty(propertyName, out var element) ||
+            element.ValueKind is not JsonValueKind.Array)
+        {
+            return Array.Empty<string>();
+        }
+
+        var values = new List<string>();
+        foreach (var item in element.EnumerateArray())
+        {
+            if (item.ValueKind is not JsonValueKind.String)
+            {
+                continue;
+            }
+
+            var value = item.GetString()?.Trim();
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                values.Add(value);
+            }
+        }
+
+        return values;
     }
 
     private static string? ResolveSelected(HashSet<string> availableIds, string? selectedId, IEnumerable<string> preferredIds)

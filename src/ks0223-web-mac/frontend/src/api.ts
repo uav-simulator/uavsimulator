@@ -254,6 +254,37 @@ export type ScenarioLoadResult = {
   rawOutput?: string
 }
 
+export type MazeGenerateRequest = {
+  seed?: number
+  lengthCells?: number
+  corridorWidthM?: number
+  leftTurns?: number
+  rightTurns?: number
+  wallHeightM?: number
+  timeScale?: number
+  vehicleId?: string
+  agentId?: string
+  cameraProfile?: string
+  clientId?: string
+  runtimeMode?: string
+}
+
+export type MazeGenerateResult = {
+  maze?: {
+    seed?: number
+    lengthCells?: string
+    corridorWidthM?: string
+    leftTurns?: string
+    rightTurns?: string
+    wallHeightM?: string
+    trackId?: string
+    vehicleId?: string
+    agentId?: string
+  }
+  reset?: ScenarioLoadResult
+  rawOutput?: string
+}
+
 export async function listScenarios(): Promise<ScenarioListResponse> {
   const response = await fetch(withBase('/api/scenarios'))
   return handleJson<ScenarioListResponse>(response)
@@ -266,6 +297,15 @@ export async function loadScenario(filePath: string): Promise<ScenarioLoadResult
     body: JSON.stringify({ filePath }),
   })
   return handleJson<ScenarioLoadResult>(response)
+}
+
+export async function generateMazeScenario(payload: MazeGenerateRequest): Promise<MazeGenerateResult> {
+  const response = await fetch(withBase('/api/scenarios/maze/generate'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+  return handleJson<MazeGenerateResult>(response)
 }
 
 export async function fetchCameraStatus(clientId: string, runtimeMode: string): Promise<CameraStatusDto> {
@@ -446,8 +486,11 @@ export type AutopilotPreviewDto = {
   guardReason: string | null
 }
 
-export async function fetchAutopilotPreview(clientId: string, runtimeMode: string): Promise<AutopilotPreviewDto> {
+export async function fetchAutopilotPreview(clientId: string, runtimeMode: string, agentId?: string): Promise<AutopilotPreviewDto> {
   const params = new URLSearchParams({ clientId, runtimeMode })
+  if (agentId?.trim()) {
+    params.set('agentId', agentId.trim())
+  }
   const response = await fetch(withBase(`/api/autopilot/preview?${params.toString()}`))
   return handleJson<AutopilotPreviewDto>(response)
 }
@@ -521,6 +564,15 @@ export function cameraMjpegUrl(clientId: string, runtimeMode: string, agentId?: 
   }
 
   return withBase(`/api/camera/mjpeg?${params.toString()}`)
+}
+
+export function cameraModelViewUrl(clientId: string, runtimeMode: string, agentId?: string): string {
+  const params = new URLSearchParams({ clientId, runtimeMode, width: '84', height: '84' })
+  if (agentId?.trim()) {
+    params.set('agentId', agentId.trim())
+  }
+
+  return withBase(`/api/camera/model-view?${params.toString()}`)
 }
 
 export async function discoverUnityRuntimes(host?: string, portFrom?: number, portTo?: number): Promise<{

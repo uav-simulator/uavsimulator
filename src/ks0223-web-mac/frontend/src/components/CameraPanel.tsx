@@ -24,7 +24,7 @@ import {
   TextField,
   Typography,
 } from '@mui/material'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { CameraStatusDto, HealthDto, SensorTelemetryDto, StatusDto } from '../types'
 
 type OverlayCorner = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
@@ -84,6 +84,8 @@ type Props = {
   saliencyEnabled?: boolean
   saliencyClientId?: string
   saliencyRuntimeMode?: string
+  autopilotPanel?: ReactNode
+  modelVisionPanel?: ReactNode
 }
 
 const POLICY_ACTION_NAMES = ['DirStop', 'DirForward', 'DirBack', 'DirLeft', 'DirRight']
@@ -218,6 +220,8 @@ export function CameraPanel({
   saliencyEnabled = false,
   saliencyClientId = 'web',
   saliencyRuntimeMode = 'real-robot',
+  autopilotPanel,
+  modelVisionPanel,
 }: Props) {
   const hasFrame = (camera?.hasFrame ?? false) || (cameraStreamUrl?.includes('runtimeMode=unity-sim') ?? false)
   const [overlay, setOverlay] = useState<OverlaySettings>(() => loadOverlaySettings())
@@ -498,6 +502,10 @@ export function CameraPanel({
             </IconButton>
           </Stack>
 
+          {autopilotPanel ? (
+            <Box>{autopilotPanel}</Box>
+          ) : null}
+
           {hasFrame ? (
             <Box
               ref={viewportRef}
@@ -740,6 +748,10 @@ export function CameraPanel({
               Поток камеры пока не обнаружен. Backend слушает UDP и проверяет типовые HTTP URL на выбранном IP.
             </Alert>
           )}
+
+          {modelVisionPanel ? (
+            <Box>{modelVisionPanel}</Box>
+          ) : null}
 
           <Stack spacing={1.5}>
             <Typography variant="subtitle2">Настройки Overlay</Typography>

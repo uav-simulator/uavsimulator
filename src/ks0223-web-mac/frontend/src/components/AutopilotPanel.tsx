@@ -4,6 +4,7 @@ import StopCircleIcon from '@mui/icons-material/StopCircle'
 import VisibilityIcon from '@mui/icons-material/Visibility'
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff'
 import {
+  Alert,
   Box,
   Button,
   Card,
@@ -36,8 +37,10 @@ type Props = {
   onStartAutopilot: (payload: { agentId?: string; loopIntervalMs?: number }) => Promise<void>
   onStopAutopilot: () => Promise<void>
   onShadowPreviewUpdate?: (preview: AutopilotPreviewDto | null) => void
+  onSelectedModelChange?: (modelId: string | null) => void
   saliencyOn?: boolean
   onSaliencyToggle?: (on: boolean) => void
+  embedded?: boolean
 }
 
 
@@ -53,13 +56,15 @@ export function AutopilotPanel({
   onStartAutopilot,
   onStopAutopilot,
   onShadowPreviewUpdate,
+  onSelectedModelChange,
   saliencyOn = false,
   onSaliencyToggle,
+  embedded = false,
 }: Props) {
   const [selectedName, setSelectedName] = useState('')
   const [selectedModelId, setSelectedModelId] = useState('')
   const [loopIntervalMs, setLoopIntervalMs] = useState('140')
-  const [shadowOn, setShadowOn] = useState(false)
+  const [shadowOn, setShadowOn] = useState(true)
   const [demoRecording, setDemoRecording] = useState(false)
   const [demoBusy, setDemoBusy] = useState(false)
   const [demoPaths, setDemoPaths] = useState<{ log?: string | null; video?: string | null } | null>(null)
@@ -81,7 +86,8 @@ export function AutopilotPanel({
       return
     }
 
-    const preferredModelId = binding?.modelId ?? catalog[0]?.versions[0]?.modelId ?? ''
+    const activeVersion = catalog.flatMap((entry) => entry.versions).find((item) => item.isActive)
+    const preferredModelId = binding?.modelId ?? activeVersion?.modelId ?? catalog[0]?.versions[0]?.modelId ?? ''
     const preferredGroup =
       catalog.find((entry) => entry.versions.some((item) => item.modelId === preferredModelId)) ??
       catalog[0]
@@ -99,6 +105,10 @@ export function AutopilotPanel({
       setSelectedModelId(preferredVersion?.modelId ?? '')
     }
   }, [binding?.modelId, catalog, selectedModelId, selectedName])
+
+  useEffect(() => {
+    onSelectedModelChange?.(selectedModelId || null)
+  }, [onSelectedModelChange, selectedModelId])
 
   const handleBind = async () => {
     if (!selectedVersion) return
@@ -118,7 +128,8 @@ export function AutopilotPanel({
   const canBind = !busy && Boolean(selectedVersion) && (runtimeMode !== 'unity-sim' || Boolean(unityControlAgentId))
   const canStart = !busy && Boolean(binding) && !isRunning && (runtimeMode !== 'unity-sim' || Boolean(unityControlAgentId))
   const canStop = !busy && isRunning
-  const canShadow = Boolean(binding) && !isRunning
+  const canShadow = Boolean(binding) && (runtimeMode !== 'unity-sim' || Boolean(unityControlAgentId))
+  const autopilotProblem = autopilot?.lastError || autopilot?.stopReason || null
 
   useEffect(() => {
     if (previewTimer.current) {
@@ -131,7 +142,11 @@ export function AutopilotPanel({
     let cancelled = false
     const tick = async () => {
       try {
-        const data = await fetchAutopilotPreview(clientId, runtimeMode)
+        const data = await fetchAutopilotPreview(
+          clientId,
+          runtimeMode,
+          runtimeMode === 'unity-sim' ? unityControlAgentId || undefined : undefined,
+        )
         if (!cancelled) onShadowPreviewUpdate?.(data)
       } catch (err) {
         if (!cancelled) {
@@ -151,28 +166,21 @@ export function AutopilotPanel({
       }
     }
     void tick()
-    previewTimer.current = setInterval(() => void tick(), 200)
+    previewTimer.current = setInterval(() => void tick(), 350)
     return () => {
       cancelled = true
       if (previewTimer.current) clearInterval(previewTimer.current)
       previewTimer.current = null
     }
-  }, [shadowOn, canShadow, clientId, runtimeMode, onShadowPreviewUpdate])
-
-  // Auto-disable shadow if autopilot starts running (real autopilot uses inference loop, no need for preview)
-  useEffect(() => {
-    if (isRunning && shadowOn) setShadowOn(false)
-  }, [isRunning, shadowOn])
+  }, [shadowOn, canShadow, clientId, runtimeMode, unityControlAgentId, onShadowPreviewUpdate])
 
   // Clear external preview when shadow stops
   useEffect(() => {
     if (!shadowOn) onShadowPreviewUpdate?.(null)
   }, [shadowOn, onShadowPreviewUpdate])
 
-  return (
-    <Card>
-      <CardContent>
-        <Stack spacing={1.5}>
+  const content = (
+    <Stack spacing={1.5}>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <Typography variant="h6">Autopilot</Typography>
             <Chip
@@ -264,7 +272,7 @@ export function AutopilotPanel({
               disabled={!canShadow && !shadowOn}
               onClick={() => setShadowOn((v) => !v)}
             >
-              {shadowOn ? 'Stop shadow' : 'Shadow mode'}
+              {shadowOn ? 'Hide decisions' : 'Show decisions'}
             </Button>
             {onSaliencyToggle ? (
               <Button
@@ -315,17 +323,49 @@ export function AutopilotPanel({
 
           {autopilot && isRunning ? (
             <Typography variant="caption" color="text.secondary">
-              steps={autopilot.stepsTotal} | cmds={autopilot.commandsSent} | throttle={autopilot.lastThrottle.toFixed(2)} steer={autopilot.lastSteer.toFixed(2)}
+              steps={autopilot.stepsTotal} | cmds={autopilot.commandsSent} | throttle={autopilot.lastThrottle.toFixed(2)} steer={autopilot.lastSteer.toFixed(2)} | estop={autopilot.eStopTriggerCount} | repeat={autopilot.repeatedCommandCount}
             </Typography>
+          ) : null}
+
+          {autopilot?.eStopActive ? (
+            <Alert severity="warning" variant="outlined">
+              Safety E-stop active: forward throttle is blocked; turn-in-place/reverse commands are still allowed.
+            </Alert>
+          ) : null}
+
+          {autopilotProblem ? (
+            <Alert severity={autopilot?.lastError ? 'error' : 'info'} variant="outlined">
+              Autopilot status: {autopilotProblem}
+            </Alert>
           ) : null}
 
           {shadowOn ? (
             <Typography variant="caption" color="info.main">
-              👁 Shadow mode active — see decision overlay on camera
+              Shadow decision preview active — camera panel shows model input and action probabilities.
             </Typography>
           ) : null}
-        </Stack>
-      </CardContent>
+    </Stack>
+  )
+
+  if (embedded) {
+    return (
+      <Box
+        sx={{
+          border: '1px solid',
+          borderColor: 'divider',
+          borderRadius: 2,
+          p: { xs: 1.5, md: 2 },
+          bgcolor: 'rgba(6, 15, 25, 0.34)',
+        }}
+      >
+        {content}
+      </Box>
+    )
+  }
+
+  return (
+    <Card>
+      <CardContent>{content}</CardContent>
     </Card>
   )
 }

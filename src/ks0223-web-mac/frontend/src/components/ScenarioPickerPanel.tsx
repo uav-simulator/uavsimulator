@@ -7,6 +7,7 @@ import {
   CardContent,
   Chip,
   CircularProgress,
+  Divider,
   MenuItem,
   Stack,
   TextField,
@@ -20,16 +21,29 @@ import {
   type ScenarioFile,
   type ScenarioLoadResult,
 } from '../api'
+import { MazeGeneratorPanel } from './MazeGeneratorPanel'
+
+type Props = {
+  clientId: string
+  runtimeMode: string
+  unityControlAgentId?: string
+  unityVehicleId?: string
+}
 
 /**
  * ScenarioPickerPanel — choose a scenario YAML and load it into the running
- * Unity simulator. Backend shells out to `rusim scenario reset <file>`,
- * which parses the YAML and POSTs to Unity's /reset endpoint on port 8000.
+ * Unity simulator. Backend shells out to `rusim scenario print-reset <file>`,
+ * then POSTs the payload to Unity's /reset endpoint on port 8000.
  *
  * Used to switch between e.g. corridor-sim2real, swarm visualization, and
  * the POLYGON city demo without touching the terminal.
  */
-export function ScenarioPickerPanel() {
+export function ScenarioPickerPanel({
+  clientId,
+  runtimeMode,
+  unityControlAgentId,
+  unityVehicleId,
+}: Props) {
   const [scenarios, setScenarios] = useState<ScenarioFile[]>([])
   const [scenariosDir, setScenariosDir] = useState<string>('')
   const [warning, setWarning] = useState<string | null>(null)
@@ -173,6 +187,16 @@ export function ScenarioPickerPanel() {
             )}
           </Box>
         )}
+
+        <Divider sx={{ my: 2.5 }} />
+
+        <MazeGeneratorPanel
+          clientId={clientId}
+          runtimeMode={runtimeMode}
+          unityControlAgentId={unityControlAgentId}
+          unityVehicleId={unityVehicleId}
+          onGenerated={() => setLastResult(null)}
+        />
 
         {scenariosDir && (
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 2 }}>

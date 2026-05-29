@@ -15,12 +15,12 @@ runtime:
 world:
   trackId: track.cardboard_maze.v1
   params:
-    maze.seed: 43
+    maze.seed: 42
     maze.length_cells: 30           # 30 cells × 0.45m = 13.5m total navigation path
     maze.corridor_width_m: 0.45     # tight enough to demand deliberate steering (14cm clearance each side)
     maze.left_turns: 6              # L=30 with T=6 works for 25/29 seeds in 42..70; L=40 was pathological
     maze.right_turns: 6
-    maze.path_encoded: "20,20;20,21;19,21;18,21;18,22;17,22;16,22;16,23;17,23;17,24;17,25;18,25;18,26;19,26;19,25;19,24;19,23;19,22;20,22;21,22;22,22;23,22;24,22;24,23;24,24;24,25;24,26;24,27;24,28;24,29"
+    maze.path_encoded: "20,20;20,21;20,22;19,22;18,22;17,22;16,22;15,22;14,22;14,23;14,24;14,25;14,26;14,27;14,28;14,29;14,30;15,30;16,30;16,29;17,29;18,29;19,29;19,28;20,28;20,29;20,30;20,31;19,31;18,31"
     maze.wall_height_m: 0.25
 
 vehicle:

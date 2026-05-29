@@ -20,6 +20,8 @@ def main() -> None:
     fit.add_argument("--lr", type=float, default=3e-4)
     fit.add_argument("--device", default="cpu")
     fit.add_argument("--seed", type=int, default=42)
+    fit.add_argument("--frame-stack", type=int, default=1,
+                     help="Number of consecutive demo frames to concatenate channel-wise.")
     fit.add_argument(
         "--class-balanced",
         action="store_true",
@@ -35,11 +37,17 @@ def main() -> None:
              "occupancy_<tag>.npy in the same directory (see training.bc.occupancy "
              "for the offline reconstructor).",
     )
+    fit.add_argument(
+        "--use-distances-8",
+        action="store_true",
+        help="Append the structured 8-ray context vector alongside occupancy. "
+             "Requires --use-occupancy and paired distances_8_<tag>.npy files.",
+    )
 
     args = p.parse_args()
     if args.command == "fit":
         pairs = discover_pairs(args.demos)
-        samples = load_dataset(pairs)
+        samples = load_dataset(pairs, frame_stack=args.frame_stack)
         print(f"Loaded {len(samples)} samples from {len(pairs)} sessions")
         cfg = BcConfig(
             epochs=args.epochs,
@@ -47,8 +55,10 @@ def main() -> None:
             lr=args.lr,
             device=args.device,
             seed=args.seed,
+            frame_stack=args.frame_stack,
             class_balanced=args.class_balanced,
             use_occupancy=args.use_occupancy,
+            use_distances_8=args.use_distances_8,
         )
         trainer = BcTrainer(cfg)
         history = trainer.fit(samples)

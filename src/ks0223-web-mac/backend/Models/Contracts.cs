@@ -188,6 +188,20 @@ public sealed record ModelBindingDto(
 
 public sealed record ActivateModelRequest(string ModelId);
 
+public sealed record GenerateMazeScenarioRequest(
+    int? Seed = null,
+    int? LengthCells = null,
+    float? CorridorWidthM = null,
+    int? LeftTurns = null,
+    int? RightTurns = null,
+    float? WallHeightM = null,
+    float? TimeScale = null,
+    string? VehicleId = null,
+    string? AgentId = null,
+    string? CameraProfile = null,
+    string? ClientId = null,
+    string? RuntimeMode = null);
+
 public sealed record ImageFeaturesDto(
     float BrightnessMean,
     float BrightnessStdDev,
@@ -283,4 +297,3 @@ public sealed record DemoSessionFileDto(
     int CommandCount);
 
 public sealed record LoadScenarioRequest(string FilePath);
-

@@ -1,0 +1,25 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8d14ebb06ca0546dbbaefa48fb7c1c2f, type: 3}
+  m_Name: track_city_polygon_v1
+  m_EditorClassIdentifier: 
+  id: track.city_polygon.v1
+  displayName: City (POLYGON pack)
+  version:
+    major: 0
+    minor: 0
+    patch: 0
+  description: City demo track assembled from POLYGON City Pack street tiles + 4
+    traffic lights at the central intersection. Used for traffic-light-aware navigation
+    showcase.
+  prefab: {fileID: 0}
+  parametersSchemaJson: '{"type":"object","properties":{}}'

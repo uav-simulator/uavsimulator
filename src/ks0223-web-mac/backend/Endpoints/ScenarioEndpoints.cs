@@ -1,5 +1,7 @@
+using System.Text;
 using System.Text.Json;
 using Ks0223.Web.Backend.Models;
+using Ks0223.Web.Backend.Services;
 
 namespace Ks0223.Web.Backend.Endpoints;
 
@@ -49,7 +51,11 @@ internal static class ScenarioEndpoints
             return Results.Ok(new { scenariosDir = dir, count = items.Count, items });
         });
 
-        app.MapPost("/api/scenarios/load", async (LoadScenarioRequest request, ILoggerFactory loggerFactory, CancellationToken cancellationToken) =>
+        app.MapPost("/api/scenarios/load", async (
+            LoadScenarioRequest request,
+            ILoggerFactory loggerFactory,
+            IHttpClientFactory httpClientFactory,
+            CancellationToken cancellationToken) =>
         {
             var logger = loggerFactory.CreateLogger("ScenarioLoader");
             if (string.IsNullOrWhiteSpace(request.FilePath))
@@ -80,18 +86,8 @@ internal static class ScenarioEndpoints
                 CreateNoWindow = true,
             };
             psi.ArgumentList.Add("scenario");
-            psi.ArgumentList.Add("reset");
+            psi.ArgumentList.Add("print-reset");
             psi.ArgumentList.Add(path);
-
-            // In Docker, Unity runs on the host (host.docker.internal:8000); on the
-            // host machine itself rusim defaults to localhost:8000. Honour the
-            // RUSIM_BASE_URL override if set (Dockerfile sets it to host.docker.internal).
-            var rusimBaseUrl = Environment.GetEnvironmentVariable("RUSIM_BASE_URL");
-            if (!string.IsNullOrWhiteSpace(rusimBaseUrl))
-            {
-                psi.ArgumentList.Add("--base-url");
-                psi.ArgumentList.Add(rusimBaseUrl);
-            }
 
             using var proc = System.Diagnostics.Process.Start(psi);
             if (proc == null)
@@ -107,14 +103,74 @@ internal static class ScenarioEndpoints
 
             if (proc.ExitCode != 0)
             {
-                logger.LogWarning("rusim scenario reset failed: exit={ExitCode}, stderr={Stderr}", proc.ExitCode, stderr);
+                logger.LogWarning("rusim scenario print-reset failed: exit={ExitCode}, stderr={Stderr}", proc.ExitCode, stderr);
                 return Results.BadRequest(new
                 {
-                    error = "rusim scenario reset failed",
+                    error = "rusim scenario print-reset failed",
                     exitCode = proc.ExitCode,
                     stderr,
                     stdout,
                 });
+            }
+
+            JsonDocument payloadDocument;
+            try
+            {
+                payloadDocument = JsonDocument.Parse(stdout);
+            }
+            catch (JsonException ex)
+            {
+                logger.LogWarning(ex, "rusim scenario print-reset returned invalid JSON: {Stdout}", stdout);
+                return Results.BadRequest(new
+                {
+                    error = "rusim scenario print-reset returned invalid JSON",
+                    stdout,
+                    stderr,
+                });
+            }
+
+            using (payloadDocument)
+            {
+                var rusimBaseUrl = Environment.GetEnvironmentVariable("RUSIM_BASE_URL");
+                if (string.IsNullOrWhiteSpace(rusimBaseUrl))
+                {
+                    rusimBaseUrl = "http://127.0.0.1:8000";
+                }
+
+                var resetUri = BuildRuntimeResetUri(rusimBaseUrl);
+                using var resetRequest = new HttpRequestMessage(HttpMethod.Post, resetUri);
+                var hostHeader = GetRuntimeHostHeaderOverride(resetUri, IsRunningInContainer());
+                if (hostHeader is not null)
+                {
+                    resetRequest.Headers.Host = hostHeader;
+                }
+
+                resetRequest.Content = new StringContent(
+                    payloadDocument.RootElement.GetRawText(),
+                    Encoding.UTF8,
+                    "application/json");
+
+                var httpClient = httpClientFactory.CreateClient(nameof(ScenarioEndpoints));
+                httpClient.Timeout = TimeSpan.FromSeconds(30);
+
+                using var resetResponse = await httpClient.SendAsync(resetRequest, cancellationToken);
+                var responseText = await resetResponse.Content.ReadAsStringAsync(cancellationToken);
+                if (!resetResponse.IsSuccessStatusCode)
+                {
+                    logger.LogWarning(
+                        "runtime reset failed: status={StatusCode}, body={Body}",
+                        (int)resetResponse.StatusCode,
+                        responseText);
+                    return Results.BadRequest(new
+                    {
+                        error = "runtime reset failed",
+                        statusCode = (int)resetResponse.StatusCode,
+                        body = responseText,
+                        resetUrl = resetUri.ToString(),
+                    });
+                }
+
+                stdout = responseText;
             }
 
             try
@@ -125,6 +181,95 @@ internal static class ScenarioEndpoints
             catch (JsonException)
             {
                 return Results.Ok(new { rawOutput = stdout });
+            }
+        });
+
+        app.MapPost("/api/scenarios/maze/generate", async (
+            GenerateMazeScenarioRequest request,
+            ILoggerFactory loggerFactory,
+            IHttpClientFactory httpClientFactory,
+            RuntimeSessionManager runtimeSessionManager,
+            CancellationToken cancellationToken) =>
+        {
+            var logger = loggerFactory.CreateLogger("MazeScenarioGenerator");
+            var payload = BuildMazeResetPayload(request);
+            await TryPrepareUnitySessionAsync(request, payload, runtimeSessionManager, logger, cancellationToken);
+
+            try
+            {
+                var resetFromConnectedSession = await runtimeSessionManager.TryResetConnectedUnityRuntimeAsync(
+                    request.ClientId,
+                    request.RuntimeMode,
+                    payload,
+                    payload.agents.FirstOrDefault()?.agentId,
+                    cancellationToken);
+                if (resetFromConnectedSession.HasValue)
+                {
+                    return Results.Ok(new
+                    {
+                        maze = BuildMazeSummary(payload),
+                        reset = resetFromConnectedSession.Value,
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "controlled Unity maze reset failed; falling back to direct runtime reset");
+            }
+
+            var rusimBaseUrl = Environment.GetEnvironmentVariable("RUSIM_BASE_URL");
+            if (string.IsNullOrWhiteSpace(rusimBaseUrl))
+            {
+                rusimBaseUrl = "http://127.0.0.1:8000";
+            }
+
+            var resetUri = BuildRuntimeResetUri(rusimBaseUrl);
+            using var resetRequest = new HttpRequestMessage(HttpMethod.Post, resetUri);
+            var hostHeader = GetRuntimeHostHeaderOverride(resetUri, IsRunningInContainer());
+            if (hostHeader is not null)
+            {
+                resetRequest.Headers.Host = hostHeader;
+            }
+
+            resetRequest.Content = JsonContent(payload);
+
+            var httpClient = httpClientFactory.CreateClient(nameof(ScenarioEndpoints));
+            httpClient.Timeout = TimeSpan.FromSeconds(30);
+
+            using var resetResponse = await httpClient.SendAsync(resetRequest, cancellationToken);
+            var responseText = await resetResponse.Content.ReadAsStringAsync(cancellationToken);
+            if (!resetResponse.IsSuccessStatusCode)
+            {
+                logger.LogWarning(
+                    "maze runtime reset failed: status={StatusCode}, body={Body}",
+                    (int)resetResponse.StatusCode,
+                    responseText);
+                return Results.BadRequest(new
+                {
+                    error = "runtime reset failed",
+                    statusCode = (int)resetResponse.StatusCode,
+                    body = responseText,
+                    resetUrl = resetUri.ToString(),
+                    maze = BuildMazeSummary(payload),
+                });
+            }
+
+            try
+            {
+                using var doc = JsonDocument.Parse(responseText);
+                return Results.Ok(new
+                {
+                    maze = BuildMazeSummary(payload),
+                    reset = doc.RootElement.Clone(),
+                });
+            }
+            catch (JsonException)
+            {
+                return Results.Ok(new
+                {
+                    maze = BuildMazeSummary(payload),
+                    rawOutput = responseText,
+                });
             }
         });
     }
@@ -178,4 +323,168 @@ internal static class ScenarioEndpoints
         }
         return null;
     }
+
+    internal static Uri BuildRuntimeResetUri(string baseUrl)
+    {
+        var uri = new Uri(baseUrl, UriKind.Absolute);
+        var builder = new UriBuilder(uri);
+        var path = builder.Path.TrimEnd('/');
+        builder.Path = string.IsNullOrEmpty(path) ? "reset" : $"{path}/reset";
+        return builder.Uri;
+    }
+
+    internal static string? GetRuntimeHostHeaderOverride(Uri runtimeUri, bool runningInContainer)
+    {
+        if (!runningInContainer)
+        {
+            return null;
+        }
+
+        if (!string.Equals(runtimeUri.Host, "host.docker.internal", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        return $"127.0.0.1:{runtimeUri.Port}";
+    }
+
+    internal static RuntimeResetPayload BuildMazeResetPayload(GenerateMazeScenarioRequest request)
+    {
+        var seed = Math.Clamp(request.Seed ?? 42, 0, 999_999);
+        var lengthCells = Math.Clamp(request.LengthCells ?? 12, 3, 80);
+        var corridorWidthM = Math.Clamp(request.CorridorWidthM ?? 0.45f, 0.30f, 1.20f);
+        var leftTurns = Math.Clamp(request.LeftTurns ?? 2, 0, 20);
+        var rightTurns = Math.Clamp(request.RightTurns ?? 1, 0, 20);
+        var wallHeightM = Math.Clamp(request.WallHeightM ?? 0.25f, 0.15f, 0.60f);
+        var timeScale = Math.Clamp(request.TimeScale ?? 1.0f, 0.1f, 20.0f);
+        var vehicleId = string.IsNullOrWhiteSpace(request.VehicleId)
+            ? "vehicle.ks0223.v1"
+            : request.VehicleId.Trim();
+        var agentId = string.IsNullOrWhiteSpace(request.AgentId)
+            ? "agent-1"
+            : request.AgentId.Trim();
+        var cameraProfile = string.IsNullOrWhiteSpace(request.CameraProfile)
+            ? "high"
+            : request.CameraProfile.Trim();
+
+        return new RuntimeResetPayload(
+            seed,
+            timeScale,
+            "track.cardboard_maze.v1",
+            vehicleId,
+            [
+                new("route.reach_distance_m", FormatInvariant(corridorWidthM * 0.54f)),
+                new("route.loop", "false"),
+                new("maze.seed", seed.ToString(System.Globalization.CultureInfo.InvariantCulture)),
+                new("maze.length_cells", lengthCells.ToString(System.Globalization.CultureInfo.InvariantCulture)),
+                new("maze.corridor_width_m", FormatInvariant(corridorWidthM)),
+                new("maze.left_turns", leftTurns.ToString(System.Globalization.CultureInfo.InvariantCulture)),
+                new("maze.right_turns", rightTurns.ToString(System.Globalization.CultureInfo.InvariantCulture)),
+                // Important: existing CardboardMazeTrack keeps pathEncoded in a field.
+                // Sending an empty value clears a previously-loaded curated path so
+                // seed/turn generation actually takes effect on repeated WebUI resets.
+                new("maze.path_encoded", string.Empty),
+                new("maze.wall_height_m", FormatInvariant(wallHeightM)),
+            ],
+            [
+                new("camera.profile", cameraProfile),
+            ],
+            [
+                new("runtime.headless", "false"),
+                new("agents.isolated", "true"),
+                new("agents.see_each_other", "false"),
+                new("agents.collisions_enabled", "true"),
+            ],
+            [
+                new(agentId, vehicleId, true),
+            ]);
+    }
+
+    private static object BuildMazeSummary(RuntimeResetPayload payload) => new
+    {
+        seed = payload.seed,
+        lengthCells = ReadParam(payload.trackParams, "maze.length_cells"),
+        corridorWidthM = ReadParam(payload.trackParams, "maze.corridor_width_m"),
+        leftTurns = ReadParam(payload.trackParams, "maze.left_turns"),
+        rightTurns = ReadParam(payload.trackParams, "maze.right_turns"),
+        wallHeightM = ReadParam(payload.trackParams, "maze.wall_height_m"),
+        trackId = payload.selectedTrackId,
+        vehicleId = payload.selectedVehicleId,
+        agentId = payload.agents.FirstOrDefault()?.agentId,
+    };
+
+    private static async Task TryPrepareUnitySessionAsync(
+        GenerateMazeScenarioRequest request,
+        RuntimeResetPayload payload,
+        RuntimeSessionManager runtimeSessionManager,
+        ILogger logger,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.ClientId) ||
+            !string.Equals(RuntimeModes.Normalize(request.RuntimeMode ?? string.Empty), RuntimeModes.UnitySim, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        try
+        {
+            await runtimeSessionManager.SetUnityRuntimeSelectionAsync(
+                new UnityRuntimeSelectionRequest(
+                    request.ClientId.Trim(),
+                    RuntimeModes.UnitySim,
+                    payload.selectedTrackId,
+                    payload.selectedVehicleId,
+                    "driver",
+                    payload.agents.Select(agent => new UnityRuntimeAgentSelectionRequest(agent.agentId, agent.vehicleId, agent.isPrimary)).ToArray(),
+                    ApplyImmediately: false,
+                    CollisionsEnabled: true,
+                    SeeEachOther: false),
+                cancellationToken);
+        }
+        catch (InvalidOperationException ex)
+        {
+            logger.LogDebug(ex, "Unity session is not connected; maze reset will still be sent directly");
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Failed to synchronize Unity session before maze reset");
+        }
+    }
+
+    private static string? ReadParam(IEnumerable<ResetKeyValue> values, string key) =>
+        values.FirstOrDefault(item => string.Equals(item.key, key, StringComparison.OrdinalIgnoreCase))?.value;
+
+    private static StringContent JsonContent(object payload) =>
+        new(
+            JsonSerializer.Serialize(payload),
+            Encoding.UTF8,
+            "application/json");
+
+    private static string FormatInvariant(float value) => value.ToString("0.######", System.Globalization.CultureInfo.InvariantCulture);
+
+    private static bool IsRunningInContainer()
+    {
+        var env = Environment.GetEnvironmentVariable("DOTNET_RUNNING_IN_CONTAINER");
+        if (string.Equals(env, "true", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(env, "1", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return File.Exists("/.dockerenv");
+    }
+
+    internal sealed record ResetKeyValue(string key, string value);
+
+    internal sealed record ResetAgent(string agentId, string vehicleId, bool isPrimary);
+
+    internal sealed record RuntimeResetPayload(
+        int seed,
+        float timeScale,
+        string selectedTrackId,
+        string selectedVehicleId,
+        ResetKeyValue[] trackParams,
+        ResetKeyValue[] vehicleParams,
+        ResetKeyValue[] flags,
+        ResetAgent[] agents);
 }

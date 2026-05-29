@@ -46,6 +46,7 @@ class BcConfig:
     device: str = "cpu"
     seed: int = 42
     log_every: int = 1
+    frame_stack: int = 1
     # When True: draw each batch with WeightedRandomSampler so every action class
     # is sampled with equal probability per batch. Counteracts the mode-collapse
     # failure mode where the model just learns the action prior (e.g. always
@@ -59,12 +60,22 @@ class BcConfig:
     # in the corpus to carry an `occupancy` tensor (see training.bc.occupancy
     # for the offline reconstructor that adds these to existing demos).
     use_occupancy: bool = False
+    # When True: append the structured 8-direction raycast context to the
+    # multi-modal policy. Requires use_occupancy=True because runtime wiring
+    # comes from EgoOccupancyMapWrapper.
+    use_distances_8: bool = False
 
 
 class _BcTorchDataset(Dataset):
-    def __init__(self, samples: list[BcSample], use_occupancy: bool = False) -> None:
+    def __init__(
+        self,
+        samples: list[BcSample],
+        use_occupancy: bool = False,
+        use_distances_8: bool = False,
+    ) -> None:
         self._samples = samples
         self._use_occupancy = use_occupancy
+        self._use_distances_8 = use_distances_8
         if use_occupancy:
             missing = sum(1 for s in samples if s.occupancy is None)
             if missing:
@@ -73,6 +84,15 @@ class _BcTorchDataset(Dataset):
                     f"occupancy tensor. Run training.bc.occupancy.reconstruct_for_demo "
                     f"to build occupancy_<tag>.npy next to each MP4 first."
                 )
+        if use_distances_8:
+            missing = sum(1 for s in samples if s.distances_8 is None)
+            if missing:
+                raise ValueError(
+                    f"use_distances_8=True but {missing}/{len(samples)} samples have no "
+                    f"distances_8 tensor. Rebuild distances_8_<tag>.npy artifacts first."
+                )
+            if not use_occupancy:
+                raise ValueError("use_distances_8=True requires use_occupancy=True")
 
     def __len__(self) -> int:
         return len(self._samples)
@@ -80,17 +100,13 @@ class _BcTorchDataset(Dataset):
     def __getitem__(self, idx: int):
         s = self._samples[idx]
         frame = torch.from_numpy(np.ascontiguousarray(s.frame.transpose(2, 0, 1))).float() / 255.0
-        ultra = torch.tensor([s.ultrasonic], dtype=torch.float32)
+        ultra = torch.from_numpy(np.asarray(s.ultrasonic, dtype=np.float32).reshape(-1))
         action = torch.tensor(s.action_idx, dtype=torch.long)
         if self._use_occupancy:
             occ = torch.from_numpy(np.ascontiguousarray(s.occupancy)).float()
-            # NOTE: BcSample also carries an optional `distances_8` (8-d
-            # structured raycast) — present in the loaded dataset but NOT
-            # consumed by the trainer in this codebase version. The
-            # MultiModalOccupancyExtractor in policies.py is 641-d
-            # (image:512 + ultra:1 + map:128) and so is _MultiModalHead
-            # below; adding distances_8 is a future coordinated change
-            # (wrapper obs_space + extractor + trainer + retrain BC).
+            if self._use_distances_8:
+                distances_8 = torch.from_numpy(np.ascontiguousarray(s.distances_8)).float()
+                return frame, ultra, occ, distances_8, action
             return frame, ultra, occ, action
         return frame, ultra, action
 
@@ -98,10 +114,10 @@ class _BcTorchDataset(Dataset):
 class _NatureCnnHead(nn.Module):
     """Mirrors SB3's NatureCNN + CombinedExtractor + Tanh MLP head."""
 
-    def __init__(self) -> None:
+    def __init__(self, image_channels: int = 3, ultrasonic_dim: int = 1) -> None:
         super().__init__()
         self.cnn = nn.Sequential(
-            nn.Conv2d(3, 32, kernel_size=8, stride=4, padding=0),
+            nn.Conv2d(image_channels, 32, kernel_size=8, stride=4, padding=0),
             nn.ReLU(),
             nn.Conv2d(32, 64, kernel_size=4, stride=2, padding=0),
             nn.ReLU(),
@@ -110,11 +126,10 @@ class _NatureCnnHead(nn.Module):
             nn.Flatten(),
         )
         with torch.no_grad():
-            n_flatten = self.cnn(torch.zeros(1, 3, FRAME_SIZE, FRAME_SIZE)).shape[1]
+            n_flatten = self.cnn(torch.zeros(1, image_channels, FRAME_SIZE, FRAME_SIZE)).shape[1]
         self.linear = nn.Sequential(nn.Linear(n_flatten, CNN_OUTPUT_DIM), nn.ReLU())
-        # +1 for the concatenated ultrasonic scalar.
         self.policy_net = nn.Sequential(
-            nn.Linear(CNN_OUTPUT_DIM + 1, MLP_HIDDEN),
+            nn.Linear(CNN_OUTPUT_DIM + ultrasonic_dim, MLP_HIDDEN),
             nn.Tanh(),
             nn.Linear(MLP_HIDDEN, MLP_HIDDEN),
             nn.Tanh(),
@@ -136,6 +151,7 @@ class _NatureCnnHead(nn.Module):
 # identical so the SB3 lift in export_sb3 can reuse the same weights for
 # the image/policy/action submodules.
 MAP_CNN_OUTPUT_DIM = 128
+DIST_8_DIM = 8
 
 
 class _MapCnn(nn.Module):
@@ -169,11 +185,17 @@ class _MultiModalHead(nn.Module):
     correspondence.
     """
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        use_distances_8: bool = False,
+        image_channels: int = 3,
+        ultrasonic_dim: int = 1,
+    ) -> None:
         super().__init__()
+        self.use_distances_8 = bool(use_distances_8)
         # Reuse NatureCNN architecture verbatim for the image branch.
         self.cnn = nn.Sequential(
-            nn.Conv2d(3, 32, kernel_size=8, stride=4, padding=0),
+            nn.Conv2d(image_channels, 32, kernel_size=8, stride=4, padding=0),
             nn.ReLU(),
             nn.Conv2d(32, 64, kernel_size=4, stride=2, padding=0),
             nn.ReLU(),
@@ -182,10 +204,12 @@ class _MultiModalHead(nn.Module):
             nn.Flatten(),
         )
         with torch.no_grad():
-            n_flatten = self.cnn(torch.zeros(1, 3, FRAME_SIZE, FRAME_SIZE)).shape[1]
+            n_flatten = self.cnn(torch.zeros(1, image_channels, FRAME_SIZE, FRAME_SIZE)).shape[1]
         self.linear = nn.Sequential(nn.Linear(n_flatten, CNN_OUTPUT_DIM), nn.ReLU())
         self.map_cnn = _MapCnn()
-        combined_dim = CNN_OUTPUT_DIM + 1 + MAP_CNN_OUTPUT_DIM
+        combined_dim = CNN_OUTPUT_DIM + ultrasonic_dim + MAP_CNN_OUTPUT_DIM + (
+            DIST_8_DIM if self.use_distances_8 else 0
+        )
         self.policy_net = nn.Sequential(
             nn.Linear(combined_dim, MLP_HIDDEN),
             nn.Tanh(),
@@ -194,10 +218,21 @@ class _MultiModalHead(nn.Module):
         )
         self.action_net = nn.Linear(MLP_HIDDEN, N_ACTIONS)
 
-    def forward(self, frame: torch.Tensor, ultra: torch.Tensor, occ: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self,
+        frame: torch.Tensor,
+        ultra: torch.Tensor,
+        occ: torch.Tensor,
+        distances_8: torch.Tensor | None = None,
+    ) -> torch.Tensor:
         img_features = self.linear(self.cnn(frame))
         map_features = self.map_cnn(occ)
-        combined = torch.cat([img_features, ultra, map_features], dim=1)
+        pieces = [img_features, ultra, map_features]
+        if self.use_distances_8:
+            if distances_8 is None:
+                raise ValueError("distances_8 tensor is required when use_distances_8=True")
+            pieces.append(distances_8.float())
+        combined = torch.cat(pieces, dim=1)
         latent = self.policy_net(combined)
         return self.action_net(latent)
 
@@ -213,13 +248,45 @@ class BcTrainer:
         self.cfg = cfg
         _seed_everything(cfg.seed)
         self.device = torch.device(cfg.device)
+        self.image_channels = 3 * max(1, int(cfg.frame_stack))
+        self.ultrasonic_dim = max(1, int(cfg.frame_stack))
         if cfg.use_occupancy:
-            self.model = _MultiModalHead().to(self.device)
+            self.model = _MultiModalHead(
+                use_distances_8=cfg.use_distances_8,
+                image_channels=self.image_channels,
+                ultrasonic_dim=self.ultrasonic_dim,
+            ).to(self.device)
         else:
-            self.model = _NatureCnnHead().to(self.device)
+            self.model = _NatureCnnHead(
+                image_channels=self.image_channels,
+                ultrasonic_dim=self.ultrasonic_dim,
+            ).to(self.device)
+
+    def _validate_sample_shapes(self, samples: list[BcSample]) -> None:
+        expected_frame_shape = (FRAME_SIZE, FRAME_SIZE, self.image_channels)
+        expected_ultra_shape = (self.ultrasonic_dim,)
+        for idx, sample in enumerate(samples[:8]):
+            if sample.frame.shape != expected_frame_shape:
+                raise ValueError(
+                    f"sample[{idx}].frame shape {sample.frame.shape} != {expected_frame_shape}; "
+                    f"expected load_dataset(..., frame_stack={self.cfg.frame_stack}) output"
+                )
+            ultra = np.asarray(sample.ultrasonic, dtype=np.float32)
+            if ultra.ndim == 0:
+                ultra = ultra.reshape(1)
+            if tuple(ultra.shape) != expected_ultra_shape:
+                raise ValueError(
+                    f"sample[{idx}].ultrasonic shape {tuple(ultra.shape)} != {expected_ultra_shape}; "
+                    f"expected load_dataset(..., frame_stack={self.cfg.frame_stack}) output"
+                )
 
     def fit(self, samples: list[BcSample]) -> dict[str, list[float]]:
-        dataset = _BcTorchDataset(samples, use_occupancy=self.cfg.use_occupancy)
+        self._validate_sample_shapes(samples)
+        dataset = _BcTorchDataset(
+            samples,
+            use_occupancy=self.cfg.use_occupancy,
+            use_distances_8=self.cfg.use_distances_8,
+        )
         if self.cfg.class_balanced:
             # WeightedRandomSampler with per-sample weight = 1/freq(class) makes
             # batches class-uniform in expectation. Action classes never observed
@@ -283,12 +350,17 @@ class BcTrainer:
             total = 0
             for batch in loader:
                 if self.cfg.use_occupancy:
-                    frame, ultra, occ, action = batch
+                    if self.cfg.use_distances_8:
+                        frame, ultra, occ, distances_8, action = batch
+                        distances_8 = distances_8.to(self.device)
+                    else:
+                        frame, ultra, occ, action = batch
+                        distances_8 = None
                     frame = frame.to(self.device)
                     ultra = ultra.to(self.device)
                     occ = occ.to(self.device)
                     action = action.to(self.device)
-                    logits = self.model(frame, ultra, occ)
+                    logits = self.model(frame, ultra, occ, distances_8)
                 else:
                     frame, ultra, action = batch
                     frame = frame.to(self.device)
@@ -335,20 +407,32 @@ class BcTrainer:
         class _StubEnv(gym.Env):
             metadata = {"render_modes": []}
 
-            def __init__(self) -> None:
+            def __init__(self, image_channels: int, ultrasonic_dim: int) -> None:
                 super().__init__()
+                self._image_channels = image_channels
+                self._ultrasonic_dim = ultrasonic_dim
                 self.observation_space = spaces.Dict(
                     {
-                        "image": spaces.Box(low=0, high=255, shape=(3, FRAME_SIZE, FRAME_SIZE), dtype=np.uint8),
-                        "ultrasonic": spaces.Box(low=0.0, high=1.0, shape=(1,), dtype=np.float32),
+                        "image": spaces.Box(
+                            low=0,
+                            high=255,
+                            shape=(image_channels, FRAME_SIZE, FRAME_SIZE),
+                            dtype=np.uint8,
+                        ),
+                        "ultrasonic": spaces.Box(
+                            low=0.0,
+                            high=1.0,
+                            shape=(ultrasonic_dim,),
+                            dtype=np.float32,
+                        ),
                     }
                 )
                 self.action_space = spaces.Discrete(N_ACTIONS)
 
             def _zero_obs(self):
                 return {
-                    "image": np.zeros((3, FRAME_SIZE, FRAME_SIZE), dtype=np.uint8),
-                    "ultrasonic": np.zeros((1,), dtype=np.float32),
+                    "image": np.zeros((self._image_channels, FRAME_SIZE, FRAME_SIZE), dtype=np.uint8),
+                    "ultrasonic": np.zeros((self._ultrasonic_dim,), dtype=np.float32),
                 }
 
             def reset(self, *, seed=None, options=None):
@@ -358,7 +442,7 @@ class BcTrainer:
             def step(self, action):
                 return self._zero_obs(), 0.0, True, False, {}
 
-        venv = DummyVecEnv([lambda: _StubEnv()])
+        venv = DummyVecEnv([lambda: _StubEnv(self.image_channels, self.ultrasonic_dim)])
         # `cnn_output_dim=CNN_OUTPUT_DIM` overrides SB3's default of 256 so the
         # NatureCNN linear layer shape matches our trained head (1×3136 → 512).
         ppo_cfg = BcToPpoConfig()
@@ -433,22 +517,43 @@ class BcTrainer:
         class _StubMultiModalEnv(gym.Env):
             metadata = {"render_modes": []}
 
-            def __init__(self) -> None:
+            def __init__(self, image_channels: int, ultrasonic_dim: int) -> None:
                 super().__init__()
+                self._image_channels = image_channels
+                self._ultrasonic_dim = ultrasonic_dim
                 self.observation_space = spaces.Dict(
                     {
-                        "image": spaces.Box(low=0, high=255, shape=(3, FRAME_SIZE, FRAME_SIZE), dtype=np.uint8),
-                        "ultrasonic": spaces.Box(low=0.0, high=1.0, shape=(1,), dtype=np.float32),
+                        "image": spaces.Box(
+                            low=0,
+                            high=255,
+                            shape=(image_channels, FRAME_SIZE, FRAME_SIZE),
+                            dtype=np.uint8,
+                        ),
+                        "ultrasonic": spaces.Box(
+                            low=0.0,
+                            high=1.0,
+                            shape=(ultrasonic_dim,),
+                            dtype=np.float32,
+                        ),
                         "occupancy": spaces.Box(low=0.0, high=1.0, shape=(3, 21, 21), dtype=np.float32),
                     }
                 )
+                if self_has_distances_8:
+                    self.observation_space.spaces["distances_8"] = spaces.Box(
+                        low=0.0, high=1.0, shape=(8,), dtype=np.float32
+                    )
                 self.action_space = spaces.Discrete(N_ACTIONS)
 
             def _zero_obs(self):
                 return {
-                    "image": np.zeros((3, FRAME_SIZE, FRAME_SIZE), dtype=np.uint8),
-                    "ultrasonic": np.zeros((1,), dtype=np.float32),
+                    "image": np.zeros((self._image_channels, FRAME_SIZE, FRAME_SIZE), dtype=np.uint8),
+                    "ultrasonic": np.zeros((self._ultrasonic_dim,), dtype=np.float32),
                     "occupancy": np.zeros((3, 21, 21), dtype=np.float32),
+                    **(
+                        {"distances_8": np.zeros((8,), dtype=np.float32)}
+                        if self_has_distances_8
+                        else {}
+                    ),
                 }
 
             def reset(self, *, seed=None, options=None):
@@ -458,7 +563,8 @@ class BcTrainer:
             def step(self, action):
                 return self._zero_obs(), 0.0, True, False, {}
 
-        venv = DummyVecEnv([lambda: _StubMultiModalEnv()])
+        self_has_distances_8 = bool(self.cfg.use_distances_8)
+        venv = DummyVecEnv([lambda: _StubMultiModalEnv(self.image_channels, self.ultrasonic_dim)])
         ppo_cfg = BcToPpoConfig()
         model = PPO(
             "MultiInputPolicy",
@@ -473,7 +579,10 @@ class BcTrainer:
             target_kl=ppo_cfg.target_kl,
             device=self.cfg.device,
             seed=self.cfg.seed,
-            policy_kwargs={"features_extractor_class": MultiModalOccupancyExtractor},
+            policy_kwargs={
+                "features_extractor_class": MultiModalOccupancyExtractor,
+                "features_extractor_kwargs": {"use_distances_8": self.cfg.use_distances_8},
+            },
         )
 
         policy = model.policy
@@ -497,7 +606,11 @@ class BcTrainer:
         # (WebUI live, ablation forensics) read the .pt directly.
         torch.save({
             "model_state_dict": self.model.state_dict(),
-            "modality": "image+ultrasonic+occupancy",
+            "modality": (
+                "image+ultrasonic+occupancy+distances_8"
+                if self.cfg.use_distances_8
+                else "image+ultrasonic+occupancy"
+            ),
         }, output_zip.with_suffix(".pt"))
         venv.close()
         print(f"[bc] saved multi-modal SB3 checkpoint: {output_zip}", flush=True)

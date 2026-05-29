@@ -198,6 +198,18 @@ def test_reset_config_encodes_2d_waypoints_with_zero_y() -> None:
     assert {"key": "route.loop", "value": "false"} in cfg["trackParams"]
 
 
+def test_reset_config_emits_reach_distance_without_explicit_waypoints() -> None:
+    payload = {
+        **_MINIMAL_VALID,
+        "route": {"reachDistanceM": 0.24, "loop": False},
+    }
+
+    cfg = scenario_to_reset_config(payload)
+
+    assert {"key": "route.reach_distance_m", "value": "0.24"} in cfg["trackParams"]
+    assert {"key": "route.loop", "value": "false"} in cfg["trackParams"]
+
+
 def test_reset_config_encodes_3d_and_dict_waypoints() -> None:
     payload = {
         **_MINIMAL_VALID,

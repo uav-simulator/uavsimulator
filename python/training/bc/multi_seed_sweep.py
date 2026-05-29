@@ -44,6 +44,9 @@ class SweepPlan:
     env_kwargs: dict = field(default_factory=dict)
     eval_kwargs: dict = field(default_factory=dict)
     with_occupancy: bool = False
+    normalize_rewards: bool = False
+    ent_coef_schedule: str | None = None
+    ent_coef_end: float | None = None
     # Frame-stacking k (1 = no stacking, single frame). Plumbed through
     # train_cardboard_corridor_v9 which wraps train_env in SB3's VecFrameStack.
     # Camera-only alternative to with_occupancy — feasible on KS0223 (which
@@ -90,7 +93,14 @@ def execute_run(plan: SweepPlan, run: PendingRun) -> int:
         "total_timesteps": plan.total_timesteps,
         "init_from": str(plan.init_from) if plan.init_from else None,
         "scenario": plan.scenario,
+        "env_kwargs": plan.env_kwargs,
+        "eval_kwargs": plan.eval_kwargs,
         "ent_coef": 0.1,
+        "normalize_rewards": plan.normalize_rewards,
+        "ent_coef_schedule": plan.ent_coef_schedule,
+        "ent_coef_end": plan.ent_coef_end,
+        "frame_stack": plan.frame_stack,
+        "with_occupancy": plan.with_occupancy,
         "started_at_unix": int(time.time()),
     }
     (run.run_dir / "sweep_metadata.json").write_text(json.dumps(metadata, indent=2))
@@ -110,7 +120,30 @@ def execute_run(plan: SweepPlan, run: PendingRun) -> int:
         cmd += ["--with-occupancy"]
     if plan.frame_stack > 1:
         cmd += ["--frame-stack", str(plan.frame_stack)]
+    if plan.normalize_rewards:
+        cmd += ["--normalize-rewards"]
+    if plan.ent_coef_schedule:
+        cmd += ["--ent-coef-schedule", plan.ent_coef_schedule]
+    if plan.ent_coef_end is not None:
+        cmd += ["--ent-coef-end", str(plan.ent_coef_end)]
     if plan.env_kwargs:
+        base_url = plan.env_kwargs.get("base_url")
+        max_steps = plan.env_kwargs.get("max_steps", plan.env_kwargs.get("max_ep_steps"))
+        time_scale = plan.env_kwargs.get("sim_time_scale", plan.env_kwargs.get("time_scale"))
+        maze_regen_every = plan.env_kwargs.get("maze_regen_every")
+        track_id = plan.env_kwargs.get("track_id", plan.env_kwargs.get("trackId"))
+        if base_url:
+            cmd += ["--base-url", str(base_url)]
+        if max_steps is not None:
+            cmd += ["--max-ep-steps", str(max_steps)]
+        if time_scale is not None:
+            cmd += ["--time-scale", str(time_scale)]
+        if track_id:
+            cmd += ["--track-id", str(track_id)]
+        if bool(plan.env_kwargs.get("maze_randomize", False)):
+            cmd += ["--maze-randomize"]
+        if maze_regen_every is not None:
+            cmd += ["--maze-regen-every", str(maze_regen_every)]
         cmd += ["--env-kwargs-json", json.dumps(plan.env_kwargs)]
     if plan.eval_kwargs:
         cmd += ["--eval-kwargs-json", json.dumps(plan.eval_kwargs)]
@@ -175,6 +208,9 @@ def main():
             env_kwargs=cfg.get("env", {}),
             eval_kwargs=cfg.get("eval", {}),
             with_occupancy=bool(branch.get("with_occupancy", False)),
+            normalize_rewards=bool(branch.get("normalize_rewards", False)),
+            ent_coef_schedule=branch.get("ent_coef_schedule"),
+            ent_coef_end=branch.get("ent_coef_end"),
             frame_stack=int(branch.get("frame_stack", 1)),
         ))
     run_sweep(plans)

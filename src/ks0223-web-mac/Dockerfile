@@ -31,7 +31,7 @@ RUN apt-get update \
 COPY --from=backend-build /app/publish/ ./
 
 # Install the project's Python rusim CLI into a venv so /api/scenarios/load
-# can shell out to `rusim scenario reset <yaml>` exactly as the host CLI does.
+# can shell out to `rusim scenario print-reset <yaml>` before posting to Unity.
 COPY python/sim_client /app/sim_client/sim_client
 COPY python/pyproject.toml /app/sim_client/pyproject.toml
 COPY python/README.md /app/sim_client/README.md

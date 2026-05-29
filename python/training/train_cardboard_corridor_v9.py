@@ -172,6 +172,9 @@ def parse_args() -> argparse.Namespace:
                         "the observation dict, and use MultiModalOccupancyExtractor as "
                         "the SB3 features_extractor. Required when --bc-init points at a "
                         "multi-modal BC checkpoint (trained with --use-occupancy).")
+    p.add_argument("--with-distances-8", action="store_true",
+                   help="Append structured 8-ray context to the occupancy path. "
+                        "Requires --with-occupancy.")
     # Plan 5 (rev40): RecurrentPPO (LSTM policy) for memory across maze
     # junctions ("I just turned left at last junction; now in second
     # segment"). Critical for non-Markovian random-maze navigation.
@@ -363,6 +366,7 @@ def _wrap_env(
     latency_max: int = -1,
     enable_occupancy: bool = False,
     occupancy_wall_cells: set | None = None,
+    include_distances_8: bool = False,
 ):
     """Apply v9 wrapper stack: Discrete -> Latency -> AntiSpin -> ImageAug -> [Occupancy]."""
     env = base_env
@@ -396,7 +400,11 @@ def _wrap_env(
         # Outermost so the occupancy map is built on the un-augmented physics
         # pose, not on whatever the image-aug wrapper might do to the obs dict.
         from training.bc.occupancy_wrapper import EgoOccupancyMapWrapper
-        env = EgoOccupancyMapWrapper(env, wall_cells=occupancy_wall_cells)
+        env = EgoOccupancyMapWrapper(
+            env,
+            wall_cells=occupancy_wall_cells,
+            include_distances_8=include_distances_8,
+        )
     return env
 
 
@@ -424,6 +432,7 @@ def _make_env(
     real_cam_postprocess: bool = False,
     enable_occupancy: bool = False,
     occupancy_wall_cells: set | None = None,
+    include_distances_8: bool = False,
 ):
     def _init():
         base_env = ABCorridorVisionEnv(
@@ -453,6 +462,7 @@ def _make_env(
             strong_aug=strong_aug,
             enable_occupancy=enable_occupancy,
             occupancy_wall_cells=occupancy_wall_cells,
+            include_distances_8=include_distances_8,
         )
         wrapped.reset(seed=seed + rank)
         return wrapped
@@ -529,6 +539,7 @@ def _build_eval_env(args):
         strong_aug=False,
         enable_occupancy=args.with_occupancy,
         occupancy_wall_cells=wall_cells,
+        include_distances_8=args.with_distances_8,
     )
     eval_seed = args.seed + 9999
     wrapped.reset(seed=eval_seed)
@@ -600,6 +611,8 @@ def export_to_onnx_discrete(model: PPO, output_path: Path, img_size: int = 84) -
 
 def main() -> int:
     args = parse_args()
+    if args.with_distances_8 and not args.with_occupancy:
+        raise SystemExit("--with-distances-8 requires --with-occupancy")
     if args.curriculum:
         args.maze_randomize = True
     output_dir = resolve_artifact_dir(ROOT, args.output_dir, args.model_name, args.model_version)
@@ -726,6 +739,7 @@ def main() -> int:
             strong_aug=args.strong_aug,
             enable_occupancy=args.with_occupancy,
             occupancy_wall_cells=train_wall_cells,
+            include_distances_8=args.with_distances_8,
         )
         train_env = Monitor(wrapped, filename=str(log_dir / "train_v9_monitor"))
         probe_track = base_env._reset_config["selectedTrackId"]
@@ -764,6 +778,7 @@ def main() -> int:
                 real_cam_postprocess=args.real_cam_postprocess,
                 enable_occupancy=args.with_occupancy,
                 occupancy_wall_cells=vec_wall_cells,
+                include_distances_8=args.with_distances_8,
             )
             for i in range(num_envs)
         ])
@@ -851,7 +866,12 @@ def main() -> int:
     elif args.with_occupancy:
         from training.bc.policies import MultiModalOccupancyExtractor
         extra_policy_kwargs["features_extractor_class"] = MultiModalOccupancyExtractor
-        print(f"  Feature extractor: MultiModalOccupancy (NatureCNN+MapCNN, 641-d)")
+        extra_policy_kwargs["features_extractor_kwargs"] = {"use_distances_8": args.with_distances_8}
+        print(
+            "  Feature extractor: MultiModalOccupancy "
+            f"(NatureCNN+MapCNN{' + distances_8' if args.with_distances_8 else ''}, "
+            f"{649 if args.with_distances_8 else 641}-d)"
+        )
     else:
         print("  Feature extractor: SB3 default (NatureCNN)")
 

@@ -174,12 +174,14 @@ def evaluate(args):
     # transparently for any sb3.zip the sweep produces, without the
     # sweep runner needing to plumb extra flags through evaluate_v9.
     needs_occupancy = False
+    needs_distances_8 = False
     auto_frame_stack = 1
     if model_path.suffix.lower() == ".zip":
         try:
             from stable_baselines3 import PPO
             _peek = PPO.load(str(model_path), device="cpu")
             needs_occupancy = "occupancy" in _peek.observation_space.spaces
+            needs_distances_8 = "distances_8" in _peek.observation_space.spaces
             # Ultrasonic shape after VecFrameStack(k) is (k,) — single-frame
             # baseline is (1,). Read k from there since it's unambiguous;
             # the image shape would have to be parsed for channel-count and
@@ -227,7 +229,11 @@ def evaluate(args):
         # falls back to obs["ultrasonic"].
         from training.bc.occupancy_wrapper import EgoOccupancyMapWrapper
         wall_cells = _occupancy_wall_cells_from_scenario(args.scenario)
-        env = EgoOccupancyMapWrapper(env, wall_cells=wall_cells)
+        env = EgoOccupancyMapWrapper(
+            env,
+            wall_cells=wall_cells,
+            include_distances_8=needs_distances_8,
+        )
         print(
             f"  EgoOccupancyMapWrapper enabled (auto-detected from model obs_space). "
             f"wall_cells={'derived from scenario' if wall_cells else 'None — fallback to noisy ultrasonic'}"
@@ -258,7 +264,10 @@ def evaluate(args):
         stacked_image_hwc = np.concatenate(list(image_buffer), axis=-1)
         stacked_image = np.transpose(stacked_image_hwc, (2, 0, 1))  # → CHW
         stacked_ultra = np.concatenate(list(ultra_buffer), axis=-1).astype(np.float32)
-        return {"image": stacked_image, "ultrasonic": stacked_ultra}
+        out = dict(raw_obs)
+        out["image"] = stacked_image
+        out["ultrasonic"] = stacked_ultra
+        return out
 
     action_counts = {name: 0 for name in ACTION_NAMES}
     episodes: list[dict[str, Any]] = []

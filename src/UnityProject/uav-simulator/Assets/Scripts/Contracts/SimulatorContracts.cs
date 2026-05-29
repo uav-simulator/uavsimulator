@@ -77,7 +77,8 @@ namespace UavSimulator.Contracts
         public string timeBase;
 
         // Plugin-specific control extensions. Example keys:
-        // drive.left_pwm_norm, drive.right_pwm_norm, camera.pan_norm, camera.tilt_norm.
+        // drive.left_pwm_norm, drive.right_pwm_norm, camera.pan_norm, camera.tilt_norm,
+        // camera.model_capture_mode.
         public ConfigKeyValue[] extensions;
     }
 
@@ -135,6 +136,7 @@ namespace UavSimulator.Contracts
 
         public ConfigKeyValue[] info;
         public CameraFrame frame;
+        public CameraFrame modelFrame;
         public AgentStepResult[] agents;
     }
 

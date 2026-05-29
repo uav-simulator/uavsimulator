@@ -124,3 +124,16 @@ def test_wrapper_with_wall_cells_uses_synthetic_raycast():
     world_map = env.current_world_map()
     # Free channel should pick up cells in front of the robot.
     assert world_map[1].sum() > 0.0
+
+
+def test_wrapper_can_add_distances_8_modality():
+    """Structured raycast context is opt-in so old 641-d checkpoints stay valid."""
+    wall_cells = {(20, 22)}
+    env = EgoOccupancyMapWrapper(_StubEnv(), wall_cells=wall_cells, include_distances_8=True)
+    obs, _ = env.reset()
+    assert sorted(obs.keys()) == ["distances_8", "image", "occupancy", "ultrasonic"]
+    dist_box = env.observation_space.spaces["distances_8"]
+    assert dist_box.shape == (8,)
+    assert dist_box.dtype == np.float32
+    assert obs["distances_8"].shape == (8,)
+    assert obs["distances_8"].dtype == np.float32

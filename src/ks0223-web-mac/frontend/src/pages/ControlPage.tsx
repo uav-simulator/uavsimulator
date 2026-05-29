@@ -1,11 +1,12 @@
-import { Grid, Stack } from '@mui/material'
+import { Card, CardContent, Grid } from '@mui/material'
 import { useState } from 'react'
-import type { AutopilotPreviewDto } from '../api'
+import { cameraModelViewUrl, type AutopilotPreviewDto } from '../api'
 import { AutopilotPanel } from '../components/AutopilotPanel'
 import { DemoReplayPanel } from '../components/DemoReplayPanel'
 import { CameraPanel } from '../components/CameraPanel'
 import { ConnectionCard } from '../components/ConnectionCard'
-import { ControlPad } from '../components/ControlPad'
+import { MazeGeneratorPanel } from '../components/MazeGeneratorPanel'
+import { MazeMapPanel } from '../components/MazeMapPanel'
 import { TelemetryPanel } from '../components/TelemetryPanel'
 import type {
   AutopilotStatusDto,
@@ -113,20 +114,9 @@ export function ControlPage({
   unityCollisionsEnabled,
   unitySeeEachOther,
   onCommand,
-  controlsEnabled,
   cameraStreamUrl,
   driveSpeedPercent,
   cameraSpeedPercent,
-  onDriveSpeedPercentChange,
-  onCameraSpeedPercentChange,
-  ultrasonicAngleDeg,
-  ultrasonicServoPin,
-  ultrasonicAutoScanEnabled,
-  onUltrasonicAngleChange,
-  onUltrasonicServoPinChange,
-  onUltrasonicManualStart,
-  onUltrasonicApply,
-  onUltrasonicAutoScanChange,
   estimatedCameraPanDeg,
   estimatedCameraTiltDeg,
   modelCatalog,
@@ -138,9 +128,23 @@ export function ControlPage({
 }: Props) {
   const [policyPreview, setPolicyPreview] = useState<AutopilotPreviewDto | null>(null)
   const [saliencyOn, setSaliencyOn] = useState(false)
+  const [selectedAutopilotModelId, setSelectedAutopilotModelId] = useState<string | null>(null)
+  const selectedTrackId = unityCatalog?.selectedTrackId
+  const isMazeSelected = runtimeMode === 'unity-sim' && selectedTrackId === 'track.cardboard_maze.v1'
+  const modelVisionAgentId = runtimeMode === 'unity-sim'
+    ? autopilot?.agentId || unityControlAgentId || unityCatalog?.selectedControlAgentId || undefined
+    : undefined
+  const modelVisionUrl = cameraModelViewUrl(clientInstanceId, runtimeMode, modelVisionAgentId)
+  const modelVisionReady = runtimeMode === 'unity-sim' && Boolean(
+    modelBinding ||
+    selectedAutopilotModelId ||
+    policyPreview?.modelId ||
+    autopilot?.modelId,
+  )
+
   return (
     <Grid container spacing={2.5}>
-      <Grid size={{ xs: 12, md: 4 }}>
+      <Grid size={{ xs: 12 }}>
         <ConnectionCard
           status={status}
           busy={busy}
@@ -167,48 +171,6 @@ export function ControlPage({
           unitySeeEachOther={unitySeeEachOther}
         />
       </Grid>
-      <Grid size={{ xs: 12, md: 8 }}>
-        <Stack spacing={2}>
-          <ControlPad
-            status={status}
-            onCommand={onCommand}
-            controlsEnabled={controlsEnabled}
-            driveSpeedPercent={driveSpeedPercent}
-            cameraSpeedPercent={cameraSpeedPercent}
-            onDriveSpeedPercentChange={onDriveSpeedPercentChange}
-            onCameraSpeedPercentChange={onCameraSpeedPercentChange}
-            ultrasonicAngleDeg={ultrasonicAngleDeg}
-            ultrasonicServoPin={ultrasonicServoPin}
-            ultrasonicAutoScanEnabled={ultrasonicAutoScanEnabled}
-            onUltrasonicAngleChange={onUltrasonicAngleChange}
-            onUltrasonicServoPinChange={onUltrasonicServoPinChange}
-            onUltrasonicManualStart={onUltrasonicManualStart}
-            onUltrasonicApply={onUltrasonicApply}
-            onUltrasonicAutoScanChange={onUltrasonicAutoScanChange}
-          />
-          <AutopilotPanel
-            catalog={modelCatalog}
-            binding={modelBinding}
-            autopilot={autopilot}
-            runtimeMode={runtimeMode}
-            clientId={clientInstanceId}
-            unityControlAgentId={unityControlAgentId}
-            busy={busy}
-            onBind={onModelBind}
-            onStartAutopilot={onAutopilotStart}
-            onStopAutopilot={onAutopilotStop}
-            onShadowPreviewUpdate={setPolicyPreview}
-            saliencyOn={saliencyOn}
-            onSaliencyToggle={setSaliencyOn}
-          />
-          <DemoReplayPanel
-            clientId={clientInstanceId}
-            runtimeMode={runtimeMode}
-            agentId={unityControlAgentId}
-          />
-        </Stack>
-      </Grid>
-
       <Grid size={{ xs: 12 }}>
         <CameraPanel
           cameraStreamUrl={cameraStreamUrl}
@@ -225,6 +187,64 @@ export function ControlPage({
           saliencyEnabled={saliencyOn}
           saliencyClientId={clientInstanceId}
           saliencyRuntimeMode={runtimeMode}
+          autopilotPanel={(
+            <AutopilotPanel
+              embedded
+              catalog={modelCatalog}
+              binding={modelBinding}
+              autopilot={autopilot}
+              runtimeMode={runtimeMode}
+              clientId={clientInstanceId}
+              unityControlAgentId={unityControlAgentId}
+              busy={busy}
+              onBind={onModelBind}
+              onStartAutopilot={onAutopilotStart}
+              onStopAutopilot={onAutopilotStop}
+              onShadowPreviewUpdate={setPolicyPreview}
+              onSelectedModelChange={setSelectedAutopilotModelId}
+              saliencyOn={saliencyOn}
+              onSaliencyToggle={setSaliencyOn}
+            />
+          )}
+          modelVisionPanel={modelVisionReady ? (
+            <MazeMapPanel
+              embedded
+              sensorTelemetry={sensorTelemetry}
+              selectedTrackId={selectedTrackId}
+              modelViewUrl={modelVisionUrl}
+              modelViewAgentId={modelVisionAgentId}
+              policyPreview={policyPreview}
+              autopilot={autopilot}
+              modelBinding={modelBinding}
+              selectedModelId={selectedAutopilotModelId}
+            />
+          ) : null}
+        />
+      </Grid>
+
+      {isMazeSelected ? (
+        <Grid size={{ xs: 12, md: 6 }}>
+          <Card>
+            <CardContent>
+              <MazeGeneratorPanel
+                clientId={clientInstanceId}
+                runtimeMode={runtimeMode}
+                unityControlAgentId={unityControlAgentId}
+                unityVehicleId={unityCatalog?.selectedVehicleId}
+                onGenerated={async () => {
+                  await onUnityCatalogRefresh()
+                }}
+              />
+            </CardContent>
+          </Card>
+        </Grid>
+      ) : null}
+
+      <Grid size={{ xs: 12, md: isMazeSelected ? 6 : 12 }}>
+        <DemoReplayPanel
+          clientId={clientInstanceId}
+          runtimeMode={runtimeMode}
+          agentId={unityControlAgentId}
         />
       </Grid>
 

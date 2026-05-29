@@ -1,5 +1,5 @@
 """Stable-Baselines3 BaseFeaturesExtractor for our multi-modal observation
-{image, ultrasonic, occupancy}.
+{image, ultrasonic, occupancy[, distances_8]}.
 
 Mirrors the architecture of training.bc.trainer._MultiModalHead so a BC
 checkpoint can be lifted into an SB3 PPO with weight-for-weight
@@ -22,6 +22,7 @@ from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 
 _CNN_OUTPUT_DIM = 512
 _MAP_CNN_OUTPUT_DIM = 128
+_DIST_8_DIM = 8
 
 
 class MultiModalOccupancyExtractor(BaseFeaturesExtractor):
@@ -40,39 +41,41 @@ class MultiModalOccupancyExtractor(BaseFeaturesExtractor):
     BC weights.
     """
 
-    def __init__(self, observation_space: spaces.Dict):
+    def __init__(self, observation_space: spaces.Dict, use_distances_8: bool = False):
         if "image" not in observation_space.spaces:
             raise ValueError("MultiModalOccupancyExtractor requires 'image' key in observation")
         if "ultrasonic" not in observation_space.spaces:
             raise ValueError("MultiModalOccupancyExtractor requires 'ultrasonic' key in observation")
         if "occupancy" not in observation_space.spaces:
             raise ValueError("MultiModalOccupancyExtractor requires 'occupancy' key in observation")
-        # distances_8 (8-d structured raycast) is plumbed offline into
-        # the demo dataset (BcSample.distances_8, training.bc.occupancy.
-        # directional_distances_8) but is intentionally NOT consumed here:
-        # the production BC checkpoint is 641-d (image:512 + ultra:1 +
-        # map:128) and the wrapper's obs_space matches. Re-enabling
-        # distances_8 is a coordinated 5-touch change — wrapper obs_space
-        # + extractor features_dim + trainer combined_dim + dataset/fit
-        # batching + retrain BC to 649-d.
-        self._has_distances_8 = False
+        self._has_distances_8 = bool(use_distances_8)
+        if self._has_distances_8 and "distances_8" not in observation_space.spaces:
+            raise ValueError("use_distances_8=True but observation has no 'distances_8' key")
 
         # We must compute the features_dim before super().__init__ in SB3's
         # BaseFeaturesExtractor.
-        features_dim = _CNN_OUTPUT_DIM + 1 + _MAP_CNN_OUTPUT_DIM
+        img_space = observation_space.spaces["image"]
+        c, h, w = img_space.shape
+        ultra_space = observation_space.spaces["ultrasonic"]
+        ultrasonic_dim = int(ultra_space.shape[0]) if len(ultra_space.shape) == 1 else 1
+        features_dim = (
+            _CNN_OUTPUT_DIM
+            + ultrasonic_dim
+            + _MAP_CNN_OUTPUT_DIM
+            + (_DIST_8_DIM if self._has_distances_8 else 0)
+        )
         super().__init__(observation_space, features_dim=features_dim)
 
         # Image branch — same shape as the BC trainer's NatureCNN.
-        img_space = observation_space.spaces["image"]
         # SB3 transposes (H, W, C) → (C, H, W) via VecTransposeImage before
         # the extractor sees it; assert we got the transposed (C, H, W) form.
-        c, h, w = img_space.shape
-        if c != 3:
+        if c < 3 or c % 3 != 0:
             raise ValueError(
-                f"Expected image with 3 channels (post-VecTransposeImage), got shape {img_space.shape}"
+                "Expected image channels to be RGB frame-stack multiple "
+                f"(post-VecTransposeImage), got shape {img_space.shape}"
             )
         self.image_cnn = nn.Sequential(
-            nn.Conv2d(3, 32, kernel_size=8, stride=4, padding=0),
+            nn.Conv2d(c, 32, kernel_size=8, stride=4, padding=0),
             nn.ReLU(),
             nn.Conv2d(32, 64, kernel_size=4, stride=2, padding=0),
             nn.ReLU(),
@@ -81,7 +84,7 @@ class MultiModalOccupancyExtractor(BaseFeaturesExtractor):
             nn.Flatten(),
         )
         with torch.no_grad():
-            sample_img = torch.zeros(1, 3, h, w)
+            sample_img = torch.zeros(1, c, h, w)
             n_flatten = self.image_cnn(sample_img).shape[1]
         self.image_linear = nn.Sequential(nn.Linear(n_flatten, _CNN_OUTPUT_DIM), nn.ReLU())
 
@@ -103,10 +106,9 @@ class MultiModalOccupancyExtractor(BaseFeaturesExtractor):
         self.map_linear = nn.Sequential(nn.Linear(n_map_flatten, _MAP_CNN_OUTPUT_DIM), nn.ReLU())
 
     def forward(self, observations: dict) -> torch.Tensor:
-        img = observations["image"]
-        # SB3 keeps image uint8 in obs and normalises to [0, 1] inside
-        # NatureCNN. We follow the same convention for compatibility.
-        img = img.float() / 255.0
+        # ActorCriticPolicy.extract_features calls SB3's preprocess_obs before
+        # this extractor, so uint8 images are already float-normalised to [0, 1].
+        img = observations["image"].float()
         img_features = self.image_linear(self.image_cnn(img))
 
         ultra = observations["ultrasonic"]
@@ -116,5 +118,7 @@ class MultiModalOccupancyExtractor(BaseFeaturesExtractor):
         occ = observations["occupancy"].float()
         map_features = self.map_linear(self.map_cnn(occ))
 
-        # distances_8 not yet wired into this extractor (see __init__ note).
-        return torch.cat([img_features, ultra, map_features], dim=1)
+        pieces = [img_features, ultra, map_features]
+        if self._has_distances_8:
+            pieces.append(observations["distances_8"].float())
+        return torch.cat(pieces, dim=1)

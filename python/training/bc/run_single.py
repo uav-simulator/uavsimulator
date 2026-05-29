@@ -31,14 +31,24 @@ def main():
     p.add_argument("--scenario", type=str, required=True)
     p.add_argument("--ent-coef", type=float, default=0.1)
     p.add_argument("--bc-init", type=Path, default=None)
-    # Reserved for future use by sweep runner; currently passed through but
-    # not consumed by train_cardboard_corridor_v9 (which takes flat args).
+    p.add_argument("--base-url", default=None)
+    p.add_argument("--max-ep-steps", type=int, default=None)
+    p.add_argument("--time-scale", type=float, default=None)
+    p.add_argument("--track-id", default=None)
+    p.add_argument("--maze-randomize", action="store_true")
+    p.add_argument("--maze-regen-every", type=int, default=None)
+    p.add_argument("--normalize-rewards", action="store_true")
+    p.add_argument("--ent-coef-schedule", choices=("constant", "linear"), default=None)
+    p.add_argument("--ent-coef-end", type=float, default=None)
     p.add_argument("--env-kwargs-json", type=str, default="{}")
     p.add_argument("--eval-kwargs-json", type=str, default="{}")
     p.add_argument("--with-occupancy", action="store_true",
                    help="Pass --with-occupancy to train_cardboard_corridor_v9 so the env "
                         "gains the occupancy modality and the policy uses the multi-modal "
                         "features extractor. Required when --bc-init is a multi-modal BC.")
+    p.add_argument("--with-distances-8", action="store_true",
+                   help="Pass --with-distances-8 through to the training script. "
+                        "Requires --with-occupancy.")
     p.add_argument("--frame-stack", type=int, default=1,
                    help="Pass --frame-stack k to train_cardboard_corridor_v9 so the env "
                         "wraps in VecFrameStack(k) — the policy then sees k channel-wise "
@@ -49,6 +59,27 @@ def main():
     args = p.parse_args()
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
+    env_kwargs = json.loads(args.env_kwargs_json) if args.env_kwargs_json else {}
+
+    base_url = args.base_url or env_kwargs.get("base_url") or "http://127.0.0.1:8000"
+    max_ep_steps = (
+        args.max_ep_steps
+        if args.max_ep_steps is not None
+        else int(env_kwargs.get("max_steps", env_kwargs.get("max_ep_steps", 400)))
+    )
+    time_scale = (
+        args.time_scale
+        if args.time_scale is not None
+        else float(env_kwargs.get("sim_time_scale", env_kwargs.get("time_scale", 3.0)))
+    )
+    track_id = args.track_id or env_kwargs.get("track_id") or env_kwargs.get("trackId")
+    maze_randomize = bool(args.maze_randomize or env_kwargs.get("maze_randomize", False))
+    maze_regen_every = (
+        args.maze_regen_every
+        if args.maze_regen_every is not None
+        else int(env_kwargs.get("maze_regen_every", 1))
+    )
+    normalize_rewards = bool(args.normalize_rewards or env_kwargs.get("normalize_rewards", False))
 
     repo_root = Path(__file__).resolve().parents[3]
     train_script = repo_root / "python" / "training" / "train_cardboard_corridor_v9.py"
@@ -59,6 +90,9 @@ def main():
         "--seed", str(args.seed),
         "--total-timesteps", str(args.total_timesteps),
         "--scenario", args.scenario,
+        "--base-url", str(base_url),
+        "--max-ep-steps", str(max_ep_steps),
+        "--time-scale", str(time_scale),
         "--ent-coef", str(args.ent_coef),
         "--output-dir", str(args.output_dir),
     ]
@@ -66,8 +100,22 @@ def main():
         cmd += ["--bc-init", str(args.bc_init)]
     if args.with_occupancy:
         cmd += ["--with-occupancy"]
+    if args.with_distances_8:
+        cmd += ["--with-distances-8"]
     if args.frame_stack > 1:
         cmd += ["--frame-stack", str(args.frame_stack)]
+    if track_id:
+        cmd += ["--track-id", str(track_id)]
+    if maze_randomize:
+        cmd += ["--maze-randomize"]
+    if maze_regen_every is not None:
+        cmd += ["--maze-regen-every", str(maze_regen_every)]
+    if normalize_rewards:
+        cmd += ["--normalize-rewards"]
+    if args.ent_coef_schedule:
+        cmd += ["--ent-coef-schedule", args.ent_coef_schedule]
+    if args.ent_coef_end is not None:
+        cmd += ["--ent-coef-end", str(args.ent_coef_end)]
 
     rc = subprocess.call(cmd)
     if rc != 0:
@@ -108,9 +156,10 @@ def main():
     # metrics.json with success_rate=null + eval_error so the failure is
     # visible later instead of masquerading as a missing file.
     eval_kwargs = json.loads(args.eval_kwargs_json) if args.eval_kwargs_json else {}
-    eval_base_url = eval_kwargs.get("base_url", "http://127.0.0.1:8000")
+    eval_base_url = eval_kwargs.get("base_url", base_url)
     eval_episodes = int(eval_kwargs.get("episodes", 20))
     eval_seed_offset = int(eval_kwargs.get("seed_offset", 3000))
+    eval_max_steps = int(eval_kwargs.get("max_steps", max_ep_steps))
 
     eval_script = repo_root / "python" / "training" / "evaluate_v9.py"
     eval_output_path = args.output_dir / "eval_full.json"
@@ -120,10 +169,17 @@ def main():
         "--model", str(sb3_zip),
         "--base-url", eval_base_url,
         "--episodes", str(eval_episodes),
+        "--max-steps", str(eval_max_steps),
         "--seed-offset", str(eval_seed_offset),
         "--scenario", args.scenario,
         "--output-json", str(eval_output_path),
     ]
+    if track_id:
+        eval_cmd += ["--track-id", str(track_id)]
+    if maze_randomize:
+        eval_cmd += ["--maze-randomize"]
+    if args.frame_stack > 1:
+        eval_cmd += ["--frame-stack", str(args.frame_stack)]
 
     print(f"[run_single] starting eval: {' '.join(eval_cmd)}", flush=True)
     eval_rc = subprocess.call(eval_cmd)

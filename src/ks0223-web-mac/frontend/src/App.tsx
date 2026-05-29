@@ -1074,7 +1074,14 @@ function App() {
     }
 
     if (tab === 'scenarios') {
-      return <ScenarioPickerPanel />
+      return (
+        <ScenarioPickerPanel
+          clientId={clientInstanceId}
+          runtimeMode={activeRuntimeMode}
+          unityControlAgentId={unityControlAgentId}
+          unityVehicleId={unityVehicleId}
+        />
+      )
     }
 
     if (tab === 'models') {

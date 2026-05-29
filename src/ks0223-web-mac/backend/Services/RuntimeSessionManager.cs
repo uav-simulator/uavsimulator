@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Linq;
 using System.Net.NetworkInformation;
 using System.Text;
+using System.Text.Json;
 using Ks0223.Web.Backend.Hubs;
 using Ks0223.Web.Backend.Models;
 using Ks0223.Web.Backend.Options;
@@ -299,6 +300,23 @@ public sealed class RuntimeSessionManager : IHostedService
         world.SetDirectDrive(resolvedAgentId, throttle, steer);
     }
 
+    public void ClearDirectDrive(string clientId, string runtimeMode, string? agentId)
+    {
+        var key = CreateKey(clientId, runtimeMode);
+        if (!string.Equals(key.Mode, RuntimeModes.UnitySim, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        if (!TryGetUnityWorldForClient(key.ClientId, out var world, out var binding))
+        {
+            return;
+        }
+
+        var resolvedAgentId = string.IsNullOrWhiteSpace(agentId) ? binding.SelectedControlAgentId : agentId.Trim();
+        world.ClearDirectDrive(resolvedAgentId);
+    }
+
     public async Task<UnityRuntimeCatalogDto> GetUnityRuntimeCatalogAsync(
         string clientId,
         string runtimeMode,
@@ -357,6 +375,28 @@ public sealed class RuntimeSessionManager : IHostedService
         var normalizedBinding = NormalizeUnityClientBinding(binding, worldCatalog);
         unityClientBindings[clientId] = normalizedBinding;
         return ApplyClientSelection(worldCatalog, normalizedBinding);
+    }
+
+    public async Task<JsonElement?> TryResetConnectedUnityRuntimeAsync(
+        string? clientId,
+        string? runtimeMode,
+        object payload,
+        string? agentId,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(clientId) ||
+            !string.Equals(RuntimeModes.Normalize(runtimeMode), RuntimeModes.UnitySim, StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        var normalizedClientId = NormalizeClientId(clientId);
+        if (!TryGetUnityWorldForClient(normalizedClientId, out var world, out _))
+        {
+            return null;
+        }
+
+        return await world.ResetWithPayloadAsync(payload, agentId, cancellationToken);
     }
 
     public async Task<UnityRuntimeCatalogDto> SetUnityClientSelectionAsync(
@@ -672,6 +712,39 @@ public sealed class RuntimeSessionManager : IHostedService
         }
 
         return false;
+    }
+
+    public bool TryGetLatestModelFrame(
+        string clientId,
+        string runtimeMode,
+        string? agentId,
+        out byte[] frame,
+        out string contentType,
+        out long version,
+        out DateTimeOffset? timestamp)
+    {
+        var key = CreateKey(clientId, runtimeMode);
+        if (string.Equals(key.Mode, RuntimeModes.UnitySim, StringComparison.Ordinal))
+        {
+            if (!TryGetUnityWorldForClient(key.ClientId, out var world, out var binding))
+            {
+                frame = Array.Empty<byte>();
+                contentType = "image/jpeg";
+                version = 0;
+                timestamp = null;
+                return false;
+            }
+
+            var resolvedAgentId = string.IsNullOrWhiteSpace(agentId) ? binding.SelectedControlAgentId : agentId.Trim();
+            if (string.IsNullOrWhiteSpace(resolvedAgentId))
+            {
+                resolvedAgentId = binding.SelectedCameraAgentId;
+            }
+
+            return world.TryGetLatestModelFrame(resolvedAgentId, out frame, out contentType, out version, out timestamp);
+        }
+
+        return TryGetLatestFrame(clientId, runtimeMode, agentId, out frame, out contentType, out version, out timestamp);
     }
 
     public HealthDto GetHealth(string clientId, string runtimeMode)
@@ -1141,6 +1214,9 @@ public sealed class RuntimeSessionManager : IHostedService
         public bool TryGetLatestFrame(string? agentId, out byte[] frame, out string contentType, out long version, out DateTimeOffset? timestamp) =>
             provider.TryGetLatestFrame(agentId, out frame, out contentType, out version, out timestamp);
 
+        public bool TryGetLatestModelFrame(string? agentId, out byte[] frame, out string contentType, out long version, out DateTimeOffset? timestamp) =>
+            provider.TryGetLatestModelFrame(agentId, out frame, out contentType, out version, out timestamp);
+
         public async Task EnsureConnectedAsync(string host, int port, CancellationToken cancellationToken)
         {
             await lifecycleLock.WaitAsync(cancellationToken);
@@ -1199,6 +1275,9 @@ public sealed class RuntimeSessionManager : IHostedService
         public void SetDirectDrive(string? agentId, float throttle, float steer) =>
             provider.SetDirectDrive(agentId, throttle, steer);
 
+        public void ClearDirectDrive(string? agentId) =>
+            provider.ClearDirectDrive(agentId);
+
         public Task<SensorBridgeResponse> UpdateConfigAsync(
             bool? autoScanEnabled,
             int? sampleIntervalMs,
@@ -1238,6 +1317,12 @@ public sealed class RuntimeSessionManager : IHostedService
             bool? collisionsEnabled = null,
             bool? seeEachOther = null) =>
             provider.SetRuntimeSelectionAsync(trackId, vehicleId, cameraMode, controlAgentId, agents, applyImmediately, cancellationToken, collisionsEnabled, seeEachOther);
+
+        public async Task<JsonElement> ResetWithPayloadAsync(object payload, string? agentId, CancellationToken cancellationToken)
+        {
+            using var document = await provider.ResetSimulationWithPayloadAsync(payload, agentId, cancellationToken);
+            return document.RootElement.Clone();
+        }
 
         public ValueTask DisposeAsync() => new(provider.DisconnectAsync(CancellationToken.None));
     }

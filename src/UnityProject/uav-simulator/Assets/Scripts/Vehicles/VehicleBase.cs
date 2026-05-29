@@ -79,6 +79,11 @@ namespace UavSimulator.Vehicles
             return false;
         }
 
+        public virtual bool TryReadCameraFrame(string captureMode, out CameraFrame frame)
+        {
+            return TryReadCameraFrame(out frame);
+        }
+
         public virtual void ApplyVehicleConfig(ConfigKeyValue[] vehicleParams)
         {
         }

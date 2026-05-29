@@ -39,6 +39,7 @@ namespace UavSimulator.Core
         private const string SpawnYawJitterDegKey = "spawn.yaw_jitter_deg";
         private const string RenderQualityProfileKey = "render.quality_profile";
         private const string AllowEmptyAgentsKey = "agents.allow_empty";
+        private const string ModelCaptureModeKey = "camera.model_capture_mode";
         private static readonly Vector3[] CardboardCorridorDefaultRoute =
         {
             new Vector3(0f, 0f, -0.55f),
@@ -252,9 +253,15 @@ namespace UavSimulator.Core
 
             target.Vehicle.ApplyControl(command);
             target.Vehicle.TryReadCameraFrame(out var frame);
+            CameraFrame modelFrame = null;
+            if (TryReadConfigValue(command?.extensions, ModelCaptureModeKey, out var modelCaptureMode))
+            {
+                target.Vehicle.TryReadCameraFrame(modelCaptureMode, out modelFrame);
+            }
+
             var state = target.Vehicle.ReadState();
             var routeCompleted = target.IsPrimary && UpdateRouteProgress(state);
-            return BuildStepResult(target, state, frame, routeCompleted);
+            return BuildStepResult(target, state, frame, modelFrame, routeCompleted);
         }
 
         public StepResult ReadSnapshot(string targetAgentId = null, string targetVehicleId = null, bool includeFrame = true)
@@ -284,6 +291,7 @@ namespace UavSimulator.Core
                     done = false,
                     info = Array.Empty<ConfigKeyValue>(),
                     frame = null,
+                    modelFrame = null,
                     agents = Array.Empty<AgentStepResult>(),
                 };
             }
@@ -291,7 +299,7 @@ namespace UavSimulator.Core
             var state = target.Vehicle.ReadState();
             CameraFrame frame = null;
             var hasFrame = includeFrame && target.Vehicle.TryReadCameraFrame(out frame);
-            return BuildStepResult(target, state, hasFrame ? frame : null, routeCompleted: false);
+            return BuildStepResult(target, state, hasFrame ? frame : null, modelFrame: null, routeCompleted: false);
         }
 
         public VehicleState ReadState()
@@ -982,7 +990,12 @@ namespace UavSimulator.Core
             return activeAgents.FirstOrDefault(agent => agent.IsPrimary) ?? activeAgents[0];
         }
 
-        private StepResult BuildStepResult(ActiveAgentRuntime target, VehicleState targetState, CameraFrame targetFrame, bool routeCompleted)
+        private StepResult BuildStepResult(
+            ActiveAgentRuntime target,
+            VehicleState targetState,
+            CameraFrame targetFrame,
+            CameraFrame modelFrame,
+            bool routeCompleted)
         {
             var agentResults = new AgentStepResult[activeAgents.Count];
             for (var index = 0; index < activeAgents.Count; index++)
@@ -1007,6 +1020,7 @@ namespace UavSimulator.Core
                 done = routeCompleted,
                 info = BuildStepInfo(target, targetState, routeCompleted),
                 frame = targetFrame,
+                modelFrame = modelFrame,
                 agents = agentResults,
             };
         }
@@ -1199,6 +1213,33 @@ namespace UavSimulator.Core
                 }
 
                 value = param.value;
+                return !string.IsNullOrWhiteSpace(value);
+            }
+
+            return false;
+        }
+
+        private static bool TryReadConfigValue(ConfigKeyValue[] items, string key, out string value)
+        {
+            value = null;
+            if (items == null || items.Length == 0)
+            {
+                return false;
+            }
+
+            foreach (var item in items)
+            {
+                if (item == null || string.IsNullOrWhiteSpace(item.key))
+                {
+                    continue;
+                }
+
+                if (!string.Equals(item.key, key, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                value = item.value;
                 return !string.IsNullOrWhiteSpace(value);
             }
 

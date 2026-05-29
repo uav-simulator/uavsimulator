@@ -133,8 +133,10 @@ def scenario_to_reset_config(payload: Mapping[str, Any]) -> dict[str, Any]:
     if isinstance(waypoints, list) and waypoints:
         encoded_waypoints = ";".join(_encode_waypoint(item) for item in waypoints)
         track_params.append(_kv("route.waypoints", encoded_waypoints))
+    if "loop" in route or (isinstance(waypoints, list) and waypoints):
         track_params.append(_kv("route.loop", _bool_str(route.get("loop", False))))
-        reach_distance = route.get("reachDistanceM", route.get("reach_distance_m", 1.0))
+    reach_distance = route.get("reachDistanceM", route.get("reach_distance_m"))
+    if reach_distance is not None:
         track_params.append(_kv("route.reach_distance_m", str(float(reach_distance))))
 
     headless = runtime.get("headless")

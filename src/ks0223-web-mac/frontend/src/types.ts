@@ -162,4 +162,11 @@ export type AutopilotStatusDto = {
   lastSteer: number
   lastError: string | null
   mode: string
+  safetyEnabled: boolean
+  eStopActive: boolean
+  eStopTriggerCount: number
+  throttleMax: number
+  maxDurationSeconds: number
+  repeatedCommandCount: number
+  stopReason: string | null
 }

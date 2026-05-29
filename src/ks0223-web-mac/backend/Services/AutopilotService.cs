@@ -11,6 +11,12 @@ using SixLabors.ImageSharp.Processing;
 
 namespace Ks0223.Web.Backend.Services;
 
+internal readonly record struct DirectDriveDecision(
+    bool UseDirectDrive,
+    bool ClearDirectDrive,
+    float Throttle,
+    float Steer);
+
 public sealed class AutopilotService
 {
     private const int MinLoopIntervalMs = 80;
@@ -181,7 +187,7 @@ public sealed class AutopilotService
                 byte[]? frameBytes = null;
                 if (running.Predictor!.RequiresFrame)
                 {
-                    if (!runtimeSessionManager.TryGetLatestFrame(
+                    if (!runtimeSessionManager.TryGetLatestModelFrame(
                             running.ClientId!,
                             running.RuntimeMode!,
                             running.AgentId,
@@ -203,14 +209,25 @@ public sealed class AutopilotService
                 var decision = safetyFilter.Apply(rawThrottle, rawSteer, frontM, leftM, rightM);
                 var throttle = decision.Throttle;
                 var steer = decision.Steer;
-                var command = decision.EStopActive ? "DirStop" : ResolveCommand(throttle, steer);
+                var command = ResolveCommandForSafetyDecision(decision);
+                var directDrive = ResolveDirectDriveForPolicy(decision, running.Predictor!.IsDiscreteAction);
 
-                runtimeSessionManager.SetDirectDrive(
-                    running.ClientId!,
-                    running.RuntimeMode!,
-                    running.AgentId,
-                    throttle,
-                    steer);
+                if (directDrive.UseDirectDrive)
+                {
+                    runtimeSessionManager.SetDirectDrive(
+                        running.ClientId!,
+                        running.RuntimeMode!,
+                        running.AgentId,
+                        directDrive.Throttle,
+                        directDrive.Steer);
+                }
+                else if (directDrive.ClearDirectDrive)
+                {
+                    runtimeSessionManager.ClearDirectDrive(
+                        running.ClientId!,
+                        running.RuntimeMode!,
+                        running.AgentId);
+                }
 
                 var response = await runtimeSessionManager.SendCommandAsync(
                     running.ClientId!,
@@ -274,7 +291,7 @@ public sealed class AutopilotService
                     }
                 }
 
-                if (repeatedCount >= RepeatedCommandThreshold && command != "DirStop")
+                if (ShouldAutoStopForRepeatedCommand(command, repeatedCount))
                 {
                     await AutoStopAsync(running,
                         $"stuck-command: {command} repeated {repeatedCount} times");
@@ -408,7 +425,7 @@ public sealed class AutopilotService
         byte[]? frameBytes = null;
         if (predictor.RequiresFrame)
         {
-            if (!runtimeSessionManager.TryGetLatestFrame(
+            if (!runtimeSessionManager.TryGetLatestModelFrame(
                     normalizedClientId, normalizedMode, normalizedAgent,
                     out var latestFrame, out _, out _, out _))
             {
@@ -702,6 +719,36 @@ public sealed class AutopilotService
     }
 
     private static float Clamp01(float value) => Math.Clamp(value, 0f, 1f);
+
+    internal static bool ShouldAutoStopForRepeatedCommand(string? command, int repeatedCount)
+    {
+        if (repeatedCount < RepeatedCommandThreshold)
+        {
+            return false;
+        }
+
+        return command is "DirLeft" or "DirRight" or "DirBack";
+    }
+
+    internal static string ResolveCommandForSafetyDecision(SafetyDecision decision)
+    {
+        if (decision.EStopActive && decision.Throttle > 0f)
+        {
+            return "DirStop";
+        }
+
+        return ResolveCommand(decision.Throttle, decision.Steer);
+    }
+
+    internal static DirectDriveDecision ResolveDirectDriveForPolicy(SafetyDecision decision, bool isDiscreteAction)
+    {
+        if (isDiscreteAction)
+        {
+            return new DirectDriveDecision(false, true, 0f, 0f);
+        }
+
+        return new DirectDriveDecision(true, false, decision.Throttle, decision.Steer);
+    }
 
     private static string ResolveCommand(float throttle, float steer)
     {

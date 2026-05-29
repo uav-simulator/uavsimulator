@@ -139,6 +139,26 @@ def generate(params: MazeParams) -> MazeGeometry:
     return _build_geometry(path, params)
 
 
+def build_from_encoded_path(encoded: str, params: MazeParams) -> MazeGeometry:
+    """Build maze geometry from explicit ``x,z;x,z;...`` path cells."""
+    path: list[tuple[int, int]] = []
+    for part in encoded.split(";"):
+        if not part.strip():
+            continue
+        coords = part.split(",")
+        if len(coords) != 2:
+            continue
+        try:
+            path.append((int(coords[0].strip()), int(coords[1].strip())))
+        except ValueError:
+            continue
+
+    if len(path) < 2:
+        raise ValueError(f"path_encoded has too few cells: {encoded!r}")
+
+    return _build_geometry(path, params)
+
+
 def _build_geometry(path: list[tuple[int, int]], p: MazeParams) -> MazeGeometry:
     cell = p.corridor_width_m
     waypoints = [

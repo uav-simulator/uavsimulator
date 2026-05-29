@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from stable_baselines3 import PPO
+from stable_baselines3.common.utils import get_schedule_fn
 
 
 @dataclass
@@ -21,7 +22,7 @@ class BcToPpoConfig:
     seed: int = 42
 
 
-def _build_stub_env():
+def _build_stub_env_from_observation_space(observation_space):
     import gymnasium as gym
     import numpy as np
     from stable_baselines3.common.vec_env import DummyVecEnv
@@ -31,18 +32,13 @@ def _build_stub_env():
 
         def __init__(self) -> None:
             super().__init__()
-            self.observation_space = gym.spaces.Dict(
-                {
-                    "image": gym.spaces.Box(0, 255, (3, 84, 84), dtype=np.uint8),
-                    "ultrasonic": gym.spaces.Box(0.0, 1.0, (1,), dtype=np.float32),
-                }
-            )
+            self.observation_space = observation_space
             self.action_space = gym.spaces.Discrete(5)
 
         def _zero_obs(self):
             return {
-                "image": np.zeros((3, 84, 84), dtype=np.uint8),
-                "ultrasonic": np.zeros((1,), dtype=np.float32),
+                key: np.zeros(space.shape, dtype=space.dtype)
+                for key, space in self.observation_space.spaces.items()
             }
 
         def reset(self, *, seed=None, options=None):
@@ -79,7 +75,12 @@ def prepare_ppo_from_bc(bc_zip: Path, config: BcToPpoConfig, env=None) -> PPO:
         PPO instance ready for .learn(...).
     """
     if env is None:
-        env = _build_stub_env()
+        probe = PPO.load(str(bc_zip), device="cpu")
+        try:
+            observation_space = probe.observation_space
+        finally:
+            del probe
+        env = _build_stub_env_from_observation_space(observation_space)
 
     model = PPO.load(str(bc_zip), env=env, device="cpu")
 
@@ -104,9 +105,12 @@ def prepare_ppo_from_bc(bc_zip: Path, config: BcToPpoConfig, env=None) -> PPO:
 
     # Safe overrides (do not require buffer reallocation):
     model.learning_rate = config.learning_rate
+    model.lr_schedule = get_schedule_fn(config.learning_rate)
     # SB3 stores clip_range as a schedule callable internally; wrapping as a
     # constant lambda ensures .learn() reads the overridden value rather than
     # the schedule baked into the archive.
     model.clip_range = lambda _: config.clip_range
+    model.ent_coef = config.ent_coef
+    model.target_kl = config.target_kl
     model.seed = config.seed
     return model

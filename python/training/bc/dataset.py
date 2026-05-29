@@ -48,8 +48,8 @@ _TELEMETRY_EVENTS = ("telemetry.snapshot", "sensor.telemetry.snapshot")
 class BcSample:
     """One supervised pair extracted from a demo session."""
 
-    frame: np.ndarray  # (84, 84, 3) uint8 RGB
-    ultrasonic: float  # normalised distance in [0, 1]
+    frame: np.ndarray  # (84, 84, 3*k) uint8 RGB, channels-last
+    ultrasonic: float | np.ndarray  # scalar for k=1, vector for k>1
     action_idx: int    # 0..4 (cf. ACTION_NAMES)
     occupancy: np.ndarray | None = None  # (3, 21, 21) float32 ego-centric occupancy
                                          # (None for pre-occupancy demos / when not requested)
@@ -81,7 +81,28 @@ def _iter_events(jsonl_path: Path):
             continue
 
 
-def load_session(jsonl_path: Path, video_path: Path) -> list[BcSample]:
+def _stack_temporal_context(samples: list[BcSample], frame_stack: int) -> list[BcSample]:
+    if frame_stack <= 1 or not samples:
+        return samples
+
+    stacked: list[BcSample] = []
+    for idx, sample in enumerate(samples):
+        history = samples[max(0, idx - frame_stack + 1):idx + 1]
+        pad = [history[0]] * (frame_stack - len(history))
+        window = pad + history
+        stacked.append(
+            BcSample(
+                frame=np.concatenate([item.frame for item in window], axis=2),
+                ultrasonic=np.asarray([float(item.ultrasonic) for item in window], dtype=np.float32),
+                action_idx=sample.action_idx,
+                occupancy=sample.occupancy,
+                distances_8=sample.distances_8,
+            )
+        )
+    return stacked
+
+
+def load_session(jsonl_path: Path, video_path: Path, frame_stack: int = 1) -> list[BcSample]:
     """Load one demo session into a list of `BcSample`.
 
     Strategy:
@@ -93,7 +114,7 @@ def load_session(jsonl_path: Path, video_path: Path) -> list[BcSample]:
          `round((command_ts - video_start_ts) * fps)` and read one frame.
       3. Pack into `BcSample` and return.
     """
-    events: list[tuple[float, str, float]] = []  # (ts, command, ultrasonic_norm)
+    events: list[list[float | str | int | None]] = []  # [ts, command, ultrasonic_norm, frame_idx]
     video_start_ts: float | None = None
     last_ultrasonic = DEFAULT_ULTRASONIC_NORM
 
@@ -111,13 +132,33 @@ def load_session(jsonl_path: Path, video_path: Path) -> list[BcSample]:
         elif ev_type == "command.outgoing" and ts is not None:
             cmd = ev.get("payload", {}).get("command")
             if cmd in ACTION_TO_INDEX:
-                events.append((ts, cmd, last_ultrasonic))
+                events.append([ts, cmd, last_ultrasonic, None])
+        elif ev_type == "pose.snapshot":
+            # Direct auto_record demos write exactly one MP4 frame per command
+            # tick and then log pose.snapshot.step_index for that frame. Use it
+            # instead of wall-clock timestamps: the command loop cadence is not
+            # exactly equal to the MP4 fps, so timestamp alignment drifts.
+            step_index = ev.get("payload", {}).get("step_index")
+            if events and events[-1][3] is None and step_index is not None:
+                events[-1][3] = int(step_index)
 
     if not events:
         return []
 
     if video_start_ts is None:
         video_start_ts = events[0][0]
+
+    # Direct auto_record sessions write one frame after each applied command
+    # and log pose.snapshot.step_index for that frame. For BC, that post-action
+    # frame is the observation from which the next command is chosen, so pair
+    # frame i with command i+1 and drop the final frame. Timestamp-only legacy
+    # sessions keep the original timestamp alignment path below.
+    direct_step_aligned = bool(events) and all(e[3] is not None for e in events)
+    if direct_step_aligned and len(events) > 1:
+        events = [
+            [events[i + 1][0], events[i + 1][1], events[i + 1][2], events[i][3]]
+            for i in range(len(events) - 1)
+        ]
 
     cap = cv2.VideoCapture(str(video_path))
     if not cap.isOpened():
@@ -159,9 +200,12 @@ def load_session(jsonl_path: Path, video_path: Path) -> list[BcSample]:
     current_bgr: np.ndarray | None = None
     ok = True
     try:
-        for ts, cmd, ultra in events:
-            offset_s = max(0.0, ts - video_start_ts)
-            target = int(round(offset_s * fps))
+        for ts, cmd, ultra, frame_idx in events:
+            if frame_idx is not None:
+                target = int(frame_idx)
+            else:
+                offset_s = max(0.0, float(ts) - video_start_ts)
+                target = int(round(offset_s * fps))
             if frame_count > 0:
                 target = min(target, frame_count - 1)
             # Advance sequentially until we reach the target frame.
@@ -197,14 +241,14 @@ def load_session(jsonl_path: Path, video_path: Path) -> list[BcSample]:
     finally:
         cap.release()
 
-    return samples
+    return _stack_temporal_context(samples, frame_stack=frame_stack)
 
 
-def load_dataset(pairs: list[tuple[Path, Path]]) -> list[BcSample]:
+def load_dataset(pairs: list[tuple[Path, Path]], frame_stack: int = 1) -> list[BcSample]:
     """Aggregate multiple `(jsonl, mp4)` pairs into one flat sample list."""
     out: list[BcSample] = []
     for jsonl_path, video_path in pairs:
-        out.extend(load_session(Path(jsonl_path), Path(video_path)))
+        out.extend(load_session(Path(jsonl_path), Path(video_path), frame_stack=frame_stack))
     return out
 
 

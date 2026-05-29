@@ -36,7 +36,7 @@ import gymnasium as gym
 import numpy as np
 from gymnasium import spaces
 
-from .occupancy import OccupancyMap, _synthetic_ultrasonic
+from .occupancy import OccupancyMap, _synthetic_ultrasonic, directional_distances_8
 
 
 _EGO_SIZE = 21
@@ -46,7 +46,12 @@ _ULTRASONIC_MAX_M = 2.0
 class EgoOccupancyMapWrapper(gym.Wrapper):
     """Adds an ego-centric occupancy map to the env's observation dict."""
 
-    def __init__(self, env: gym.Env, wall_cells: set[tuple[int, int]] | None = None):
+    def __init__(
+        self,
+        env: gym.Env,
+        wall_cells: set[tuple[int, int]] | None = None,
+        include_distances_8: bool = False,
+    ):
         """
         Args:
             env: the underlying env (must produce Dict obs with at least
@@ -69,16 +74,13 @@ class EgoOccupancyMapWrapper(gym.Wrapper):
         new_spaces["occupancy"] = spaces.Box(
             low=0.0, high=1.0, shape=(3, _EGO_SIZE, _EGO_SIZE), dtype=np.float32,
         )
-        # NOTE: an 8-direction raycast modality (front, FR, R, BR, back, BL,
-        # L, FL — `directional_distances_8` in training.bc.occupancy) is
-        # available offline (npy artifacts saved next to demo MP4s) and
-        # plumbed through BcSample, but is NOT currently exposed in the env
-        # obs_space because the current SB3 MultiModalOccupancyExtractor is
-        # 641-d (image+ultrasonic+occupancy) and the BC checkpoint matches.
-        # Re-enabling it is a future coordinated upgrade (wrapper obs_space
-        # + extractor features_dim + trainer + retrain BC).
+        if include_distances_8:
+            new_spaces["distances_8"] = spaces.Box(
+                low=0.0, high=1.0, shape=(8,), dtype=np.float32,
+            )
         self.observation_space = spaces.Dict(new_spaces)
         self._wall_cells = wall_cells
+        self._include_distances_8 = bool(include_distances_8)
         self._occupancy = OccupancyMap.empty()
         # Cached last-pose for the third-party `current_*_map()` accessors.
         # When the env hasn't been stepped yet, returns the zero map.
@@ -95,6 +97,8 @@ class EgoOccupancyMapWrapper(gym.Wrapper):
         self._occupancy.update_from_raycast(wx, wz, yaw, ultra_m)
         obs = dict(obs)
         obs["occupancy"] = self._occupancy.ego_window(wx, wz, yaw)
+        if self._include_distances_8:
+            obs["distances_8"] = self._distances_8(wx, wz, yaw)
         return obs, info
 
     def step(self, action):
@@ -106,6 +110,8 @@ class EgoOccupancyMapWrapper(gym.Wrapper):
         self._occupancy.update_from_raycast(wx, wz, yaw, ultra_m)
         obs = dict(obs)
         obs["occupancy"] = self._occupancy.ego_window(wx, wz, yaw)
+        if self._include_distances_8:
+            obs["distances_8"] = self._distances_8(wx, wz, yaw)
         return obs, reward, terminated, truncated, info
 
     # ── third-party accessors for live visualisation ──
@@ -149,3 +155,8 @@ class EgoOccupancyMapWrapper(gym.Wrapper):
             # obs["ultrasonic"] is normalised [0, 1] of range 0..5m in the env.
             return float(u[0]) * 5.0
         return _ULTRASONIC_MAX_M
+
+    def _distances_8(self, wx: float, wz: float, yaw: float) -> np.ndarray:
+        if self._wall_cells is not None:
+            return directional_distances_8(wx, wz, yaw, self._wall_cells)
+        return np.ones((8,), dtype=np.float32)

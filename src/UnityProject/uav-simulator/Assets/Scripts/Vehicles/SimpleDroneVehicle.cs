@@ -175,6 +175,28 @@ namespace UavSimulator.Vehicles
             }
         }
 
+        public override bool TryReadCameraFrame(string captureMode, out CameraFrame frame)
+        {
+            var normalizedMode = NormalizeCameraMode(captureMode);
+            if (string.Equals(normalizedMode, cameraMode, StringComparison.Ordinal))
+            {
+                return TryReadCameraFrame(out frame);
+            }
+
+            var previousMode = cameraMode;
+            try
+            {
+                cameraMode = normalizedMode;
+                ApplyCameraMode();
+                return TryReadCameraFrame(out frame);
+            }
+            finally
+            {
+                cameraMode = previousMode;
+                ApplyCameraMode();
+            }
+        }
+
         public override void ResetVehicle(int seed)
         {
             _ = seed;

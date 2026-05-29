@@ -86,7 +86,7 @@ class ABCorridorVisionEnv(gym.Env):
         self.max_steps = max_steps
         scenario_waypoints: list[tuple[float, float]] = []
         scenario_corridor_width = 3.0
-        scenario_goal_radius = 1.5
+        scenario_goal_radius: float | None = None
         resolved_track_id = track_id
         resolved_vehicle_id = vehicle_id
         resolved_time_scale = 2.0 if time_scale is None else time_scale
@@ -98,7 +98,12 @@ class ABCorridorVisionEnv(gym.Env):
             params = route.get("params") or {}
             scenario_waypoints = self._parse_waypoints(route.get("waypoints"))
             scenario_corridor_width = float(params.get("corridor.width_m", scenario_corridor_width))
-            scenario_goal_radius = float(params.get("goal.radius_m", route.get("reachDistanceM", scenario_goal_radius)))
+            scenario_goal_value = params.get(
+                "goal.radius_m",
+                route.get("reachDistanceM", route.get("reach_distance_m")),
+            )
+            if scenario_goal_value is not None:
+                scenario_goal_radius = float(scenario_goal_value)
             resolved_track_id = scenario_reset.get("selectedTrackId") or resolved_track_id
             resolved_vehicle_id = scenario_reset.get("selectedVehicleId") or resolved_vehicle_id
             if time_scale is None:
@@ -118,7 +123,12 @@ class ABCorridorVisionEnv(gym.Env):
         self.corridor_width_m = scenario_corridor_width if corridor_width_m is None else corridor_width_m
         self.oob_margin_m = oob_margin_m
         self.oob_threshold_m = (self.corridor_width_m * 0.5) + oob_margin_m
-        self.goal_radius_m = scenario_goal_radius if goal_radius_m is None else goal_radius_m
+        self._goal_radius_explicit = goal_radius_m is not None or scenario_goal_radius is not None
+        self.goal_radius_m = (
+            (1.5 if scenario_goal_radius is None else scenario_goal_radius)
+            if goal_radius_m is None
+            else goal_radius_m
+        )
         self.waypoint_reach_radius_m = max(
             self.goal_radius_m,
             min(self.corridor_width_m * 0.75, 1.5),
@@ -252,9 +262,11 @@ class ABCorridorVisionEnv(gym.Env):
         Unity builds geometry from the exact same path (avoids PRNG mismatch).
         """
         from training.maze_generator import MazeParams
+        from training.maze_generator import build_from_encoded_path
         from training.maze_generator import generate as generate_maze
 
         params = MazeParams()
+        path_encoded = ""
         for item in self._reset_config.get("trackParams", []):
             key = item.get("key", "")
             value = item.get("value", "")
@@ -271,20 +283,33 @@ class ABCorridorVisionEnv(gym.Env):
                     params.right_turns = int(value)
                 elif key == "maze.wall_height_m":
                     params.wall_height_m = float(value)
+                elif key == "maze.path_encoded":
+                    path_encoded = str(value or "").strip()
             except (ValueError, TypeError):
                 pass
         try:
-            geom = generate_maze(params)
+            if path_encoded:
+                geom = build_from_encoded_path(path_encoded, params)
+            else:
+                geom = generate_maze(params)
             self.corridor_width_m = geom.corridor_width_m
-            self.goal_radius_m = geom.goal_radius_m
-            # Inject encoded path so Unity uses the same geometry
-            path_encoded = ";".join(f"{x},{z}" for (x, z) in geom.path_cells)
-            track_params = [
-                kv for kv in self._reset_config.get("trackParams", [])
-                if kv.get("key") != "maze.path_encoded"
-            ]
-            track_params.append({"key": "maze.path_encoded", "value": path_encoded})
-            self._reset_config["trackParams"] = track_params
+            if not self._goal_radius_explicit:
+                self.goal_radius_m = geom.goal_radius_m
+            self.waypoint_reach_radius_m = max(
+                self.goal_radius_m,
+                min(self.corridor_width_m * 0.75, 1.5),
+            )
+            self.oob_threshold_m = (self.corridor_width_m * 0.5) + self.oob_margin_m
+            # Inject generated path so Unity uses the same geometry. Explicit
+            # paths from scenario files are already present and must be kept.
+            if not path_encoded:
+                path_encoded = ";".join(f"{x},{z}" for (x, z) in geom.path_cells)
+                track_params = [
+                    kv for kv in self._reset_config.get("trackParams", [])
+                    if kv.get("key") != "maze.path_encoded"
+                ]
+                track_params.append({"key": "maze.path_encoded", "value": path_encoded})
+                self._reset_config["trackParams"] = track_params
             return list(geom.waypoints)
         except Exception:
             return [(0.0, 0.0), (0.0, 0.60)]
