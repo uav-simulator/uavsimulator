@@ -61,9 +61,11 @@ export function ScenarioPickerPanel({
       setScenarios(resp.items ?? [])
       setScenariosDir(resp.scenariosDir ?? '')
       setWarning(resp.warning ?? null)
-      // Preselect demo-city-polygon if present, otherwise first item.
+      // Preselect the curated city showcase if present, then the older city demo.
       if (resp.items && resp.items.length > 0 && !selectedPath) {
-        const cityDemo = resp.items.find(s => s.displayName === 'demo-city-polygon')
+        const cityDemo =
+          resp.items.find(s => s.displayName === 'showcase-city') ??
+          resp.items.find(s => s.displayName === 'demo-city-polygon')
         setSelectedPath(cityDemo?.filePath ?? resp.items[0].filePath)
       }
     } catch (e) {
@@ -88,7 +90,11 @@ export function ScenarioPickerPanel({
     setErrorMsg(null)
     setLastResult(null)
     try {
-      const result = await loadScenario(selectedPath)
+      const result = await loadScenario(selectedPath, {
+        clientId,
+        runtimeMode,
+        agentId: unityControlAgentId,
+      })
       setLastResult(result)
     } catch (e) {
       setErrorMsg(e instanceof Error ? e.message : String(e))

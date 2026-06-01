@@ -29,6 +29,7 @@ public sealed class RuntimeSessionManager : IHostedService
     private readonly PiConnectionOptions piOptions;
     private readonly CameraOptions cameraOptions;
     private readonly SensorBridgeOptions sensorOptions;
+    private readonly RealRobotCommandOptions realRobotCommandOptions;
 
     public RuntimeSessionManager(
         SessionLogger sessionLogger,
@@ -38,7 +39,8 @@ public sealed class RuntimeSessionManager : IHostedService
         ILoggerFactory loggerFactory,
         IOptions<PiConnectionOptions> piOptions,
         IOptions<CameraOptions> cameraOptions,
-        IOptions<SensorBridgeOptions> sensorOptions)
+        IOptions<SensorBridgeOptions> sensorOptions,
+        IOptions<RealRobotCommandOptions> realRobotCommandOptions)
     {
         this.sessionLogger = sessionLogger;
         this.telemetryParser = telemetryParser;
@@ -48,6 +50,7 @@ public sealed class RuntimeSessionManager : IHostedService
         this.piOptions = Clone(piOptions.Value);
         this.cameraOptions = Clone(cameraOptions.Value);
         this.sensorOptions = Clone(sensorOptions.Value);
+        this.realRobotCommandOptions = Clone(realRobotCommandOptions.Value);
     }
 
     public static string GetClientGroup(string clientId) => $"client:{clientId}";
@@ -256,7 +259,8 @@ public sealed class RuntimeSessionManager : IHostedService
         string runtimeMode,
         string command,
         string? agentId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string source = "ui")
     {
         var key = CreateKey(clientId, runtimeMode);
         if (string.Equals(key.Mode, RuntimeModes.UnitySim, StringComparison.Ordinal))
@@ -272,7 +276,7 @@ public sealed class RuntimeSessionManager : IHostedService
                 return new CommandResponse(false, "Control agent is not selected. Use /api/unity/client-selection or pass agentId in command request");
             }
 
-            return await world.SendCommandAsync(command, "ui", resolvedAgentId, key.ClientId, cancellationToken);
+            return await world.SendCommandAsync(command, source, resolvedAgentId, key.ClientId, cancellationToken);
         }
 
         if (!realSessions.TryGetValue(key, out var session))
@@ -280,7 +284,7 @@ public sealed class RuntimeSessionManager : IHostedService
             return new CommandResponse(false, "Runtime session is not connected");
         }
 
-        return await session.SendCommandAsync(command, "ui", agentId, key.ClientId, cancellationToken);
+        return await session.SendCommandAsync(command, source, agentId, key.ClientId, cancellationToken);
     }
 
     public void SetDirectDrive(string clientId, string runtimeMode, string? agentId, float throttle, float steer)
@@ -825,6 +829,7 @@ public sealed class RuntimeSessionManager : IHostedService
             piOptions,
             cameraOptions,
             sensorOptions,
+            realRobotCommandOptions,
             sessionLogger,
             telemetryParser,
             hubContext,
@@ -982,6 +987,7 @@ public sealed class RuntimeSessionManager : IHostedService
         EnableUdpListener = options.EnableUdpListener,
         UdpListenPort = options.UdpListenPort,
         MaxFrameBytes = options.MaxFrameBytes,
+        MaxFrameAgeMs = options.MaxFrameAgeMs,
         MjpegFps = options.MjpegFps,
         ProbeIntervalSec = options.ProbeIntervalSec,
         HttpProbeTimeoutMs = options.HttpProbeTimeoutMs,
@@ -995,6 +1001,24 @@ public sealed class RuntimeSessionManager : IHostedService
         TelemetryPath = options.TelemetryPath,
         PollIntervalMs = options.PollIntervalMs,
         RequestTimeoutMs = options.RequestTimeoutMs,
+    };
+
+    private static RealRobotCommandOptions Clone(RealRobotCommandOptions options) => new()
+    {
+        Enabled = options.Enabled,
+        ForwardPulseMs = options.ForwardPulseMs,
+        TurnPulseMs = options.TurnPulseMs,
+        ForwardTrimLeft = options.ForwardTrimLeft,
+        ForwardTrimRight = options.ForwardTrimRight,
+        NeutralTrimLeft = options.NeutralTrimLeft,
+        NeutralTrimRight = options.NeutralTrimRight,
+        MinForwardClearanceM = options.MinForwardClearanceM,
+        AutopilotTelemetryStaleMs = options.AutopilotTelemetryStaleMs,
+        RequireFreshTelemetryForAutopilotForward = options.RequireFreshTelemetryForAutopilotForward,
+        DisableBackCommand = options.DisableBackCommand,
+        RecoverAutopilotStopWithRightProbe = options.RecoverAutopilotStopWithRightProbe,
+        StopRecoveryTurnPulseMs = options.StopRecoveryTurnPulseMs,
+        StopRecoveryMinFrontClearanceM = options.StopRecoveryMinFrontClearanceM,
     };
 
     private IReadOnlyList<string> GetClientConnectionsSnapshot(string clientId)
@@ -1332,6 +1356,7 @@ public sealed class RuntimeSessionManager : IHostedService
         private readonly PiTcpClientService pi;
         private readonly CameraStreamService camera;
         private readonly SensorBridgeService sensor;
+        private readonly RealRobotCommandAdapter commandAdapter;
         private readonly SessionLogger sessionLogger;
         private readonly ILogger<RealRuntimeSession> logger;
         private readonly SemaphoreSlim lifecycleLock = new(1, 1);
@@ -1343,6 +1368,7 @@ public sealed class RuntimeSessionManager : IHostedService
             PiConnectionOptions piOptions,
             CameraOptions cameraOptions,
             SensorBridgeOptions sensorOptions,
+            RealRobotCommandOptions realRobotCommandOptions,
             SessionLogger sessionLogger,
             TelemetryParser telemetryParser,
             IHubContext<TelemetryHub> hubContext,
@@ -1355,6 +1381,7 @@ public sealed class RuntimeSessionManager : IHostedService
             UsesUdpCameraListener = enableUdpCameraListener;
             this.sessionLogger = sessionLogger;
             logger = loggerFactory.CreateLogger<RealRuntimeSession>();
+            commandAdapter = new RealRobotCommandAdapter(realRobotCommandOptions);
 
             var realCameraOptions = Clone(cameraOptions);
             realCameraOptions.EnableUdpListener = enableUdpCameraListener;
@@ -1437,7 +1464,16 @@ public sealed class RuntimeSessionManager : IHostedService
         {
             _ = agentId;
             _ = clientId;
-            return pi.SendCommandAsync(command, source, cancellationToken);
+            var adapted = commandAdapter.Adapt(command, source, sensor.GetLatestTelemetry());
+            if (!adapted.Accepted || string.IsNullOrWhiteSpace(adapted.Payload))
+            {
+                return Task.FromResult(new CommandResponse(false, adapted.Error ?? "Real robot command rejected"));
+            }
+
+            var adaptedSource = string.IsNullOrWhiteSpace(adapted.Note)
+                ? source
+                : $"{source}:real-safe:{adapted.Note}";
+            return pi.SendCommandAsync(adapted.Payload, adaptedSource, cancellationToken);
         }
 
         public Task<SensorBridgeResponse> UpdateConfigAsync(

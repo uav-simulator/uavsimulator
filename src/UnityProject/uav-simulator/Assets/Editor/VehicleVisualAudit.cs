@@ -170,7 +170,7 @@ namespace UavSimulator.EditorTools
         private static Bounds CalculateRendererBounds(Transform root)
         {
             var renderers = root.GetComponentsInChildren<Renderer>(includeInactive: true)
-                .Where(renderer => renderer != null)
+                .Where(renderer => renderer is MeshRenderer or SkinnedMeshRenderer)
                 .ToList();
             if (renderers.Count == 0)
             {
@@ -357,7 +357,7 @@ namespace UavSimulator.EditorTools
                 return source.GetColor("_Color");
             }
 
-            return source.color;
+            return Color.white;
         }
 
         private static string ReadTextureName(Material material, string propertyName)

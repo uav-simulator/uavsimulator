@@ -88,6 +88,7 @@ namespace UavSimulator.Vehicles
         private Texture2D frontCameraTexture;
         private int defaultCameraCullingMask = ~0;
         private string cameraMode = "driver";
+        private bool cityCarPresentationProfile;
         private float speedCmd;
         private float yawCmd;
         private float brakeCmd;
@@ -159,6 +160,7 @@ namespace UavSimulator.Vehicles
                 speedCmd = Mathf.Clamp((effLeft + effRight) * 0.5f, -1f, 1f);
                 yawCmd = Mathf.Clamp((effRight - effLeft) * 0.5f, -1f, 1f);
                 brakeCmd = Mathf.Clamp01(command.brake);
+                WakeBodyForActiveControl();
                 return;
             }
 
@@ -176,6 +178,26 @@ namespace UavSimulator.Vehicles
             var effRight2 = rightPwmCmd * rightMotorMult;
             speedCmd = Mathf.Clamp((effLeft2 + effRight2) * 0.5f, -1f, 1f);
             yawCmd = Mathf.Clamp((effRight2 - effLeft2) * 0.5f, -1f, 1f);
+            WakeBodyForActiveControl();
+        }
+
+        private void WakeBodyForActiveControl()
+        {
+            if (body == null || brakeCmd >= 0.99f)
+            {
+                return;
+            }
+
+            var hasDriveCommand =
+                Mathf.Abs(speedCmd) > 0.001f ||
+                Mathf.Abs(yawCmd) > 0.001f ||
+                Mathf.Abs(leftPwmCmd) > 0.001f ||
+                Mathf.Abs(rightPwmCmd) > 0.001f;
+
+            if (hasDriveCommand)
+            {
+                body.WakeUp();
+            }
         }
 
         public override VehicleState ReadState()
@@ -231,7 +253,7 @@ namespace UavSimulator.Vehicles
 
             try
             {
-                var hideSelfGeometry = cameraMode is "bumper" or "chase" or "spectator";
+                var hideSelfGeometry = cameraMode is "bumper";
                 for (var i = 0; i < renderers.Length; i++)
                 {
                     var renderer = renderers[i];
@@ -466,6 +488,33 @@ namespace UavSimulator.Vehicles
             }
         }
 
+        public void UseCityCarPresentationProfile()
+        {
+            cityCarPresentationProfile = true;
+            randomizeDynamics = false;
+            maxSpeedMps = 2.4f;
+            accelerationMps2 = 5.0f;
+            brakeDecelerationMps2 = 8.0f;
+            maxYawRateDegPerSec = 105f;
+            yawAccelerationDegPerSec2 = 420f;
+            ultrasonicMaxDistanceM = 18f;
+            if (body != null)
+            {
+                body.useGravity = false;
+                body.constraints =
+                    RigidbodyConstraints.FreezePositionY |
+                    RigidbodyConstraints.FreezeRotationX |
+                    RigidbodyConstraints.FreezeRotationZ;
+                body.linearVelocity = new Vector3(body.linearVelocity.x, 0f, body.linearVelocity.z);
+            }
+            lineSensorForwardOffsetM = 1.65f;
+            lineSensorHalfSpanM = 0.78f;
+            lineSensorDetectionWidthM = 0.35f;
+            cameraLocalPosition = new Vector3(0f, 1.15f, 1.45f);
+            cameraLocalEuler = new Vector3(4f, 0f, 0f);
+            ApplyCameraMode();
+        }
+
         private void OnDestroy()
         {
             if (frontCameraRt != null)
@@ -562,7 +611,33 @@ namespace UavSimulator.Vehicles
             Vector3 localEuler;
             float fieldOfView;
 
-            switch (cameraMode)
+            if (cityCarPresentationProfile && !string.Equals(cameraMode, "top_down", StringComparison.Ordinal))
+            {
+                switch (cameraMode)
+                {
+                    case "bumper":
+                        localPosition = new Vector3(0f, 0.65f, 2.05f);
+                        localEuler = new Vector3(5f, 0f, 0f);
+                        fieldOfView = 76f;
+                        break;
+                    case "chase":
+                        localPosition = new Vector3(0f, 2.15f, -5.60f);
+                        localEuler = new Vector3(17f, 0f, 0f);
+                        fieldOfView = 66f;
+                        break;
+                    case "spectator":
+                        localPosition = new Vector3(3.8f, 2.45f, -6.10f);
+                        localEuler = new Vector3(19f, -28f, 0f);
+                        fieldOfView = 62f;
+                        break;
+                    default:
+                        localPosition = cameraLocalPosition;
+                        localEuler = cameraLocalEuler;
+                        fieldOfView = 68f;
+                        break;
+                }
+            }
+            else switch (cameraMode)
             {
                 case "bumper":
                     localPosition = new Vector3(0f, 0.05f, 0.24f);

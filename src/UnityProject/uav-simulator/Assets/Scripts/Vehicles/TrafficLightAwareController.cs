@@ -1,4 +1,5 @@
 using UavSimulator.CityDemo;
+using System;
 using UnityEngine;
 
 namespace UavSimulator.Vehicles
@@ -49,14 +50,67 @@ namespace UavSimulator.Vehicles
 
             var origin = transform.position;
             var direction = transform.forward;
-            if (Physics.Raycast(origin, direction, out var hit, lookAheadDistance,
-                    trafficLightLayerMask, QueryTriggerInteraction.Collide))
+            var overlapping = Physics.OverlapSphere(
+                origin,
+                0.25f,
+                trafficLightLayerMask,
+                QueryTriggerInteraction.Collide);
+            var overlappingZone = ResolveNearestZone(overlapping, origin);
+            if (overlappingZone != null)
             {
-                return hit.collider.GetComponent<TrafficLightTriggerZone>()
-                    ?? hit.collider.GetComponentInParent<TrafficLightTriggerZone>();
+                return overlappingZone;
             }
+
+            var hits = Physics.RaycastAll(
+                origin,
+                direction,
+                lookAheadDistance,
+                trafficLightLayerMask,
+                QueryTriggerInteraction.Collide);
+            if (hits == null || hits.Length == 0)
+            {
+                return null;
+            }
+
+            Array.Sort(hits, (left, right) => left.distance.CompareTo(right.distance));
+            foreach (var hit in hits)
+            {
+                var zone = ResolveZone(hit.collider);
+                if (zone != null)
+                {
+                    return zone;
+                }
+            }
+
             return null;
         }
+
+        private static TrafficLightTriggerZone ResolveNearestZone(Collider[] colliders, Vector3 origin)
+        {
+            TrafficLightTriggerZone nearest = null;
+            var nearestDistanceSq = float.PositiveInfinity;
+            for (var i = 0; i < colliders.Length; i++)
+            {
+                var zone = ResolveZone(colliders[i]);
+                if (zone == null)
+                {
+                    continue;
+                }
+
+                var distanceSq = (zone.transform.position - origin).sqrMagnitude;
+                if (distanceSq < nearestDistanceSq)
+                {
+                    nearest = zone;
+                    nearestDistanceSq = distanceSq;
+                }
+            }
+
+            return nearest;
+        }
+
+        private static TrafficLightTriggerZone ResolveZone(Collider collider)
+            => collider.GetComponent<TrafficLightTriggerZone>()
+               ?? collider.GetComponentInParent<TrafficLightTriggerZone>();
 
         /// <summary>
         /// Snapshot of the nearest detectable traffic light's state and distance.

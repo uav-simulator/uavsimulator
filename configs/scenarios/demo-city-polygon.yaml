@@ -1,6 +1,9 @@
 scenarioId: demo-city-polygon
 displayName: City Demo (POLYGON pack)
-description: Машина едет по перекрёстку с 4 светофорами, собранному из POLYGON City Pack префабов. Демонстрация плагинной архитектуры — track.city_polygon.v1 встроенный плагин использует ассеты стороннего пакета.
+description: |
+  PROMETEO-машина едет по lane-aligned маршруту DemoScene-среза POLYGON City Pack
+  и останавливается на светофоре ego-подхода. Демонстрация плагинной архитектуры:
+  track.city_polygon.v1 и vehicle.prometeo.sport.v1 используют ассеты сторонних пакетов.
 version: 1
 
 runtime:
@@ -13,21 +16,24 @@ world:
   trackId: track.city_polygon.v1
 
 vehicle:
-  vehicleId: vehicle.arcade.blue.v1
+  vehicleId: vehicle.prometeo.sport.v1
   params:
     camera.profile: high
 
 route:
   params:
-    spawn.position: 0.000,0.200,-10.000
+    spawn.position: -4.000,0.200,-20.000
+    spawn.yaw_deg: 0
+    controller.profile: waypoint_follower
+    waypoint.graph: city.default
   waypoints:
-    - [0.0, -10.0]
-    - [0.0, 10.0]
-    - [10.0, 10.0]
-    - [10.0, -10.0]
-    - [0.0, -10.0]
-  loop: true
-  reachDistanceM: 1.5
+    - [-4.0, -20.0]
+    - [-4.0, -12.0]
+    - [-4.0, -4.0]
+    - [-4.0, 6.0]
+    - [-4.0, 18.0]
+  loop: false
+  reachDistanceM: 2.0
 
 agents:
   isolated: false
@@ -35,11 +41,15 @@ agents:
   collisionsEnabled: false
   vehicles:
     - agentId: ego
-      vehicleId: vehicle.arcade.blue.v1
+      vehicleId: vehicle.prometeo.sport.v1
       primary: true
       spawnPose:
-        position: [0.0, 0.2, -10.0]
+        position: [-4.0, 0.2, -20.0]
         yawDeg: 0
+      params:
+        controller.profile: waypoint_follower
+        waypoint.graph: city.default
+        gate.kind: ground_truth
 
 logging:
   enabled: true

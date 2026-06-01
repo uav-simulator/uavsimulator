@@ -37,6 +37,7 @@ namespace UavSimulator.Tracks
         // ───────────── Asset paths ─────────────
 
         private const string DemoScenePath = "Assets/POLYGON city pack/scene/DemoScene.unity";
+        private const string RuntimeCityResourcePath = "UavSimulator/City/city_runtime_compact";
 
         private const string PolygonRoot = "Assets/POLYGON city pack/Prefabs";
         private const string StreetStraightPrefabPath = PolygonRoot + "/Floor/Street 4 Prefab.prefab";
@@ -125,7 +126,232 @@ namespace UavSimulator.Tracks
             }
 #endif
 
+            if (TryBuildRuntimePrefab())
+            {
+                return;
+            }
+
             BuildProcedural();
+        }
+
+        private bool TryBuildRuntimePrefab()
+        {
+            var prefab = Resources.Load<GameObject>(RuntimeCityResourcePath);
+            if (prefab == null)
+            {
+                Debug.LogWarning(
+                    $"[CityPolygonTrack] Runtime city prefab not found at Resources/{RuntimeCityResourcePath}; " +
+                    "falling back to editor/procedural assembly.");
+                return false;
+            }
+
+            var instance = Instantiate(prefab, transform, worldPositionStays: false);
+            instance.name = "CityRuntimeCompact";
+            if (sanitizeMaterials)
+            {
+                ReplaceIncompatibleMaterials(instance);
+            }
+
+            // Runtime prefab already carries explicit RoadPhysicsDeck_* colliders
+            // and traffic-light trigger zones. Re-adding MeshCollider to the
+            // visual city turns crosswalks, poles and traffic-light meshes into
+            // blockers for the demo vehicle.
+            RegisterTrafficLightControllers(instance);
+            return true;
+        }
+
+        private static void EnsurePresentationRoadDecks(GameObject root)
+        {
+            var roadsRoot = FindChildByName(root.transform, "Roads") ?? root.transform;
+            if (FindChildByName(roadsRoot, "RoadPresentationDeck") != null)
+            {
+                return;
+            }
+
+            var northSouthDeck = FindChildByName(root.transform, "RoadPhysicsDeck_NS")?.GetComponent<BoxCollider>();
+            var eastWestDeck = FindChildByName(root.transform, "RoadPhysicsDeck_EW")?.GetComponent<BoxCollider>();
+            if (northSouthDeck == null || eastWestDeck == null)
+            {
+                return;
+            }
+
+            var measuredRoadLength = Mathf.Max(northSouthDeck.size.z, eastWestDeck.size.x);
+            var roadLength = Mathf.Clamp(Mathf.Max(measuredRoadLength, 34f), 34f, 40f);
+            var roadWidth = Mathf.Clamp(Mathf.Min(northSouthDeck.size.x, eastWestDeck.size.y) * 0.82f, 4.2f, 5.6f);
+            var asphaltMaterial = CreateRuntimeColorMaterial("CityPresentationAsphalt", new Color(0.105f, 0.125f, 0.115f, 1f), 0.16f);
+            var lineMaterial = CreateRuntimeColorMaterial("CityPresentationLaneMarking", new Color(0.92f, 0.78f, 0.22f, 1f), 0.08f);
+
+            var deck = new GameObject("RoadPresentationDeck");
+            deck.transform.SetParent(roadsRoot, worldPositionStays: false);
+            deck.transform.localPosition = new Vector3(0f, 0.016f, 0f);
+            deck.transform.localRotation = Quaternion.identity;
+            deck.transform.localScale = Vector3.one;
+            deck.AddComponent<MeshFilter>().sharedMesh = BuildRoadCrossMesh(roadLength, roadWidth);
+            deck.AddComponent<MeshRenderer>().sharedMaterial = asphaltMaterial;
+
+            AddLaneMarkings(roadsRoot, roadLength, roadWidth, lineMaterial);
+        }
+
+        private static Mesh BuildRoadCrossMesh(float roadLength, float roadWidth)
+        {
+            var halfLength = roadLength * 0.5f;
+            var halfWidth = roadWidth * 0.5f;
+            var vertices = new[]
+            {
+                new Vector3(-halfWidth, 0f, -halfLength),
+                new Vector3(+halfWidth, 0f, -halfLength),
+                new Vector3(+halfWidth, 0f, +halfLength),
+                new Vector3(-halfWidth, 0f, +halfLength),
+
+                new Vector3(-halfLength, 0f, -halfWidth),
+                new Vector3(-halfWidth, 0f, -halfWidth),
+                new Vector3(-halfWidth, 0f, +halfWidth),
+                new Vector3(-halfLength, 0f, +halfWidth),
+
+                new Vector3(+halfWidth, 0f, -halfWidth),
+                new Vector3(+halfLength, 0f, -halfWidth),
+                new Vector3(+halfLength, 0f, +halfWidth),
+                new Vector3(+halfWidth, 0f, +halfWidth),
+            };
+            var triangles = new[]
+            {
+                0, 2, 1, 0, 3, 2,
+                4, 6, 5, 4, 7, 6,
+                8, 10, 9, 8, 11, 10,
+            };
+            var uvs = new Vector2[vertices.Length];
+            for (var i = 0; i < vertices.Length; i++)
+            {
+                uvs[i] = new Vector2(vertices[i].x / roadLength + 0.5f, vertices[i].z / roadLength + 0.5f);
+            }
+
+            var mesh = new Mesh
+            {
+                name = "CityPresentationRoadCrossMesh",
+                vertices = vertices,
+                triangles = triangles,
+                uv = uvs,
+            };
+            mesh.RecalculateNormals();
+            mesh.RecalculateBounds();
+            return mesh;
+        }
+
+        private static void AddLaneMarkings(Transform parent, float roadLength, float roadWidth, Material lineMaterial)
+        {
+            var halfLength = roadLength * 0.5f;
+            var halfIntersection = roadWidth * 0.55f;
+            const float segmentLength = 1.25f;
+            const float segmentStep = 2.45f;
+            const float lineWidth = 0.08f;
+
+            for (var z = -halfLength + 1.6f; z <= halfLength - 1.6f; z += segmentStep)
+            {
+                if (Mathf.Abs(z) < halfIntersection)
+                {
+                    continue;
+                }
+
+                AddPresentationQuad(parent, $"RoadLane_NS_{z:0.0}", new Vector3(0f, 0.024f, z), lineWidth, segmentLength, lineMaterial);
+            }
+
+            for (var x = -halfLength + 1.6f; x <= halfLength - 1.6f; x += segmentStep)
+            {
+                if (Mathf.Abs(x) < halfIntersection)
+                {
+                    continue;
+                }
+
+                AddPresentationQuad(parent, $"RoadLane_EW_{x:0.0}", new Vector3(x, 0.025f, 0f), segmentLength, lineWidth, lineMaterial);
+            }
+        }
+
+        private static void AddPresentationQuad(Transform parent, string name, Vector3 position, float widthX, float lengthZ, Material material)
+        {
+            var quad = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            quad.name = name;
+            quad.transform.SetParent(parent, worldPositionStays: false);
+            quad.transform.localPosition = position;
+            quad.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+            quad.transform.localScale = new Vector3(widthX, lengthZ, 1f);
+
+            var collider = quad.GetComponent<Collider>();
+            if (collider != null)
+            {
+                Destroy(collider);
+            }
+
+            var renderer = quad.GetComponent<Renderer>();
+            if (renderer != null)
+            {
+                renderer.sharedMaterial = material;
+            }
+        }
+
+        private static Material CreateRuntimeColorMaterial(string name, Color color, float smoothness)
+        {
+            var material = new Material(RuntimeMaterialCompatibility.ResolveCompatibleLitShader())
+            {
+                name = name,
+                color = color,
+            };
+            if (material.HasProperty("_BaseColor"))
+            {
+                material.SetColor("_BaseColor", color);
+            }
+
+            if (material.HasProperty("_Color"))
+            {
+                material.SetColor("_Color", color);
+            }
+
+            if (material.HasProperty("_Smoothness"))
+            {
+                material.SetFloat("_Smoothness", smoothness);
+            }
+
+            if (material.HasProperty("_Glossiness"))
+            {
+                material.SetFloat("_Glossiness", smoothness);
+            }
+
+            return material;
+        }
+
+        private static Transform FindChildByName(Transform root, string childName)
+        {
+            if (root == null)
+            {
+                return null;
+            }
+
+            if (root.name == childName)
+            {
+                return root;
+            }
+
+            for (var i = 0; i < root.childCount; i++)
+            {
+                var found = FindChildByName(root.GetChild(i), childName);
+                if (found != null)
+                {
+                    return found;
+                }
+            }
+
+            return null;
+        }
+
+        private void RegisterTrafficLightControllers(GameObject root)
+        {
+            var loadedControllers = root.GetComponentsInChildren<TrafficLightController>(includeInactive: true);
+            for (var i = 0; i < loadedControllers.Length; i++)
+            {
+                if (loadedControllers[i] != null && !controllers.Contains(loadedControllers[i]))
+                {
+                    controllers.Add(loadedControllers[i]);
+                }
+            }
         }
 
         // ───────────── DemoScene mode ─────────────

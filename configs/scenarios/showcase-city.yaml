@@ -2,10 +2,12 @@ scenarioId: showcase-city
 displayName: Showcase City (cinematic demo)
 description: |
   Cinematic demo scenario over the POLYGON City Pack intersection. One Prometeo
-  sports car acts as the AI ego (driven via OnnxTrafficLightAwareController gate
-  in-scene), and four arcade racing cars circulate as NPC traffic with ground-truth
-  TrafficLightAwareController gates. All five vehicles consume the city.default
-  waypoint graph through WaypointFollowerVehicle. Camera is meant to be driven by
+  sports car acts as the AI ego (driven via the ground-truth
+  TrafficLightAwareController gate for the current presentation route), and one
+  arcade racing car circulates as lightweight NPC traffic with the same
+  rule-based traffic-light gates. The smaller default traffic set
+  keeps the sales/demo frame readable; extra agents can still be added from WebUI.
+  Camera is meant to be driven by
   the CinematicCameraController on the showcase camera rig (ShowcaseAngles asset)
   with the ShowcaseVolume URP post-processing profile attached.
 version: 1
@@ -30,79 +32,46 @@ vehicle:
 # missing.
 route:
   params:
-    spawn.position: 0.000,0.200,-12.000
+    spawn.position: -4.000,0.200,-20.000
+    spawn.yaw_deg: 0
     controller.profile: waypoint_follower
     waypoint.graph: city.default
   waypoints:
-    - [0.0, -12.0]
-    - [0.0, -2.0]
-    - [10.0, 0.0]
-    - [10.0, 10.0]
-    - [-10.0, 10.0]
-    - [-10.0, -10.0]
-    - [0.0, -12.0]
-  loop: true
-  reachDistanceM: 1.5
+    - [-4.0, -20.0]
+    - [-4.0, -12.0]
+    - [-4.0, -4.0]
+    - [-4.0, 6.0]
+    - [-4.0, 18.0]
+  loop: false
+  reachDistanceM: 2.0
 
 agents:
   isolated: false
   seeEachOther: true
   collisionsEnabled: false
-  # Per-vehicle gate wiring is currently a scene-side concern: WaypointFollowerVehicle
-  # picks up an IMovementGate (TrafficLightAwareController or
-  # OnnxTrafficLightAwareController) via inspector slot or GetComponent fallback.
-  # The scenario loader does not yet deserialize a `gates:` block — once Plan B.4
-  # follow-up wires that through, swap the agent entries to declare gate kind
-  # ("onnx" for ego, "ground_truth" for NPCs) here. For now the prefabs themselves
-  # carry the gate component and this YAML just provisions the right vehicles.
+  # Demo behavior uses the deterministic ground-truth gate. The visual ONNX
+  # traffic-light classifier remains a research/presentation artifact until its
+  # dataset is strong enough to release the vehicle reliably after Green.
   vehicles:
     - agentId: ego
       vehicleId: vehicle.prometeo.sport.v1
       primary: true
       spawnPose:
-        position: [0.0, 0.2, -12.0]
+        position: [-4.0, 0.2, -20.0]
         yawDeg: 0
       params:
         controller.profile: waypoint_follower
         waypoint.graph: city.default
-        gate.kind: onnx
+        gate.kind: ground_truth
     - agentId: npc-blue
       vehicleId: vehicle.arcade.blue.v1
       spawnPose:
-        position: [12.0, 0.2, 0.0]
-        yawDeg: -90
-      params:
-        controller.profile: waypoint_follower
-        waypoint.graph: city.default
-        gate.kind: ground_truth
-    - agentId: npc-red
-      vehicleId: vehicle.arcade.red.v1
-      spawnPose:
-        position: [0.0, 0.2, 12.0]
-        yawDeg: 180
-      params:
-        controller.profile: waypoint_follower
-        waypoint.graph: city.default
-        gate.kind: ground_truth
-    - agentId: npc-gray
-      vehicleId: vehicle.arcade.gray.v1
-      spawnPose:
-        position: [-12.0, 0.2, 0.0]
+        position: [2.0, 0.2, -0.9]
         yawDeg: 90
       params:
         controller.profile: waypoint_follower
         waypoint.graph: city.default
         gate.kind: ground_truth
-    - agentId: npc-purple
-      vehicleId: vehicle.arcade.purple.v1
-      spawnPose:
-        position: [-6.0, 0.2, -12.0]
-        yawDeg: 0
-      params:
-        controller.profile: waypoint_follower
-        waypoint.graph: city.default
-        gate.kind: ground_truth
-
 logging:
   enabled: true
   tag: showcase-city

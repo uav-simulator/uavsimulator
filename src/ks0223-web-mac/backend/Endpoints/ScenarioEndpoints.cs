@@ -55,6 +55,7 @@ internal static class ScenarioEndpoints
             LoadScenarioRequest request,
             ILoggerFactory loggerFactory,
             IHttpClientFactory httpClientFactory,
+            RuntimeSessionManager runtimeSessionManager,
             CancellationToken cancellationToken) =>
         {
             var logger = loggerFactory.CreateLogger("ScenarioLoader");
@@ -131,46 +132,76 @@ internal static class ScenarioEndpoints
 
             using (payloadDocument)
             {
-                var rusimBaseUrl = Environment.GetEnvironmentVariable("RUSIM_BASE_URL");
-                if (string.IsNullOrWhiteSpace(rusimBaseUrl))
+                var resetViaConnectedSession = false;
+                if (TryGetConnectedUnitySessionRequest(
+                        request,
+                        out var clientId,
+                        out var runtimeMode,
+                        out var agentId))
                 {
-                    rusimBaseUrl = "http://127.0.0.1:8000";
-                }
-
-                var resetUri = BuildRuntimeResetUri(rusimBaseUrl);
-                using var resetRequest = new HttpRequestMessage(HttpMethod.Post, resetUri);
-                var hostHeader = GetRuntimeHostHeaderOverride(resetUri, IsRunningInContainer());
-                if (hostHeader is not null)
-                {
-                    resetRequest.Headers.Host = hostHeader;
-                }
-
-                resetRequest.Content = new StringContent(
-                    payloadDocument.RootElement.GetRawText(),
-                    Encoding.UTF8,
-                    "application/json");
-
-                var httpClient = httpClientFactory.CreateClient(nameof(ScenarioEndpoints));
-                httpClient.Timeout = TimeSpan.FromSeconds(30);
-
-                using var resetResponse = await httpClient.SendAsync(resetRequest, cancellationToken);
-                var responseText = await resetResponse.Content.ReadAsStringAsync(cancellationToken);
-                if (!resetResponse.IsSuccessStatusCode)
-                {
-                    logger.LogWarning(
-                        "runtime reset failed: status={StatusCode}, body={Body}",
-                        (int)resetResponse.StatusCode,
-                        responseText);
-                    return Results.BadRequest(new
+                    try
                     {
-                        error = "runtime reset failed",
-                        statusCode = (int)resetResponse.StatusCode,
-                        body = responseText,
-                        resetUrl = resetUri.ToString(),
-                    });
+                        var connectedReset = await runtimeSessionManager.TryResetConnectedUnityRuntimeAsync(
+                            clientId,
+                            runtimeMode,
+                            payloadDocument.RootElement.Clone(),
+                            agentId,
+                            cancellationToken);
+                        if (connectedReset.HasValue)
+                        {
+                            stdout = connectedReset.Value.GetRawText();
+                            resetViaConnectedSession = true;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.LogWarning(ex, "connected Unity scenario reset failed; falling back to direct runtime reset");
+                    }
                 }
 
-                stdout = responseText;
+                if (!resetViaConnectedSession)
+                {
+                    var rusimBaseUrl = Environment.GetEnvironmentVariable("RUSIM_BASE_URL");
+                    if (string.IsNullOrWhiteSpace(rusimBaseUrl))
+                    {
+                        rusimBaseUrl = "http://127.0.0.1:8000";
+                    }
+
+                    var resetUri = BuildRuntimeResetUri(rusimBaseUrl);
+                    using var resetRequest = new HttpRequestMessage(HttpMethod.Post, resetUri);
+                    var hostHeader = GetRuntimeHostHeaderOverride(resetUri, IsRunningInContainer());
+                    if (hostHeader is not null)
+                    {
+                        resetRequest.Headers.Host = hostHeader;
+                    }
+
+                    resetRequest.Content = new StringContent(
+                        payloadDocument.RootElement.GetRawText(),
+                        Encoding.UTF8,
+                        "application/json");
+
+                    var httpClient = httpClientFactory.CreateClient(nameof(ScenarioEndpoints));
+                    httpClient.Timeout = TimeSpan.FromSeconds(30);
+
+                    using var resetResponse = await httpClient.SendAsync(resetRequest, cancellationToken);
+                    var responseText = await resetResponse.Content.ReadAsStringAsync(cancellationToken);
+                    if (!resetResponse.IsSuccessStatusCode)
+                    {
+                        logger.LogWarning(
+                            "runtime reset failed: status={StatusCode}, body={Body}",
+                            (int)resetResponse.StatusCode,
+                            responseText);
+                        return Results.BadRequest(new
+                        {
+                            error = "runtime reset failed",
+                            statusCode = (int)resetResponse.StatusCode,
+                            body = responseText,
+                            resetUrl = resetUri.ToString(),
+                        });
+                    }
+
+                    stdout = responseText;
+                }
             }
 
             try
@@ -272,6 +303,28 @@ internal static class ScenarioEndpoints
                 });
             }
         });
+    }
+
+    internal static bool TryGetConnectedUnitySessionRequest(
+        LoadScenarioRequest request,
+        out string clientId,
+        out string runtimeMode,
+        out string? agentId)
+    {
+        clientId = string.Empty;
+        runtimeMode = string.Empty;
+        agentId = null;
+
+        if (string.IsNullOrWhiteSpace(request.ClientId) ||
+            !string.Equals(RuntimeModes.Normalize(request.RuntimeMode), RuntimeModes.UnitySim, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        clientId = request.ClientId.Trim();
+        runtimeMode = RuntimeModes.UnitySim;
+        agentId = string.IsNullOrWhiteSpace(request.AgentId) ? null : request.AgentId.Trim();
+        return true;
     }
 
     internal static string ResolveScenariosDir()

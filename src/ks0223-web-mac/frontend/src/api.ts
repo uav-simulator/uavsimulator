@@ -290,11 +290,14 @@ export async function listScenarios(): Promise<ScenarioListResponse> {
   return handleJson<ScenarioListResponse>(response)
 }
 
-export async function loadScenario(filePath: string): Promise<ScenarioLoadResult> {
+export async function loadScenario(
+  filePath: string,
+  context?: { clientId?: string; runtimeMode?: string; agentId?: string },
+): Promise<ScenarioLoadResult> {
   const response = await fetch(withBase('/api/scenarios/load'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ filePath }),
+    body: JSON.stringify({ filePath, ...context }),
   })
   return handleJson<ScenarioLoadResult>(response)
 }

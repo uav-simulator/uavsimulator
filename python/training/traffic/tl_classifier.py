@@ -1,6 +1,7 @@
-"""3-class image classifier for traffic-light state recognition.
+"""Image classifier for traffic-light state recognition.
 
-Trained on (frame_84x84_RGB, label_idx) dataset from auto_label.py.
+Trained on (frame_84x84_RGB, label_idx) dataset from auto_label.py or
+runtime city mini-datasets captured from ``modelFrame``.
 Exports to ONNX consumable by OnnxClassifierService (Unity Sentis).
 """
 from __future__ import annotations
@@ -8,6 +9,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import torch
@@ -23,6 +25,7 @@ class TlClassifierConfig:
     lr: float = 1e-3
     device: str = "cpu"
     seed: int = 42
+    n_classes: int = 3
 
 
 class _TlDataset(Dataset):
@@ -61,7 +64,7 @@ class TlClassifier:
         torch.manual_seed(cfg.seed)
         np.random.seed(cfg.seed)
         self.device = torch.device(cfg.device)
-        self.model = _SmallCnn().to(self.device)
+        self.model = _SmallCnn(n_classes=cfg.n_classes).to(self.device)
         self.opt = torch.optim.Adam(self.model.parameters(), lr=cfg.lr)
 
     def fit(self, samples: list[tuple[np.ndarray, int]]) -> dict:
@@ -90,6 +93,7 @@ class TlClassifier:
         # Wrap with softmax — Unity Sentis consumer (OnnxClassifierService) expects
         # probabilities, not raw logits; tests assert sum-to-one.
         export_model = nn.Sequential(self.model, nn.Softmax(dim=-1))
+        export_model.eval()
         dummy = torch.zeros(1, 3, 84, 84)
         torch.onnx.export(
             export_model,
@@ -128,9 +132,58 @@ def load_dataset_from_jsonl(jsonl_path: Path) -> list[tuple[np.ndarray, int]]:
         if not line.strip():
             continue
         row = json.loads(line)
-        frame = np.array(Image.open(base / row["frame"]).convert("RGB"))
-        out.append((frame, int(row["label_idx"])))
+        frame_rel = _resolve_frame_path(row)
+        label = _resolve_label(row)
+        frame = Image.open(base / frame_rel).convert("RGB")
+        if frame.size != (84, 84):
+            frame = frame.resize((84, 84))
+        out.append((np.array(frame), label))
     return out
+
+
+def _resolve_frame_path(row: dict[str, Any]) -> str:
+    for key in ("modelInputPath", "frame", "framePath"):
+        value = row.get(key)
+        if isinstance(value, str) and value:
+            return value
+    raise KeyError("dataset row has no frame path: expected modelInputPath, frame, or framePath")
+
+
+def _resolve_label(row: dict[str, Any]) -> int:
+    for key in ("label_idx", "labelId"):
+        value = row.get(key)
+        if value is not None:
+            return int(value)
+    raise KeyError("dataset row has no label id: expected label_idx or labelId")
+
+
+def _class_counts(samples: list[tuple[np.ndarray, int]], n_classes: int) -> list[int]:
+    counts = [0] * n_classes
+    for _, label in samples:
+        if 0 <= label < n_classes:
+            counts[label] += 1
+    return counts
+
+
+def _eval_classifier(clf: TlClassifier, samples: list[tuple[np.ndarray, int]]) -> dict[str, Any]:
+    n_classes = clf.cfg.n_classes
+    confusion = [[0 for _ in range(n_classes)] for _ in range(n_classes)]
+    correct = total = 0
+    clf.model.eval()
+    with torch.no_grad():
+        for frame, label in samples:
+            t = torch.from_numpy(frame.transpose(2, 0, 1)).float().unsqueeze(0) / 255.0
+            logits = clf.model(t.to(clf.device))
+            pred = int(logits.argmax(-1).item())
+            if 0 <= label < n_classes and 0 <= pred < n_classes:
+                confusion[label][pred] += 1
+            correct += int(pred == label)
+            total += 1
+    return {
+        "accuracy": correct / max(total, 1),
+        "confusion": confusion,
+        "n": total,
+    }
 
 
 def main():
@@ -144,29 +197,33 @@ def main():
     fit.add_argument("--epochs", type=int, default=20)
     fit.add_argument("--device", default="cpu")
     fit.add_argument("--seed", type=int, default=42)
+    fit.add_argument("--classes", type=int, default=3)
+    fit.add_argument("--label-names", default="Red,Yellow,Green")
     args = p.parse_args()
 
     if args.command == "fit":
         samples = load_dataset_from_jsonl(args.dataset)
+        if not samples:
+            raise ValueError(f"Dataset is empty: {args.dataset}")
+        bad_labels = sorted({label for _, label in samples if label < 0 or label >= args.classes})
+        if bad_labels:
+            raise ValueError(f"Labels {bad_labels} outside configured class range 0..{args.classes - 1}")
+
         rng = np.random.default_rng(args.seed)
         idx = rng.permutation(len(samples))
         train_n = int(0.8 * len(samples))
         train = [samples[i] for i in idx[:train_n]]
         val = [samples[i] for i in idx[train_n:]]
 
-        cfg = TlClassifierConfig(epochs=args.epochs, device=args.device, seed=args.seed)
+        cfg = TlClassifierConfig(epochs=args.epochs, device=args.device, seed=args.seed, n_classes=args.classes)
         clf = TlClassifier(cfg)
         history = clf.fit(train)
 
-        clf.model.eval()
-        correct = total = 0
-        with torch.no_grad():
-            for frame, label in val:
-                t = torch.from_numpy(frame.transpose(2, 0, 1)).float().unsqueeze(0) / 255.0
-                pred = clf.model(t).argmax(-1).item()
-                correct += int(pred == label)
-                total += 1
-        val_acc = correct / max(total, 1)
+        train_eval = _eval_classifier(clf, train)
+        val_eval = _eval_classifier(clf, val)
+        label_names = [x.strip() for x in args.label_names.split(",") if x.strip()]
+        if len(label_names) != args.classes:
+            label_names = [str(i) for i in range(args.classes)]
 
         args.output.parent.mkdir(parents=True, exist_ok=True)
         clf.export_onnx(args.output)
@@ -177,14 +234,23 @@ def main():
                 {
                     "train_loss": history["train_loss"],
                     "train_accuracy": history["train_accuracy"],
-                    "val_accuracy": val_acc,
+                    "train_eval_accuracy": train_eval["accuracy"],
+                    "val_accuracy": val_eval["accuracy"],
+                    "train_confusion": train_eval["confusion"],
+                    "val_confusion": val_eval["confusion"],
+                    "class_counts": _class_counts(samples, args.classes),
+                    "label_names": label_names,
+                    "classes": args.classes,
                     "n_train": len(train),
                     "n_val": len(val),
+                    "dataset": str(args.dataset),
+                    "seed": args.seed,
+                    "epochs": args.epochs,
                 },
                 indent=2,
             )
         )
-        print(f"Train acc {history['train_accuracy'][-1]:.3f}, Val acc {val_acc:.3f}")
+        print(f"Train acc {history['train_accuracy'][-1]:.3f}, Val acc {val_eval['accuracy']:.3f}")
         print(f"ONNX: {args.output}; pt: {args.output.with_suffix('.pt')}; metrics: {metrics_path}")
 
 

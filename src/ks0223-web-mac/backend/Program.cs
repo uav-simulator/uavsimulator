@@ -22,6 +22,7 @@ builder.Services.Configure<LoggingOptions>(builder.Configuration.GetSection("Ses
 builder.Services.Configure<CameraOptions>(builder.Configuration.GetSection("Camera"));
 builder.Services.Configure<SensorBridgeOptions>(builder.Configuration.GetSection("SensorBridge"));
 builder.Services.Configure<AutopilotSafetyOptions>(builder.Configuration.GetSection("AutopilotSafety"));
+builder.Services.Configure<RealRobotCommandOptions>(builder.Configuration.GetSection("RealRobotCommand"));
 
 // -----------------------------------------------------------------------------
 // Infrastructure (SignalR + HttpClient + CORS)

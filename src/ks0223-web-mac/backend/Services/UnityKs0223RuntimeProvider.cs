@@ -10,6 +10,7 @@ namespace Ks0223.Web.Backend.Services;
 
 public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
 {
+    private const string CityPolygonTrackId = "track.city_polygon.v1";
     private const string CameraProfile = "high";
     private const string RenderQualityProfile = "high";
     private const string ModelCaptureModeKey = "camera.model_capture_mode";
@@ -68,6 +69,17 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
     {
         PropertyNameCaseInsensitive = true,
     };
+    private static readonly (string Position, string YawDeg)[] CitySpawnSlots =
+    {
+        ("-4.000,0.200,-20.000", "0.0"),
+        ("2.000,0.200,-0.900", "90.0"),
+        ("-0.900,0.200,12.000", "180.0"),
+        ("-12.000,0.200,-0.900", "90.0"),
+        ("0.900,0.200,2.000", "0.0"),
+    };
+    private const string CityLaneLoopWaypoints =
+        "-4.000,0.000,-20.000;-4.000,0.000,-12.000;-4.000,0.000,-4.000;" +
+        "-4.000,0.000,6.000;-4.000,0.000,18.000";
     private static readonly TimeSpan DriveInputWatchdog = TimeSpan.FromMilliseconds(320);
     private static readonly TimeSpan ControlOwnershipLease = TimeSpan.FromSeconds(2);
 
@@ -314,6 +326,7 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
             }
 
             UpdateFromStepResult(document, resolvedAgentId, updateSharedState: true);
+            SyncConfiguredAgentsFromResetResponse(document.RootElement, resolvedAgentId);
             if (shouldRestartLoop)
             {
                 await StartLoopAsync(cancellationToken);
@@ -910,12 +923,16 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
     {
         List<UnityRuntimeAgentSelectionRequest> agentsSnapshot;
         string cameraMode;
+        string trackIdSnapshot;
+        string vehicleIdSnapshot;
         bool? collisionsEnabledSnapshot;
         bool? seeEachOtherSnapshot;
         lock (stateLock)
         {
             agentsSnapshot = NormalizeConfiguredAgents(configuredAgents);
             cameraMode = selectedCameraMode;
+            trackIdSnapshot = selectedTrackId;
+            vehicleIdSnapshot = selectedVehicleId;
             collisionsEnabledSnapshot = simCollisionsEnabled;
             seeEachOtherSnapshot = simSeeEachOther;
         }
@@ -924,9 +941,9 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
         {
             seed = 1,
             timeScale = 1.0,
-            selectedTrackId,
-            selectedVehicleId,
-            trackParams = Array.Empty<object>(),
+            selectedTrackId = trackIdSnapshot,
+            selectedVehicleId = vehicleIdSnapshot,
+            trackParams = BuildRuntimeTrackParams(trackIdSnapshot),
             vehicleParams = new object[]
             {
                 new { key = "camera.mode", value = cameraMode },
@@ -938,12 +955,8 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
                 agentId = string.IsNullOrWhiteSpace(agent.AgentId) ? $"agent-{index + 1}" : agent.AgentId,
                 vehicleId = agent.VehicleId,
                 isPrimary = agent.IsPrimary || index == 0,
-                trackParams = Array.Empty<object>(),
-                vehicleParams = new object[]
-                {
-                    new { key = "camera.mode", value = cameraMode },
-                    new { key = "camera.profile", value = CameraProfile },
-                },
+                trackParams = BuildAgentTrackParams(trackIdSnapshot, index),
+                vehicleParams = BuildAgentVehicleParams(trackIdSnapshot, cameraMode, agent.IsPrimary || index == 0),
                 flags = Array.Empty<object>(),
             }).ToArray(),
         };
@@ -1502,6 +1515,62 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
         };
     }
 
+    private static object[] BuildRuntimeTrackParams(string trackId)
+    {
+        if (!IsCityTrack(trackId))
+        {
+            return Array.Empty<object>();
+        }
+
+        return new[]
+        {
+            Kv("spawn.position", CitySpawnSlots[0].Position),
+            Kv("controller.profile", "waypoint_follower"),
+            Kv("waypoint.graph", "city.default"),
+            Kv("route.waypoints", CityLaneLoopWaypoints),
+            Kv("route.loop", "false"),
+            Kv("route.reach_distance_m", "2.0"),
+        };
+    }
+
+    private static object[] BuildAgentTrackParams(string trackId, int index)
+    {
+        if (!IsCityTrack(trackId))
+        {
+            return Array.Empty<object>();
+        }
+
+        var slot = CitySpawnSlots[Math.Clamp(index, 0, CitySpawnSlots.Length - 1)];
+        return new[]
+        {
+            Kv("spawn.position", slot.Position),
+            Kv("spawn.yaw_deg", slot.YawDeg),
+        };
+    }
+
+    private static object[] BuildAgentVehicleParams(string trackId, string cameraMode, bool isPrimary)
+    {
+        var result = new List<object>
+        {
+            Kv("camera.mode", cameraMode),
+            Kv("camera.profile", CameraProfile),
+        };
+
+        if (IsCityTrack(trackId))
+        {
+            result.Add(Kv("controller.profile", "waypoint_follower"));
+            result.Add(Kv("waypoint.graph", "city.default"));
+            result.Add(Kv("gate.kind", isPrimary ? "onnx" : "ground_truth"));
+        }
+
+        return result.ToArray();
+    }
+
+    private static bool IsCityTrack(string? trackId) =>
+        string.Equals(trackId, CityPolygonTrackId, StringComparison.Ordinal);
+
+    private static object Kv(string key, string value) => new { key, value };
+
     private static object[] BuildSimFlags(int agentCount, bool? collisionsEnabled, bool? seeEachOther)
     {
         // Defaults: multi-agent → collisions off, see each other on; single → no opinion
@@ -1611,6 +1680,80 @@ public sealed class UnityKs0223RuntimeProvider : IKs0223RuntimeProvider
         return normalized.All(agent => !string.IsNullOrWhiteSpace(agent.AgentId) && activeAgentIds.Contains(agent.AgentId))
             ? normalized
             : NormalizeConfiguredAgents(activeAgents);
+    }
+
+    private void SyncConfiguredAgentsFromResetResponse(JsonElement root, string? preferredAgentId)
+    {
+        var agents = ReadAgentsFromResetResponse(root, preferredAgentId);
+        if (agents.Count == 0)
+        {
+            return;
+        }
+
+        var normalizedAgents = NormalizeConfiguredAgents(agents);
+        if (normalizedAgents.Count == 0)
+        {
+            return;
+        }
+
+        var activeVehicleId = ReadOptionalString(root, "activeVehicleId");
+        lock (stateLock)
+        {
+            configuredAgents = normalizedAgents;
+            SyncAgentStateDictionariesLocked(configuredAgents);
+            selectedControlAgentId = ResolveSelectedControlAgentId(preferredAgentId, configuredAgents);
+            if (!string.IsNullOrWhiteSpace(activeVehicleId))
+            {
+                selectedVehicleId = activeVehicleId;
+            }
+        }
+    }
+
+    private static List<UnityRuntimeAgentSelectionRequest> ReadAgentsFromResetResponse(
+        JsonElement root,
+        string? preferredAgentId)
+    {
+        var result = new List<UnityRuntimeAgentSelectionRequest>();
+        var activeAgentId = ReadOptionalString(root, "activeAgentId");
+        var activeVehicleId = ReadOptionalString(root, "activeVehicleId");
+
+        if (root.TryGetProperty("agents", out var agentsElement) &&
+            agentsElement.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var agentElement in agentsElement.EnumerateArray())
+            {
+                if (agentElement.ValueKind != JsonValueKind.Object)
+                {
+                    continue;
+                }
+
+                var agentId = ReadOptionalString(agentElement, "agentId");
+                var vehicleId = ReadOptionalString(agentElement, "vehicleId");
+                if (string.IsNullOrWhiteSpace(agentId) || string.IsNullOrWhiteSpace(vehicleId))
+                {
+                    continue;
+                }
+
+                var isPrimary =
+                    string.Equals(agentId, preferredAgentId, StringComparison.Ordinal) ||
+                    string.Equals(agentId, activeAgentId, StringComparison.Ordinal);
+                result.Add(new UnityRuntimeAgentSelectionRequest(agentId, vehicleId, isPrimary));
+            }
+        }
+
+        if (result.Count == 0 &&
+            !string.IsNullOrWhiteSpace(activeAgentId) &&
+            !string.IsNullOrWhiteSpace(activeVehicleId))
+        {
+            result.Add(new UnityRuntimeAgentSelectionRequest(activeAgentId, activeVehicleId, IsPrimary: true));
+        }
+
+        if (result.Count > 0 && !result.Any(agent => agent.IsPrimary))
+        {
+            result[0] = result[0] with { IsPrimary = true };
+        }
+
+        return result;
     }
 
     private static string ResolveSelectedControlAgentId(string? current, IReadOnlyList<UnityRuntimeAgentSelectionRequest> agents)

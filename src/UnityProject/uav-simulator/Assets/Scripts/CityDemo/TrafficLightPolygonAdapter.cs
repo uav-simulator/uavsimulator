@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+using UavSimulator.Core;
 using UnityEngine;
 
 namespace UavSimulator.CityDemo
@@ -40,6 +42,11 @@ namespace UavSimulator.CityDemo
         [SerializeField] private Material greenOff;
         [SerializeField] private Material greenOn;
 
+        private static readonly Color InactiveBulbColor = new Color(0.025f, 0.025f, 0.02f, 1f);
+
+        private readonly Dictionary<Material, Material> compatibleMaterialCache = new();
+        private readonly Dictionary<Material, Material> inactiveMaterialCache = new();
+
         private void OnEnable()
         {
             if (trafficLight != null)
@@ -64,15 +71,75 @@ namespace UavSimulator.CityDemo
                 return;
             }
 
-            // .materials creates per-instance copies, allowing multiple traffic
-            // lights to display different states without sharing one material.
-            var materials = trafficLightRenderer.materials;
+            var materials = trafficLightRenderer.sharedMaterials;
 
-            ApplyToSlots(materials, redSlots, state == TrafficLightState.Red ? redOn : redOff);
-            ApplyToSlots(materials, yellowSlots, state == TrafficLightState.Yellow ? yellowOn : yellowOff);
-            ApplyToSlots(materials, greenSlots, state == TrafficLightState.Green ? greenOn : greenOff);
+            ApplyToSlots(materials, redSlots, ResolveRuntimeMaterial(state == TrafficLightState.Red ? redOn : redOff, state == TrafficLightState.Red));
+            ApplyToSlots(materials, yellowSlots, ResolveRuntimeMaterial(state == TrafficLightState.Yellow ? yellowOn : yellowOff, state == TrafficLightState.Yellow));
+            ApplyToSlots(materials, greenSlots, ResolveRuntimeMaterial(state == TrafficLightState.Green ? greenOn : greenOff, state == TrafficLightState.Green));
 
-            trafficLightRenderer.materials = materials;
+            trafficLightRenderer.sharedMaterials = materials;
+        }
+
+        private Material ResolveRuntimeMaterial(Material source, bool active)
+        {
+            if (source == null)
+            {
+                return null;
+            }
+
+            if (!active)
+            {
+                return ResolveInactiveRuntimeMaterial(source);
+            }
+
+            if (!RuntimeMaterialCompatibility.NeedsReplacement(source))
+            {
+                return source;
+            }
+
+            if (compatibleMaterialCache.TryGetValue(source, out var cached) && cached != null)
+            {
+                return cached;
+            }
+
+            var replacement = RuntimeMaterialCompatibility.CreateReplacementMaterial(source, defaultSmoothness: 0.2f, copyTextures: true);
+            replacement.name = $"{source.name} Runtime";
+            compatibleMaterialCache[source] = replacement;
+            return replacement;
+        }
+
+        private Material ResolveInactiveRuntimeMaterial(Material source)
+        {
+            if (inactiveMaterialCache.TryGetValue(source, out var cached) && cached != null)
+            {
+                return cached;
+            }
+
+            var replacement = RuntimeMaterialCompatibility.CreateReplacementMaterial(source, defaultSmoothness: 0.2f, copyTextures: false);
+            replacement.name = $"{source.name} Dim Runtime";
+            ApplyDisplayColor(replacement, InactiveBulbColor);
+            if (replacement.HasProperty("_EmissionColor"))
+            {
+                replacement.SetColor("_EmissionColor", Color.black);
+            }
+
+            replacement.DisableKeyword("_EMISSION");
+            replacement.globalIlluminationFlags = MaterialGlobalIlluminationFlags.EmissiveIsBlack;
+            inactiveMaterialCache[source] = replacement;
+            return replacement;
+        }
+
+        private static void ApplyDisplayColor(Material material, Color color)
+        {
+            if (material.HasProperty("_BaseColor"))
+            {
+                material.SetColor("_BaseColor", color);
+            }
+
+            if (material.HasProperty("_Color"))
+            {
+                material.SetColor("_Color", color);
+            }
         }
 
         private static void ApplyToSlots(Material[] materials, int[] slots, Material target)

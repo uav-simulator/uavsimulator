@@ -8,7 +8,7 @@ namespace UavSimulator.Tests.EditMode
     public sealed class TrafficLightFsmTests
     {
         private static (GameObject root, TrafficLightController ctrl, TrafficLight ns, TrafficLight ew)
-            BuildController(float green = 10f, float yellow = 2f)
+            BuildController(float green = 10f, float yellow = 2f, float red = 8f)
         {
             var root = new GameObject("CtrlRoot");
             var nsGo = new GameObject("NS");
@@ -22,6 +22,7 @@ namespace UavSimulator.Tests.EditMode
             var ctrl = root.AddComponent<TrafficLightController>();
             ctrl.greenSeconds = green;
             ctrl.yellowSeconds = yellow;
+            ctrl.redSeconds = red;
             ctrl.SetNorthSouthLights(new[] { ns });
             ctrl.SetEastWestLights(new[] { ew });
             return (root, ctrl, ns, ew);
@@ -49,7 +50,8 @@ namespace UavSimulator.Tests.EditMode
         {
             const float green = 10f;
             const float yellow = 2f;
-            var (root, ctrl, ns, ew) = BuildController(green, yellow);
+            const float red = 8f;
+            var (root, ctrl, ns, ew) = BuildController(green, yellow, red);
             try
             {
                 ctrl.StartCycle();
@@ -61,18 +63,13 @@ namespace UavSimulator.Tests.EditMode
                 Assert.AreEqual(TrafficLightState.Yellow, ns.State, "NS should be Yellow after green elapses");
                 Assert.AreEqual(TrafficLightState.Red, ew.State);
 
-                // After yellowSeconds → EW Green.
+                // After yellowSeconds → NS Red, cross-direction Green.
                 ctrl.AdvanceTime(yellow + 0.001f);
-                Assert.AreEqual(TrafficLightState.Red, ns.State, "NS should be Red while EW is Green");
+                Assert.AreEqual(TrafficLightState.Red, ns.State, "NS should be Red for redSeconds");
                 Assert.AreEqual(TrafficLightState.Green, ew.State);
 
-                // After greenSeconds → EW Yellow.
-                ctrl.AdvanceTime(green + 0.001f);
-                Assert.AreEqual(TrafficLightState.Red, ns.State);
-                Assert.AreEqual(TrafficLightState.Yellow, ew.State);
-
-                // After yellowSeconds → back to NS Green.
-                ctrl.AdvanceTime(yellow + 0.001f);
+                // After redSeconds → back to NS Green.
+                ctrl.AdvanceTime(red + 0.001f);
                 Assert.AreEqual(TrafficLightState.Green, ns.State);
                 Assert.AreEqual(TrafficLightState.Red, ew.State);
             }
@@ -88,14 +85,20 @@ namespace UavSimulator.Tests.EditMode
         {
             const float green = 5f;
             const float yellow = 1f;
-            var (root, ctrl, ns, ew) = BuildController(green, yellow);
+            const float red = 3f;
+            var (root, ctrl, ns, ew) = BuildController(green, yellow, red);
             try
             {
                 ctrl.StartCycle();
-                // Skip past NS Green (5s) and NS Yellow (1s) → should be in EW Green.
+                // Skip past NS Green (5s) and NS Yellow (1s) → should be in NS Red.
                 ctrl.AdvanceTime(green + yellow + 0.001f);
                 Assert.AreEqual(TrafficLightState.Red, ns.State);
                 Assert.AreEqual(TrafficLightState.Green, ew.State);
+
+                // redSeconds is a real phase duration, not an ignored reserve value.
+                ctrl.AdvanceTime(red + 0.001f);
+                Assert.AreEqual(TrafficLightState.Green, ns.State);
+                Assert.AreEqual(TrafficLightState.Red, ew.State);
             }
             finally
             {

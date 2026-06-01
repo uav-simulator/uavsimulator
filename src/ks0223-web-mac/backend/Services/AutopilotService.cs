@@ -29,6 +29,7 @@ public sealed class AutopilotService
     // 380 deg/s yaw and 100 ms loop, 30 strikes = 3 s = ~one full
     // rotation, which is the realistic ceiling for any single corner action.
     private const int RepeatedCommandThreshold = 30;
+    private const int StopRecoveryProbeLimit = 6;
     // Bumped 2026-04-27: HC-SR04 echoes can drop out for 1–2 s when the
     // robot rotates in place — the sonar pulse goes off into open space
     // (or a far surface beyond ~4 m max range) and no echo returns. The
@@ -234,10 +235,12 @@ public sealed class AutopilotService
                     running.RuntimeMode!,
                     command,
                     running.AgentId,
-                    token);
+                    token,
+                    source: "autopilot");
 
                 var safetyStatus = safetyFilter.GetStatus();
                 int repeatedCount;
+                int stopRecoveryProbeCount;
                 lock (gate)
                 {
                     if (!ReferenceEquals(state, running))
@@ -261,6 +264,15 @@ public sealed class AutopilotService
                     running.EStopActive = decision.EStopActive;
                     running.EStopTriggerCount = safetyStatus.EStopTriggerCount;
                     repeatedCount = running.RepeatedCommandCount;
+                    if (IsRealRobotStopRecoveryProbe(running.RuntimeMode, command) && response.Sent)
+                    {
+                        running.StopRecoveryProbeCount += 1;
+                    }
+                    else if (!IsRealRobotStopRecoveryProbe(running.RuntimeMode, command))
+                    {
+                        running.StopRecoveryProbeCount = 0;
+                    }
+                    stopRecoveryProbeCount = running.StopRecoveryProbeCount;
 
                     if (response.Sent)
                     {
@@ -298,6 +310,13 @@ public sealed class AutopilotService
                     return;
                 }
 
+                if (ShouldAutoStopForStopRecoveryProbe(stopRecoveryProbeCount))
+                {
+                    await AutoStopAsync(running,
+                        $"stop-recovery right probes reached {stopRecoveryProbeCount} steps (~180 degrees)");
+                    return;
+                }
+
                 await Task.Delay(running.LoopIntervalMs, token);
             }
         }
@@ -315,7 +334,8 @@ public sealed class AutopilotService
                     running.RuntimeMode!,
                     "DirStop",
                     running.AgentId,
-                    CancellationToken.None);
+                    CancellationToken.None,
+                    source: "autopilot-failsafe");
             }
             catch (Exception stopEx)
             {
@@ -404,7 +424,6 @@ public sealed class AutopilotService
 
         var model = modelRegistry.ResolveRuntimeSpec(null, normalizedClientId, normalizedMode, normalizedAgent);
 
-        PolicyPredictor predictor;
         lock (previewGate)
         {
             if (previewPredictor is null || previewModelId != model.ModelId)
@@ -413,88 +432,89 @@ public sealed class AutopilotService
                 previewPredictor = new PolicyPredictor(model, logger);
                 previewModelId = model.ModelId;
             }
-            predictor = previewPredictor;
-        }
 
-        var telemetry = runtimeSessionManager.GetLatestSensorTelemetry(normalizedClientId, normalizedMode);
-        if (telemetry is null)
-        {
-            return new PreviewSampleDto(false, model.ModelId, "no telemetry yet", null, null, null, null, null);
-        }
+            var predictor = previewPredictor;
 
-        byte[]? frameBytes = null;
-        if (predictor.RequiresFrame)
-        {
-            if (!runtimeSessionManager.TryGetLatestModelFrame(
-                    normalizedClientId, normalizedMode, normalizedAgent,
-                    out var latestFrame, out _, out _, out _))
+            var telemetry = runtimeSessionManager.GetLatestSensorTelemetry(normalizedClientId, normalizedMode);
+            if (telemetry is null)
             {
-                return new PreviewSampleDto(false, model.ModelId, "no camera frame yet", null, null, null, null, null);
+                return new PreviewSampleDto(false, model.ModelId, "no telemetry yet", null, null, null, null, null);
             }
-            frameBytes = latestFrame;
-        }
 
-        float[] logits;
-        try
-        {
-            logits = predictor.PredictRaw(telemetry.Flat, frameBytes);
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "Preview inference failed");
-            return new PreviewSampleDto(false, model.ModelId, ex.Message, null, null, null, null, null);
-        }
-
-        // softmax over logits for action probabilities (only for discrete-categorical models)
-        float[]? probs = null;
-        string? chosenAction = null;
-        int? chosenIndex = null;
-        if (predictor.IsDiscreteAction && logits.Length == ActionNames.Length)
-        {
-            probs = new float[logits.Length];
-            float maxLogit = logits[0];
-            for (int i = 1; i < logits.Length; i++) if (logits[i] > maxLogit) maxLogit = logits[i];
-            float sum = 0f;
-            for (int i = 0; i < logits.Length; i++)
+            byte[]? frameBytes = null;
+            if (predictor.RequiresFrame)
             {
-                probs[i] = (float)Math.Exp(logits[i] - maxLogit);
-                sum += probs[i];
+                if (!runtimeSessionManager.TryGetLatestModelFrame(
+                        normalizedClientId, normalizedMode, normalizedAgent,
+                        out var latestFrame, out _, out _, out _))
+                {
+                    return new PreviewSampleDto(false, model.ModelId, "no camera frame yet", null, null, null, null, null);
+                }
+                frameBytes = latestFrame;
             }
-            int bestIdx = 0;
-            for (int i = 0; i < probs.Length; i++)
+
+            float[] logits;
+            try
             {
-                probs[i] /= sum;
-                if (probs[i] > probs[bestIdx]) bestIdx = i;
+                logits = predictor.PredictRaw(telemetry.Flat, frameBytes);
             }
-            chosenIndex = bestIdx;
-            chosenAction = ActionNames[bestIdx];
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Preview inference failed");
+                return new PreviewSampleDto(false, model.ModelId, ex.Message, null, null, null, null, null);
+            }
+
+            // softmax over logits for action probabilities (only for discrete-categorical models)
+            float[]? probs = null;
+            string? chosenAction = null;
+            int? chosenIndex = null;
+            if (predictor.IsDiscreteAction && logits.Length == ActionNames.Length)
+            {
+                probs = new float[logits.Length];
+                float maxLogit = logits[0];
+                for (int i = 1; i < logits.Length; i++) if (logits[i] > maxLogit) maxLogit = logits[i];
+                float sum = 0f;
+                for (int i = 0; i < logits.Length; i++)
+                {
+                    probs[i] = (float)Math.Exp(logits[i] - maxLogit);
+                    sum += probs[i];
+                }
+                int bestIdx = 0;
+                for (int i = 0; i < probs.Length; i++)
+                {
+                    probs[i] /= sum;
+                    if (probs[i] > probs[bestIdx]) bestIdx = i;
+                }
+                chosenIndex = bestIdx;
+                chosenAction = ActionNames[bestIdx];
+            }
+
+            var frontM = ExtractFrontMeters(telemetry.Flat);
+            var features = ComputeImageFeatures(frameBytes);
+
+            // CV-feature guard: image too uniform = blind = force DirStop.
+            string? guardReason = null;
+            if (features != null && features.BrightnessStdDev < ImageBlindStdDevThreshold && probs != null)
+            {
+                for (int i = 0; i < probs.Length; i++) probs[i] = 0f;
+                probs[0] = 1f;
+                chosenIndex = 0;
+                chosenAction = ActionNames[0];
+                guardReason = $"image-blind (stddev={features.BrightnessStdDev:F3} < {ImageBlindStdDevThreshold:F2})";
+            }
+
+            return new PreviewSampleDto(
+                true,
+                model.ModelId,
+                null,
+                logits,
+                probs,
+                chosenAction,
+                chosenIndex,
+                frontM,
+                features,
+                guardReason);
         }
-
-        var frontM = ExtractFrontMeters(telemetry.Flat);
-        var features = ComputeImageFeatures(frameBytes);
-
-        // CV-feature guard: image too uniform = blind = force DirStop.
-        string? guardReason = null;
-        if (features != null && features.BrightnessStdDev < ImageBlindStdDevThreshold && probs != null)
-        {
-            for (int i = 0; i < probs.Length; i++) probs[i] = 0f;
-            probs[0] = 1f;
-            chosenIndex = 0;
-            chosenAction = ActionNames[0];
-            guardReason = $"image-blind (stddev={features.BrightnessStdDev:F3} < {ImageBlindStdDevThreshold:F2})";
-        }
-
-        return new PreviewSampleDto(
-            true,
-            model.ModelId,
-            null,
-            logits,
-            probs,
-            chosenAction,
-            chosenIndex,
-            frontM,
-            features,
-            guardReason);
     }
 
     private async Task AutoStopAsync(AutopilotState running, string reason)
@@ -541,7 +561,8 @@ public sealed class AutopilotService
                     running.RuntimeMode!,
                     "DirStop",
                     running.AgentId,
-                    CancellationToken.None);
+                    CancellationToken.None,
+                    source: "autopilot-failsafe");
             }
             catch (Exception stopEx)
             {
@@ -629,7 +650,8 @@ public sealed class AutopilotService
                 snapshot.RuntimeMode!,
                 "DirStop",
                 snapshot.AgentId,
-                cancellationToken);
+                cancellationToken,
+                source: "autopilot-stop");
         }
         catch (Exception ex)
         {
@@ -729,6 +751,13 @@ public sealed class AutopilotService
 
         return command is "DirLeft" or "DirRight" or "DirBack";
     }
+
+    internal static bool ShouldAutoStopForStopRecoveryProbe(int probeCount) =>
+        probeCount >= StopRecoveryProbeLimit;
+
+    private static bool IsRealRobotStopRecoveryProbe(string? runtimeMode, string? command) =>
+        string.Equals(runtimeMode, RuntimeModes.RealRobot, StringComparison.Ordinal) &&
+        string.Equals(command, "DirStop", StringComparison.Ordinal);
 
     internal static string ResolveCommandForSafetyDecision(SafetyDecision decision)
     {
@@ -1303,6 +1332,7 @@ public sealed class AutopilotService
         public long EStopTriggerCount { get; set; }
         public int MaxDurationSeconds { get; private set; }
         public int RepeatedCommandCount { get; set; }
+        public int StopRecoveryProbeCount { get; set; }
         public string? StopReason { get; set; }
 
         public static AutopilotState Running(
@@ -1354,6 +1384,7 @@ public sealed class AutopilotService
                 EStopTriggerCount = previous.EStopTriggerCount,
                 MaxDurationSeconds = previous.MaxDurationSeconds,
                 RepeatedCommandCount = previous.RepeatedCommandCount,
+                StopRecoveryProbeCount = previous.StopRecoveryProbeCount,
                 StopReason = previous.StopReason ?? lastError,
             };
 

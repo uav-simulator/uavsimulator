@@ -39,10 +39,12 @@ public sealed class CameraStreamService : BackgroundService
     {
         lock (frameLock)
         {
+            var hasFreshFrame = latestFrame is not null
+                && CameraFrameFreshness.IsFresh(lastFrameAt, options.MaxFrameAgeMs, DateTimeOffset.UtcNow);
             return new CameraStatusDto(
                 UdpListenerEnabled: options.EnableUdpListener,
                 UdpListenPort: options.UdpListenPort,
-                HasFrame: latestFrame is not null,
+                HasFrame: hasFreshFrame,
                 LastFrameAt: lastFrameAt,
                 Source: frameSource,
                 FramesReceived: framesReceived,
@@ -56,7 +58,8 @@ public sealed class CameraStreamService : BackgroundService
     {
         lock (frameLock)
         {
-            if (latestFrame is null)
+            if (latestFrame is null
+                || !CameraFrameFreshness.IsFresh(lastFrameAt, options.MaxFrameAgeMs, DateTimeOffset.UtcNow))
             {
                 frame = Array.Empty<byte>();
                 contentType = "image/jpeg";

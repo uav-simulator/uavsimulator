@@ -9,11 +9,10 @@ namespace UavSimulator.CityDemo
     /// <c>eastWestLights</c>. NS and EW are interlocked: when NS is Green/Yellow,
     /// EW is Red, and vice versa.
     ///
-    /// Cycle:
+    /// Presentation cycle for the primary north-south direction:
     ///   NS Green     (greenSeconds)
     ///   NS Yellow    (yellowSeconds)
-    ///   EW Green     (greenSeconds)   [NS Red throughout]
-    ///   EW Yellow    (yellowSeconds)  [NS Red throughout]
+    ///   NS Red       (redSeconds)     [EW Green throughout]
     ///   repeat
     ///
     /// The controller exposes <see cref="AdvanceTime"/> for unit tests so the
@@ -24,7 +23,7 @@ namespace UavSimulator.CityDemo
         [SerializeField] private TrafficLight[] northSouthLights;
         [SerializeField] private TrafficLight[] eastWestLights;
 
-        public float redSeconds = 8f;       // Reserved (clearance time); not part of the basic cycle.
+        public float redSeconds = 8f;
         public float greenSeconds = 10f;
         public float yellowSeconds = 2f;
 
@@ -32,8 +31,7 @@ namespace UavSimulator.CityDemo
         {
             NsGreen,
             NsYellow,
-            EwGreen,
-            EwYellow,
+            NsRed,
         }
 
         private Phase phase = Phase.NsGreen;
@@ -69,7 +67,7 @@ namespace UavSimulator.CityDemo
             // adjacent intersections aren't all in lockstep when reset with the
             // same global seed.
             var rng = new System.Random(seed);
-            phase = (Phase)(rng.Next() & 3);
+            phase = (Phase)rng.Next(0, 3);
             phaseElapsed = (float)(rng.NextDouble() * PhaseDuration(phase));
             ApplyPhase();
         }
@@ -116,13 +114,9 @@ namespace UavSimulator.CityDemo
                     SetGroup(northSouthLights, TrafficLightState.Yellow);
                     SetGroup(eastWestLights, TrafficLightState.Red);
                     break;
-                case Phase.EwGreen:
+                case Phase.NsRed:
                     SetGroup(northSouthLights, TrafficLightState.Red);
                     SetGroup(eastWestLights, TrafficLightState.Green);
-                    break;
-                case Phase.EwYellow:
-                    SetGroup(northSouthLights, TrafficLightState.Red);
-                    SetGroup(eastWestLights, TrafficLightState.Yellow);
                     break;
             }
         }
@@ -133,8 +127,7 @@ namespace UavSimulator.CityDemo
             {
                 case Phase.NsGreen: return greenSeconds;
                 case Phase.NsYellow: return yellowSeconds;
-                case Phase.EwGreen: return greenSeconds;
-                case Phase.EwYellow: return yellowSeconds;
+                case Phase.NsRed: return redSeconds;
                 default: return greenSeconds;
             }
         }
@@ -144,9 +137,8 @@ namespace UavSimulator.CityDemo
             switch (p)
             {
                 case Phase.NsGreen: return Phase.NsYellow;
-                case Phase.NsYellow: return Phase.EwGreen;
-                case Phase.EwGreen: return Phase.EwYellow;
-                case Phase.EwYellow: return Phase.NsGreen;
+                case Phase.NsYellow: return Phase.NsRed;
+                case Phase.NsRed: return Phase.NsGreen;
                 default: return Phase.NsGreen;
             }
         }

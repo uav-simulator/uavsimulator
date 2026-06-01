@@ -32,6 +32,11 @@ namespace UavSimulator.Plugins
         private const string ArcadeRedPrefabPath = "Assets/ARCADE - FREE Racing Car/Prefabs (Meshes Only)/Free Racing Car Red Variant.prefab";
         private const string ArcadeGrayPrefabPath = "Assets/ARCADE - FREE Racing Car/Prefabs (Meshes Only)/Free Racing Car Gray Variant.prefab";
         private const string ArcadePurplePrefabPath = "Assets/ARCADE - FREE Racing Car/Prefabs (Meshes Only)/Free Racing Car Purple Variant.prefab";
+        private const string PrometeoRuntimeResourcePath = "UavSimulator/Vehicles/Visuals/prometeo_sport";
+        private const string ArcadeBlueRuntimeResourcePath = "UavSimulator/Vehicles/Visuals/arcade_blue";
+        private const string ArcadeRedRuntimeResourcePath = "UavSimulator/Vehicles/Visuals/arcade_red";
+        private const string ArcadeGrayRuntimeResourcePath = "UavSimulator/Vehicles/Visuals/arcade_gray";
+        private const string ArcadePurpleRuntimeResourcePath = "UavSimulator/Vehicles/Visuals/arcade_purple";
         private static readonly string[] SimpleDronePrefabCandidates =
         {
             "Assets/Simple Drone/Prefabs/Simple Drone.prefab",
@@ -40,7 +45,8 @@ namespace UavSimulator.Plugins
             "Assets/ExternalModels/Simple Drone.prefab",
         };
 
-        private const float TargetVehicleLength = 0.52f;
+        private const float RobotVisualTargetLength = 0.52f;
+        private const float CityCarVisualTargetLength = 3.80f;
         private const float VehicleVisualGroundOffset = 0.01f;
 
         public static PluginRegistrySnapshot CreateSnapshot(PluginRegistrySource source = PluginRegistrySource.BuiltinFactory)
@@ -145,16 +151,19 @@ namespace UavSimulator.Plugins
 
             var chassisCollider = root.AddComponent<BoxCollider>();
             var isKs0223 = string.Equals(descriptorId, Ks0223VehicleId, StringComparison.Ordinal);
-            // KS0223 real dimensions: 15cm wide, 25cm long, 20cm tall
-            // Other vehicles: use larger collider matching the Prometeo visual shell
-            chassisCollider.center = isKs0223 ? new Vector3(0f, 0.05f, 0f) : new Vector3(0f, 0.08f, 0f);
+            // KS0223 real dimensions: 15cm wide, 25cm long, 20cm tall.
+            // City showcase vehicles use imported car bodies, so their collider
+            // must be car-sized as well; otherwise the visuals look toy-sized on
+            // the POLYGON city road.
+            chassisCollider.center = isKs0223 ? new Vector3(0f, 0.05f, 0f) : new Vector3(0f, 0.25f, 0f);
             chassisCollider.size = isKs0223
                 ? new Vector3(0.15f, 0.12f, 0.25f)
-                : new Vector3(0.34f, 0.16f, 0.52f);
+                : new Vector3(1.65f, 0.50f, 3.80f);
 
             // KS0223 uses its own small-scale presentation visuals (Ks0223Vehicle.EnsurePresentationVisuals),
             // not the full-size Prometeo prefab. Skip prefab loading for it.
-            var hasCustomVisual = !isKs0223 && TryAttachVisual(root.transform, visualProfile);
+            var visualTargetLength = isKs0223 ? RobotVisualTargetLength : CityCarVisualTargetLength;
+            var hasCustomVisual = !isKs0223 && TryAttachVisual(root.transform, visualProfile, visualTargetLength);
             if (!hasCustomVisual)
             {
                 var accentColor = GetFallbackAccentColor(descriptorId);
@@ -162,7 +171,8 @@ namespace UavSimulator.Plugins
                 SanitizeRendererMaterials(root);
                 Debug.LogWarning(
                     $"[BuiltinPluginFactory] Imported vehicle visual is unavailable for '{descriptorId}'. " +
-                    $"Fallback shell is used instead (prefab path: {visualProfile.PrefabPath}).");
+                    $"Fallback shell is used instead (prefab path: {visualProfile.PrefabPath}, " +
+                    $"resource path: {visualProfile.ResourcePath}).");
             }
 
             var rb = root.AddComponent<Rigidbody>();
@@ -175,6 +185,10 @@ namespace UavSimulator.Plugins
             if (vehicle is Ks0223Vehicle ks0223Vehicle)
             {
                 ks0223Vehicle.SetPresentationAccentColor(GetFallbackAccentColor(descriptorId));
+                if (!isKs0223)
+                {
+                    ks0223Vehicle.UseCityCarPresentationProfile();
+                }
             }
 
             return true;
@@ -465,7 +479,7 @@ namespace UavSimulator.Plugins
                 visualRoot.transform.localPosition = Vector3.zero;
                 visualRoot.transform.localRotation = Quaternion.identity;
                 visualRoot.transform.localScale = Vector3.one;
-                FitVisualToVehicleBounds(root.transform, visualRoot.transform);
+                FitVisualToVehicleBounds(root.transform, visualRoot.transform, RobotVisualTargetLength);
                 StripVisualPhysicsAndScripts(visualRoot);
             }
 
@@ -477,46 +491,46 @@ namespace UavSimulator.Plugins
             profile = default;
             if (string.Equals(descriptorId, Ks0223VehicleId, StringComparison.Ordinal))
             {
-                profile = new VehicleVisualProfile(PrometeoPrefabPath, 0f);
+                profile = new VehicleVisualProfile(PrometeoPrefabPath, PrometeoRuntimeResourcePath, 0f);
                 return true;
             }
 
             if (string.Equals(descriptorId, PrometeoSportVehicleId, StringComparison.Ordinal))
             {
-                profile = new VehicleVisualProfile(PrometeoPrefabPath, 0f);
+                profile = new VehicleVisualProfile(PrometeoPrefabPath, PrometeoRuntimeResourcePath, 0f);
                 return true;
             }
 
             if (string.Equals(descriptorId, ArcadeBlueVehicleId, StringComparison.Ordinal))
             {
-                profile = new VehicleVisualProfile(ArcadeBluePrefabPath, 0f);
+                profile = new VehicleVisualProfile(ArcadeBluePrefabPath, ArcadeBlueRuntimeResourcePath, 0f);
                 return true;
             }
 
             if (string.Equals(descriptorId, ArcadeRedVehicleId, StringComparison.Ordinal))
             {
-                profile = new VehicleVisualProfile(ArcadeRedPrefabPath, 0f);
+                profile = new VehicleVisualProfile(ArcadeRedPrefabPath, ArcadeRedRuntimeResourcePath, 0f);
                 return true;
             }
 
             if (string.Equals(descriptorId, ArcadeGrayVehicleId, StringComparison.Ordinal))
             {
-                profile = new VehicleVisualProfile(ArcadeGrayPrefabPath, 0f);
+                profile = new VehicleVisualProfile(ArcadeGrayPrefabPath, ArcadeGrayRuntimeResourcePath, 0f);
                 return true;
             }
 
             if (string.Equals(descriptorId, ArcadePurpleVehicleId, StringComparison.Ordinal))
             {
-                profile = new VehicleVisualProfile(ArcadePurplePrefabPath, 0f);
+                profile = new VehicleVisualProfile(ArcadePurplePrefabPath, ArcadePurpleRuntimeResourcePath, 0f);
                 return true;
             }
 
             return false;
         }
 
-        private static bool TryAttachVisual(Transform parent, VehicleVisualProfile visualProfile)
+        private static bool TryAttachVisual(Transform parent, VehicleVisualProfile visualProfile, float targetLength)
         {
-            var prefab = LoadVisualPrefab(visualProfile.PrefabPath);
+            var prefab = LoadVisualPrefab(visualProfile);
             if (prefab == null)
             {
                 return false;
@@ -528,7 +542,7 @@ namespace UavSimulator.Plugins
             visualRoot.transform.localPosition = Vector3.zero;
             visualRoot.transform.localScale = Vector3.one;
 
-            FitVisualToVehicleBounds(parent, visualRoot.transform);
+            FitVisualToVehicleBounds(parent, visualRoot.transform, targetLength);
             StripVisualPhysicsAndScripts(visualRoot);
             // Keep original style from imported assets and only replace shader-incompatible materials.
             SanitizeRendererMaterials(visualRoot, forceFallback: false, copyTextures: true);
@@ -536,7 +550,7 @@ namespace UavSimulator.Plugins
             return true;
         }
 
-        private static void FitVisualToVehicleBounds(Transform vehicleRoot, Transform visualRoot)
+        private static void FitVisualToVehicleBounds(Transform vehicleRoot, Transform visualRoot, float targetLength)
         {
             if (!TryCalculateRenderBounds(vehicleRoot, visualRoot, out var localBounds))
             {
@@ -546,7 +560,7 @@ namespace UavSimulator.Plugins
             var horizontalSize = Mathf.Max(localBounds.size.x, localBounds.size.z);
             if (horizontalSize > 0.001f)
             {
-                var scale = TargetVehicleLength / horizontalSize;
+                var scale = targetLength / horizontalSize;
                 visualRoot.localScale *= scale;
             }
 
@@ -786,6 +800,27 @@ namespace UavSimulator.Plugins
 #endif
         }
 
+        private static GameObject LoadVisualPrefab(VehicleVisualProfile profile)
+        {
+#if UNITY_EDITOR
+            var editorPrefab = LoadVisualPrefab(profile.PrefabPath);
+            if (editorPrefab != null)
+            {
+                return editorPrefab;
+            }
+#endif
+            if (!string.IsNullOrWhiteSpace(profile.ResourcePath))
+            {
+                var resourcePrefab = Resources.Load<GameObject>(profile.ResourcePath);
+                if (resourcePrefab != null)
+                {
+                    return resourcePrefab;
+                }
+            }
+
+            return null;
+        }
+
         private static GameObject LoadDronePrefab()
         {
 #if UNITY_EDITOR
@@ -914,11 +949,13 @@ namespace UavSimulator.Plugins
         private readonly struct VehicleVisualProfile
         {
             public readonly string PrefabPath;
+            public readonly string ResourcePath;
             public readonly float YawOffsetDeg;
 
-            public VehicleVisualProfile(string prefabPath, float yawOffsetDeg)
+            public VehicleVisualProfile(string prefabPath, string resourcePath, float yawOffsetDeg)
             {
                 PrefabPath = prefabPath;
+                ResourcePath = resourcePath;
                 YawOffsetDeg = yawOffsetDeg;
             }
         }

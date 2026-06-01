@@ -48,4 +48,19 @@ public sealed class OptionsDefaultsTests
         var opts = new AutopilotSafetyOptions();
         Assert.InRange(opts.ThrottleMax, 0.0f, 0.5f);
     }
+
+    [Fact]
+    public void CameraOptions_Defaults_Reject_Stale_Frames()
+    {
+        var opts = new CameraOptions();
+        Assert.Equal(5051, opts.UdpListenPort);
+        Assert.Equal(5000, opts.MaxFrameAgeMs);
+    }
+
+    [Fact]
+    public void RealRobotCommandOptions_Defaults_To_Tiny_Forward_Pulse()
+    {
+        var opts = new RealRobotCommandOptions();
+        Assert.Equal(40, opts.ForwardPulseMs);
+    }
 }

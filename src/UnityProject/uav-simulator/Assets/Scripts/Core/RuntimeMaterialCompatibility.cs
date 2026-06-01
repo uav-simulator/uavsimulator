@@ -228,7 +228,25 @@ namespace UavSimulator.Core
                 material.SetFloat("_Glossiness", smoothness);
             }
 
+            CopyEmission(source, material);
+
             return material;
+        }
+
+        private static void CopyEmission(Material source, Material target)
+        {
+            if (source == null || target == null || !source.HasProperty("_EmissionColor") || !target.HasProperty("_EmissionColor"))
+            {
+                return;
+            }
+
+            var emission = source.GetColor("_EmissionColor");
+            target.SetColor("_EmissionColor", emission);
+            if (emission.maxColorComponent > 0.001f)
+            {
+                target.EnableKeyword("_EMISSION");
+                target.globalIlluminationFlags = source.globalIlluminationFlags;
+            }
         }
 
         public static Texture ReadSourceTexture(Material source)
@@ -273,7 +291,7 @@ namespace UavSimulator.Core
                 return source.GetColor("_Color");
             }
 
-            return source.color;
+            return Color.white;
         }
 
         private static RenderPipelineKind ResolvePipelineKind()

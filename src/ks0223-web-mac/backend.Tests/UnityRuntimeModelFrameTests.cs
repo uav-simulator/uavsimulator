@@ -36,6 +36,73 @@ public sealed class UnityRuntimeModelFrameTests
         Assert.Equal(modelFrameBytes, modelFrame);
     }
 
+    [Fact]
+    public async Task Scenario_reset_payload_syncs_configured_agents_from_runtime_response()
+    {
+        using var handler = new ResetContractHealthHandler(
+            resetJson: """
+            {
+              "activeAgentId": "ego",
+              "activeVehicleId": "vehicle.prometeo.sport.v1",
+              "state": { "telemetry": [] },
+              "agents": [
+                {
+                  "agentId": "ego",
+                  "vehicleId": "vehicle.prometeo.sport.v1",
+                  "state": { "telemetry": [] },
+                  "frame": { "dataBase64": "" }
+                },
+                {
+                  "agentId": "npc-blue",
+                  "vehicleId": "vehicle.arcade.blue.v1",
+                  "state": { "telemetry": [] },
+                  "frame": { "dataBase64": "" }
+                }
+              ]
+            }
+            """,
+            contractJson: """
+            {
+              "availableVehicles": [
+                { "deviceId": "vehicle.prometeo.sport.v1", "displayName": "PROMETEO" },
+                { "deviceId": "vehicle.arcade.blue.v1", "displayName": "Blue arcade" }
+              ],
+              "availableTracks": [
+                { "trackId": "track.city_polygon.v1", "displayName": "POLYGON City" }
+              ]
+            }
+            """,
+            healthJson: """
+            {
+              "status": "ok",
+              "activeTrackId": "",
+              "activeVehicleId": "",
+              "activeAgentIds": [],
+              "activeVehicleIds": []
+            }
+            """);
+        var provider = CreateProvider(handler);
+
+        using var _ = await provider.ResetSimulationWithPayloadAsync(new { }, "ego", CancellationToken.None);
+        var catalog = await provider.GetRuntimeCatalogAsync("127.0.0.1", 8000, CancellationToken.None);
+
+        Assert.Collection(
+            catalog.Agents,
+            agent =>
+            {
+                Assert.Equal("ego", agent.AgentId);
+                Assert.Equal("vehicle.prometeo.sport.v1", agent.VehicleId);
+                Assert.True(agent.IsPrimary);
+            },
+            agent =>
+            {
+                Assert.Equal("npc-blue", agent.AgentId);
+                Assert.Equal("vehicle.arcade.blue.v1", agent.VehicleId);
+                Assert.False(agent.IsPrimary);
+            });
+        Assert.Equal("ego", catalog.SelectedControlAgentId);
+    }
+
     private static UnityKs0223RuntimeProvider CreateProvider(HttpMessageHandler handler)
     {
         var logger = new SessionLogger(
@@ -59,6 +126,32 @@ public sealed class UnityRuntimeModelFrameTests
             var path = request.RequestUri?.AbsolutePath ?? string.Empty;
             var statusCode = path == "/reset" ? HttpStatusCode.OK : HttpStatusCode.NotFound;
             var json = path == "/reset" ? resetJson : """{ "error": "unexpected test path" }""";
+
+            return Task.FromResult(new HttpResponseMessage(statusCode)
+            {
+                Content = new StringContent(json, Encoding.UTF8, "application/json"),
+            });
+        }
+    }
+
+    private sealed class ResetContractHealthHandler(
+        string resetJson,
+        string contractJson,
+        string healthJson) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var path = request.RequestUri?.AbsolutePath ?? string.Empty;
+            var json = path switch
+            {
+                "/reset" => resetJson,
+                "/contract" => contractJson,
+                "/health" => healthJson,
+                _ => """{ "error": "unexpected test path" }""",
+            };
+            var statusCode = path is "/reset" or "/contract" or "/health"
+                ? HttpStatusCode.OK
+                : HttpStatusCode.NotFound;
 
             return Task.FromResult(new HttpResponseMessage(statusCode)
             {

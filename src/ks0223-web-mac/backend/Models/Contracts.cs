@@ -296,4 +296,8 @@ public sealed record DemoSessionFileDto(
     DateTimeOffset LastWriteUtc,
     int CommandCount);
 
-public sealed record LoadScenarioRequest(string FilePath);
+public sealed record LoadScenarioRequest(
+    string FilePath,
+    string? ClientId = null,
+    string? RuntimeMode = null,
+    string? AgentId = null);

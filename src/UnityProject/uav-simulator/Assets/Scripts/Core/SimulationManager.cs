@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using UavSimulator.CityDemo;
 using UavSimulator.Contracts;
 using UavSimulator.Plugins;
 using UavSimulator.Tracks;
@@ -40,6 +41,8 @@ namespace UavSimulator.Core
         private const string RenderQualityProfileKey = "render.quality_profile";
         private const string AllowEmptyAgentsKey = "agents.allow_empty";
         private const string ModelCaptureModeKey = "camera.model_capture_mode";
+        private const string ControllerProfileKey = "controller.profile";
+        private const string WaypointFollowerProfile = "waypoint_follower";
         private static readonly Vector3[] CardboardCorridorDefaultRoute =
         {
             new Vector3(0f, 0f, -0.55f),
@@ -60,6 +63,11 @@ namespace UavSimulator.Core
             public VehicleBase Vehicle;
             public ConfigKeyValue[] TrackParams;
             public ConfigKeyValue[] VehicleParams;
+            public bool WaypointFollowerEnabled;
+            public Vector3[] RouteWaypoints = Array.Empty<Vector3>();
+            public int RouteWaypointIndex;
+            public float RouteReachDistance = 1f;
+            public bool RouteLoop;
         }
 
         private sealed class ResolvedAgentConfig
@@ -80,6 +88,7 @@ namespace UavSimulator.Core
         private int activeRouteWaypointIndex;
         private float activeRouteReachDistance = 1f;
         private bool activeRouteLoop;
+        private bool activeRouteCompleted;
         private bool activeRouteWaypointsConfigured;
         private string activeTrackId = string.Empty;
         private string activeAgentId = string.Empty;
@@ -195,7 +204,7 @@ namespace UavSimulator.Core
                 ApplyVehicleSpawn(vehicle, agent.TrackParams, index, config.seed);
                 AttachCityGate(vehicle, agent.VehicleParams);
 
-                activeAgents.Add(new ActiveAgentRuntime
+                var runtimeAgent = new ActiveAgentRuntime
                 {
                     AgentId = agent.AgentId,
                     VehicleId = agent.Descriptor.id ?? string.Empty,
@@ -203,7 +212,9 @@ namespace UavSimulator.Core
                     Vehicle = vehicle,
                     TrackParams = agent.TrackParams ?? Array.Empty<ConfigKeyValue>(),
                     VehicleParams = agent.VehicleParams ?? Array.Empty<ConfigKeyValue>(),
-                });
+                };
+                ConfigureAgentWaypointFollower(runtimeAgent);
+                activeAgents.Add(runtimeAgent);
             }
 
             var primary = activeAgents.FirstOrDefault(agent => agent.IsPrimary) ?? activeAgents.FirstOrDefault();
@@ -251,10 +262,11 @@ namespace UavSimulator.Core
                 throw new InvalidOperationException("Active vehicle is not initialized. Call ResetSimulation first.");
             }
 
-            target.Vehicle.ApplyControl(command);
+            var effectiveCommand = BuildEffectiveControlCommand(target, command);
+            target.Vehicle.ApplyControl(effectiveCommand);
             target.Vehicle.TryReadCameraFrame(out var frame);
             CameraFrame modelFrame = null;
-            if (TryReadConfigValue(command?.extensions, ModelCaptureModeKey, out var modelCaptureMode))
+            if (TryReadConfigValue(effectiveCommand?.extensions, ModelCaptureModeKey, out var modelCaptureMode))
             {
                 target.Vehicle.TryReadCameraFrame(modelCaptureMode, out modelFrame);
             }
@@ -263,6 +275,237 @@ namespace UavSimulator.Core
             var routeCompleted = target.IsPrimary && UpdateRouteProgress(state);
             return BuildStepResult(target, state, frame, modelFrame, routeCompleted);
         }
+
+        private void ConfigureAgentWaypointFollower(ActiveAgentRuntime agent)
+        {
+            if (agent == null || agent.Vehicle == null)
+            {
+                return;
+            }
+
+            if (!TryReadConfigValue(agent.VehicleParams, ControllerProfileKey, out var profile) ||
+                !string.Equals(profile, WaypointFollowerProfile, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            var route = activeRouteWaypoints;
+            if (TryReadTrackParam(agent.TrackParams, RouteWaypointsKey, out var rawRoute) &&
+                TryParseWaypoints(rawRoute, out var parsedRoute))
+            {
+                route = parsedRoute;
+            }
+
+            if (route == null || route.Length == 0)
+            {
+                return;
+            }
+
+            agent.RouteWaypoints = (Vector3[])route.Clone();
+            agent.RouteReachDistance = activeRouteReachDistance;
+            agent.RouteLoop = activeRouteLoop;
+
+            if (TryReadTrackParam(agent.TrackParams, RouteReachDistanceKey, out var rawReach) &&
+                float.TryParse(rawReach, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsedReach) &&
+                parsedReach > 0f)
+            {
+                agent.RouteReachDistance = parsedReach;
+            }
+
+            if (TryReadTrackParam(agent.TrackParams, RouteLoopKey, out var rawLoop) &&
+                TryParseBool(rawLoop, out var parsedLoop))
+            {
+                agent.RouteLoop = parsedLoop;
+            }
+
+            agent.RouteWaypointIndex = ResolveInitialWaypointIndex(
+                agent.Vehicle.transform.position,
+                agent.RouteWaypoints,
+                agent.RouteReachDistance,
+                agent.RouteLoop);
+            agent.WaypointFollowerEnabled = true;
+        }
+
+        private static int ResolveInitialWaypointIndex(Vector3 position, Vector3[] waypoints, float reachDistance, bool loop)
+        {
+            if (waypoints == null || waypoints.Length == 0)
+            {
+                return 0;
+            }
+
+            var bestIndex = 0;
+            var bestDistanceSq = float.PositiveInfinity;
+            for (var i = 0; i < waypoints.Length; i++)
+            {
+                var distanceSq = XzDistanceSq(position, waypoints[i]);
+                if (distanceSq >= bestDistanceSq)
+                {
+                    continue;
+                }
+
+                bestDistanceSq = distanceSq;
+                bestIndex = i;
+            }
+
+            var reach = Mathf.Max(0.1f, reachDistance);
+            if (bestDistanceSq <= reach * reach)
+            {
+                var next = bestIndex + 1;
+                if (next < waypoints.Length)
+                {
+                    return next;
+                }
+
+                return loop ? 0 : bestIndex;
+            }
+
+            return bestIndex;
+        }
+
+        private ControlCommand BuildEffectiveControlCommand(ActiveAgentRuntime agent, ControlCommand requested)
+        {
+            if (agent == null || !agent.WaypointFollowerEnabled || agent.RouteWaypoints == null || agent.RouteWaypoints.Length == 0)
+            {
+                return requested;
+            }
+
+            var command = BuildWaypointFollowerCommand(agent, requested);
+            var gate = ResolveMovementGate(agent.Vehicle);
+            if (gate != null && gate.ShouldBrake(out var brakeIntensity) && brakeIntensity >= 0.99f)
+            {
+                command.throttle = 0f;
+                command.brake = Mathf.Clamp01(brakeIntensity);
+            }
+
+            return command;
+        }
+
+        private static IMovementGate ResolveMovementGate(VehicleBase vehicle)
+        {
+            if (vehicle == null)
+            {
+                return null;
+            }
+
+            var onnxGate = vehicle.GetComponent<OnnxTrafficLightAwareController>();
+            if (onnxGate != null)
+            {
+                return onnxGate;
+            }
+
+            var behaviours = vehicle.GetComponents<MonoBehaviour>();
+            for (var i = 0; i < behaviours.Length; i++)
+            {
+                if (behaviours[i] is IMovementGate gate)
+                {
+                    return gate;
+                }
+            }
+
+            return null;
+        }
+
+        private static ControlCommand BuildWaypointFollowerCommand(ActiveAgentRuntime agent, ControlCommand requested)
+        {
+            AdvanceAgentWaypoint(agent);
+            if (agent.RouteWaypointIndex >= agent.RouteWaypoints.Length)
+            {
+                return CloneCommand(requested, agent, throttle: 0f, steer: 0f, brake: 1f);
+            }
+
+            var vehicleTransform = agent.Vehicle.transform;
+            var target = agent.RouteWaypoints[agent.RouteWaypointIndex];
+            var delta = target - vehicleTransform.position;
+            delta.y = 0f;
+
+            if (delta.sqrMagnitude < 0.0001f)
+            {
+                return CloneCommand(requested, agent, throttle: 0f, steer: 0f, brake: 0.2f);
+            }
+
+            var targetYaw = Mathf.Atan2(delta.x, delta.z) * Mathf.Rad2Deg;
+            var signedAngle = Mathf.DeltaAngle(vehicleTransform.eulerAngles.y, targetYaw);
+            var steer = Mathf.Clamp(signedAngle / 55f, -1f, 1f);
+            var angleFactor = Mathf.Clamp01(Mathf.Abs(signedAngle) / 105f);
+            var throttle = Mathf.Lerp(0.55f, 0.20f, angleFactor);
+
+            return CloneCommand(requested, agent, throttle, steer, brake: 0f);
+        }
+
+        private static void AdvanceAgentWaypoint(ActiveAgentRuntime agent)
+        {
+            while (agent.RouteWaypointIndex < agent.RouteWaypoints.Length)
+            {
+                var target = agent.RouteWaypoints[agent.RouteWaypointIndex];
+                if (XzDistanceSq(agent.Vehicle.transform.position, target) >
+                    agent.RouteReachDistance * agent.RouteReachDistance)
+                {
+                    return;
+                }
+
+                agent.RouteWaypointIndex++;
+                if (agent.RouteWaypointIndex < agent.RouteWaypoints.Length)
+                {
+                    continue;
+                }
+
+                if (agent.RouteLoop)
+                {
+                    agent.RouteWaypointIndex = 0;
+                    continue;
+                }
+
+                return;
+            }
+        }
+
+        private static float XzDistanceSq(Vector3 a, Vector3 b)
+        {
+            var dx = a.x - b.x;
+            var dz = a.z - b.z;
+            return dx * dx + dz * dz;
+        }
+
+        private static ControlCommand CloneCommand(
+            ControlCommand requested,
+            ActiveAgentRuntime agent,
+            float throttle,
+            float steer,
+            float brake)
+        {
+            return new ControlCommand
+            {
+                throttle = throttle,
+                steer = steer,
+                brake = brake,
+                targetAgentId = agent.AgentId,
+                targetVehicleId = agent.VehicleId,
+                timestamp = requested != null && requested.timestamp > 0
+                    ? requested.timestamp
+                    : DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                timeBase = requested != null && !string.IsNullOrWhiteSpace(requested.timeBase)
+                    ? requested.timeBase
+                    : "unix_ms",
+                extensions = FilterWaypointFollowerExtensions(requested?.extensions),
+            };
+        }
+
+        private static ConfigKeyValue[] FilterWaypointFollowerExtensions(ConfigKeyValue[] extensions)
+        {
+            if (extensions == null || extensions.Length == 0)
+            {
+                return extensions;
+            }
+
+            var filtered = extensions
+                .Where(item => item != null && !IsDrivePwmExtension(item.key))
+                .ToArray();
+            return filtered.Length == extensions.Length ? extensions : filtered;
+        }
+
+        private static bool IsDrivePwmExtension(string key) =>
+            string.Equals(key, "drive.left_pwm_norm", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(key, "drive.right_pwm_norm", StringComparison.OrdinalIgnoreCase);
 
         public StepResult ReadSnapshot(string targetAgentId = null, string targetVehicleId = null, bool includeFrame = true)
         {
@@ -465,6 +708,7 @@ namespace UavSimulator.Core
             activeRouteWaypointIndex = 0;
             activeRouteReachDistance = 1f;
             activeRouteLoop = false;
+            activeRouteCompleted = false;
             activeRouteWaypointsConfigured = false;
             var hasExplicitWaypoints = false;
             var hasExplicitReachDistance = false;
@@ -544,6 +788,11 @@ namespace UavSimulator.Core
                 return false;
             }
 
+            if (IsRouteCompleted(routeCompleted: false))
+            {
+                return true;
+            }
+
             if (state == null || state.pose == null || state.pose.position == null)
             {
                 return false;
@@ -567,9 +816,11 @@ namespace UavSimulator.Core
                 if (activeRouteLoop)
                 {
                     activeRouteWaypointIndex = 0;
+                    activeRouteCompleted = false;
                     return false;
                 }
 
+                activeRouteCompleted = true;
                 return true;
             }
 
@@ -586,6 +837,7 @@ namespace UavSimulator.Core
             var safeIndex = Mathf.Clamp(activeRouteWaypointIndex, 0, activeRouteWaypoints.Length);
             var remaining = activeRouteWaypoints.Length - safeIndex;
             var distanceToTarget = 0f;
+            var completed = IsRouteCompleted(routeCompleted);
 
             if (safeIndex < activeRouteWaypoints.Length && state != null && state.pose != null && state.pose.position != null)
             {
@@ -599,9 +851,25 @@ namespace UavSimulator.Core
                 KV("route.remaining_waypoints", remaining.ToString(CultureInfo.InvariantCulture)),
                 KV("route.reach_distance_m", FormatFloat(activeRouteReachDistance)),
                 KV("route.loop", activeRouteLoop ? "true" : "false"),
-                KV("route.completed", routeCompleted ? "true" : "false"),
+                KV("route.completed", completed ? "true" : "false"),
                 KV("route.distance_to_target_m", FormatFloat(distanceToTarget)),
             };
+        }
+
+        private bool IsRouteCompleted(bool routeCompleted)
+        {
+            if (routeCompleted)
+            {
+                return true;
+            }
+
+            if (activeRouteLoop)
+            {
+                return false;
+            }
+
+            return activeRouteCompleted ||
+                (activeRouteWaypoints.Length > 0 && activeRouteWaypointIndex >= activeRouteWaypoints.Length);
         }
 
         private static bool TryParseWaypoints(string raw, out Vector3[] waypoints)
@@ -997,6 +1265,7 @@ namespace UavSimulator.Core
             CameraFrame modelFrame,
             bool routeCompleted)
         {
+            var targetRouteCompleted = target != null && target.IsPrimary && IsRouteCompleted(routeCompleted);
             var agentResults = new AgentStepResult[activeAgents.Count];
             for (var index = 0; index < activeAgents.Count; index++)
             {
@@ -1017,8 +1286,8 @@ namespace UavSimulator.Core
                 activeVehicleId = target.VehicleId,
                 state = targetState,
                 reward = 0f,
-                done = routeCompleted,
-                info = BuildStepInfo(target, targetState, routeCompleted),
+                done = targetRouteCompleted,
+                info = BuildStepInfo(target, targetState, targetRouteCompleted),
                 frame = targetFrame,
                 modelFrame = modelFrame,
                 agents = agentResults,
