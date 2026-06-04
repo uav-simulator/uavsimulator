@@ -13,7 +13,10 @@ namespace UavSimulator.Vehicles
     /// </summary>
     public sealed class TrafficLightAwareController : MonoBehaviour, IMovementGate
     {
+        private const float DefaultBrakeStartDistanceM = 2f;
+
         public float lookAheadDistance = 15f;
+        public float brakeStartDistance = DefaultBrakeStartDistanceM;
         public LayerMask trafficLightLayerMask = ~0;
 
         /// <summary>
@@ -22,6 +25,7 @@ namespace UavSimulator.Vehicles
         /// performing a physics raycast. Set via <see cref="SetProbeOverride"/>.
         /// </summary>
         private TrafficLightTriggerZone probeOverride;
+        private float probeOverrideDistanceM;
 
         /// <summary>
         /// Returns whether the vehicle should brake and the recommended intensity:
@@ -31,8 +35,13 @@ namespace UavSimulator.Vehicles
         /// </summary>
         public bool ShouldBrake(out float brakeIntensity)
         {
-            var zone = ResolveZoneAhead();
-            return EvaluateZone(zone, out brakeIntensity);
+            if (!TryResolveZoneAhead(out var zone, out var distanceM))
+            {
+                brakeIntensity = 0f;
+                return false;
+            }
+
+            return EvaluateZone(zone, distanceM, brakeStartDistance, out brakeIntensity);
         }
 
         /// <summary>
@@ -42,11 +51,23 @@ namespace UavSimulator.Vehicles
         public void SetProbeOverride(TrafficLightTriggerZone zone)
         {
             probeOverride = zone;
+            probeOverrideDistanceM = 0f;
         }
 
-        private TrafficLightTriggerZone ResolveZoneAhead()
+        public void SetProbeOverride(TrafficLightTriggerZone zone, float distanceM)
         {
-            if (probeOverride != null) return probeOverride;
+            probeOverride = zone;
+            probeOverrideDistanceM = Mathf.Max(0f, distanceM);
+        }
+
+        private bool TryResolveZoneAhead(out TrafficLightTriggerZone zone, out float distanceM)
+        {
+            if (probeOverride != null)
+            {
+                zone = probeOverride;
+                distanceM = probeOverrideDistanceM;
+                return true;
+            }
 
             var origin = transform.position;
             var direction = transform.forward;
@@ -58,7 +79,9 @@ namespace UavSimulator.Vehicles
             var overlappingZone = ResolveNearestZone(overlapping, origin);
             if (overlappingZone != null)
             {
-                return overlappingZone;
+                zone = overlappingZone;
+                distanceM = 0f;
+                return true;
             }
 
             var hits = Physics.RaycastAll(
@@ -69,20 +92,26 @@ namespace UavSimulator.Vehicles
                 QueryTriggerInteraction.Collide);
             if (hits == null || hits.Length == 0)
             {
-                return null;
+                zone = null;
+                distanceM = -1f;
+                return false;
             }
 
             Array.Sort(hits, (left, right) => left.distance.CompareTo(right.distance));
             foreach (var hit in hits)
             {
-                var zone = ResolveZone(hit.collider);
-                if (zone != null)
+                var hitZone = ResolveZone(hit.collider);
+                if (hitZone != null)
                 {
-                    return zone;
+                    zone = hitZone;
+                    distanceM = Mathf.Max(0f, hit.distance);
+                    return true;
                 }
             }
 
-            return null;
+            zone = null;
+            distanceM = -1f;
+            return false;
         }
 
         private static TrafficLightTriggerZone ResolveNearestZone(Collider[] colliders, Vector3 origin)
@@ -132,13 +161,12 @@ namespace UavSimulator.Vehicles
 
         public NearestLightSnapshot GetNearestLightSnapshot()
         {
-            var zone = ResolveZoneAhead();
-            if (zone == null)
+            if (!TryResolveZoneAhead(out var zone, out var distanceM) || zone == null)
             {
                 return new NearestLightSnapshot(false, "None", -1f);
             }
-            var dist = Vector3.Distance(transform.position, zone.transform.position);
-            return new NearestLightSnapshot(true, zone.CurrentState.ToString(), dist);
+
+            return new NearestLightSnapshot(true, zone.CurrentState.ToString(), distanceM);
         }
 
         /// <summary>
@@ -146,8 +174,21 @@ namespace UavSimulator.Vehicles
         /// directly without staging a Collider.
         /// </summary>
         internal static bool EvaluateZone(TrafficLightTriggerZone zone, out float brakeIntensity)
+            => EvaluateZone(zone, 0f, DefaultBrakeStartDistanceM, out brakeIntensity);
+
+        internal static bool EvaluateZone(
+            TrafficLightTriggerZone zone,
+            float distanceM,
+            float brakeStartDistanceM,
+            out float brakeIntensity)
         {
             if (zone == null)
+            {
+                brakeIntensity = 0f;
+                return false;
+            }
+
+            if (distanceM > Mathf.Max(0f, brakeStartDistanceM))
             {
                 brakeIntensity = 0f;
                 return false;

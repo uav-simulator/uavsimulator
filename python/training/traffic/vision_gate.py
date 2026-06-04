@@ -55,6 +55,7 @@ def detect_traffic_light_state(
     max_area_fraction: float = 0.005,
     max_component_width_fraction: float = 0.07,
     roi_bottom_fraction: float = 0.78,
+    min_candidate_score: float = 0.12,
 ) -> TrafficLightVisionResult:
     """Detect the active traffic-light color in an RGB frame.
 
@@ -71,6 +72,7 @@ def detect_traffic_light_state(
     max_area_px = max(min_area_px + 1, int(width * height * max_area_fraction))
 
     candidates: list[_Candidate] = []
+    housing_mask = _traffic_light_housing_mask(hsv)
     for state in ("Red", "Yellow", "Green"):
         mask = _state_mask(hsv, state)
         cutoff_y = int(np.clip(roi_bottom_fraction, 0.1, 1.0) * height)
@@ -84,6 +86,7 @@ def detect_traffic_light_state(
                 min_area_px=min_area_px,
                 max_area_px=max_area_px,
                 max_component_width_px=max(32, int(width * max_component_width_fraction)),
+                housing_mask=housing_mask,
             )
         )
 
@@ -95,6 +98,14 @@ def detect_traffic_light_state(
         )
 
     best = max(candidates, key=lambda candidate: candidate.score)
+    if best.state == "Yellow":
+        best = _prefer_active_bulb_inside_yellow_housing(best, candidates)
+    if best.score < min_candidate_score:
+        return TrafficLightVisionResult(
+            state="None",
+            confidence=0.0,
+            bbox_xyxy=None,
+        )
     return TrafficLightVisionResult(
         state=best.state,
         confidence=best.confidence,
@@ -203,10 +214,14 @@ def _state_mask(hsv: np.ndarray, state: str) -> np.ndarray:
         high_red = cv2.inRange(hsv, (168, 85, 80), (179, 255, 255))
         return cv2.bitwise_or(low_red, high_red)
     if state == "Yellow":
-        return cv2.inRange(hsv, (15, 70, 90), (40, 255, 255))
+        return cv2.inRange(hsv, (15, 70, 165), (40, 255, 255))
     if state == "Green":
         return cv2.inRange(hsv, (42, 65, 80), (96, 255, 255))
     raise ValueError(f"Unsupported state: {state}")
+
+
+def _traffic_light_housing_mask(hsv: np.ndarray) -> np.ndarray:
+    return cv2.inRange(hsv, (18, 35, 70), (48, 255, 255))
 
 
 def _components_to_candidates(
@@ -218,6 +233,7 @@ def _components_to_candidates(
     min_area_px: int,
     max_area_px: int,
     max_component_width_px: int,
+    housing_mask: np.ndarray,
 ) -> list[_Candidate]:
     label_count, labels, stats, _centroids = cv2.connectedComponentsWithStats(mask, connectivity=8)
     height, width = image_rgb.shape[:2]
@@ -244,24 +260,43 @@ def _components_to_candidates(
         component_mask = labels == label_id
         mean_rgb = image_rgb[component_mask].mean(axis=0)
         strength = _color_strength(state, mean_rgb)
-        if strength < 0.22:
+        min_strength = 0.17 if state == "Green" else 0.22
+        if strength < min_strength:
             continue
 
         mean_hsv = hsv[component_mask].mean(axis=0)
         value = float(mean_hsv[2]) / 255.0
         center_y = y + component_height * 0.5
-        upper_weight = _upper_image_weight(center_y, height)
-        size_weight = min(1.0, area / max(1.0, min_area_px * 12.0))
-        score = area * (0.75 + strength) * (0.65 + value * 0.35) * upper_weight
+        center_x = x + component_width * 0.5
+        upper_weight = _signal_height_weight(center_y, height)
+        center_weight = _center_image_weight(center_x, width)
+        size_weight = _signal_size_weight(area)
         confidence = float(np.clip(strength * 0.65 + size_weight * 0.25 + value * 0.10, 0.0, 1.0))
 
         blob_bbox = (x, y, x + component_width, y + component_height)
+        expanded_bbox = _expand_to_traffic_light_bbox(blob_bbox, state, image_rgb.shape)
+        if _looks_like_status_overlay(image_rgb, expanded_bbox):
+            continue
+        if _looks_like_construction_barricade(image_rgb, expanded_bbox):
+            continue
+        housing_support = _housing_support(housing_mask, expanded_bbox, blob_bbox)
+        if state in {"Red", "Green"} and housing_support < 0.08:
+            continue
+        state_weight = 0.72 if state == "Yellow" else 1.0
+        score = (
+            confidence
+            * (0.45 + size_weight)
+            * upper_weight
+            * center_weight
+            * (0.2 + housing_support * 0.8)
+            * state_weight
+        )
         candidates.append(
             _Candidate(
                 state=state,
                 score=float(score),
                 confidence=confidence,
-                bbox_xyxy=_expand_to_traffic_light_bbox(blob_bbox, state, image_rgb.shape),
+                bbox_xyxy=expanded_bbox,
                 blob_bbox_xyxy=blob_bbox,
                 area_px=area,
             )
@@ -281,11 +316,119 @@ def _color_strength(state: str, mean_rgb: Sequence[float]) -> float:
     return 0.0
 
 
-def _upper_image_weight(center_y: float, image_height: int) -> float:
+def _signal_height_weight(center_y: float, image_height: int) -> float:
     normalized_y = center_y / max(1.0, float(image_height))
-    if normalized_y <= 0.62:
+    if normalized_y <= 0.40:
         return 1.0
-    return float(np.clip(1.0 - (normalized_y - 0.62) / 0.30, 0.25, 1.0))
+    return float(np.clip(1.0 - (normalized_y - 0.40) / 0.12 * 0.85, 0.15, 1.0))
+
+
+def _center_image_weight(center_x: float, image_width: int) -> float:
+    normalized_distance = abs(center_x / max(1.0, float(image_width)) - 0.5) / 0.5
+    return float(np.clip(1.0 - normalized_distance * 0.65, 0.35, 1.0))
+
+
+def _prefer_active_bulb_inside_yellow_housing(
+    yellow_candidate: _Candidate,
+    candidates: Sequence[_Candidate],
+) -> _Candidate:
+    x1, y1, x2, y2 = yellow_candidate.bbox_xyxy
+    nested = []
+    for candidate in candidates:
+        if candidate.state not in {"Red", "Green"}:
+            continue
+        bx1, by1, bx2, by2 = candidate.blob_bbox_xyxy
+        cx = (bx1 + bx2) * 0.5
+        cy = (by1 + by2) * 0.5
+        if x1 <= cx <= x2 and y1 <= cy <= y2 and candidate.score >= yellow_candidate.score * 0.25:
+            nested.append(candidate)
+    if not nested:
+        return yellow_candidate
+    return max(nested, key=lambda candidate: candidate.score)
+
+
+def _signal_size_weight(area_px: int) -> float:
+    if area_px <= 0:
+        return 0.0
+    target_area = 80.0
+    distance = abs(np.log(max(1.0, float(area_px)) / target_area))
+    return float(np.clip(np.exp(-distance * 0.65), 0.15, 1.0))
+
+
+def _housing_support(
+    housing_mask: np.ndarray,
+    expanded_bbox_xyxy: tuple[int, int, int, int],
+    blob_bbox_xyxy: tuple[int, int, int, int],
+) -> float:
+    x1, y1, x2, y2 = expanded_bbox_xyxy
+    bx1, by1, bx2, by2 = blob_bbox_xyxy
+    crop = housing_mask[y1:y2, x1:x2].copy()
+    if crop.size == 0:
+        return 0.0
+    rx1 = max(0, bx1 - x1)
+    ry1 = max(0, by1 - y1)
+    rx2 = min(crop.shape[1], bx2 - x1)
+    ry2 = min(crop.shape[0], by2 - y1)
+    if rx2 > rx1 and ry2 > ry1:
+        crop[ry1:ry2, rx1:rx2] = 0
+    housing_px = int(np.count_nonzero(crop))
+    return float(np.clip(housing_px / 180.0, 0.0, 1.0))
+
+
+def _looks_like_construction_barricade(
+    image_rgb: np.ndarray,
+    bbox_xyxy: tuple[int, int, int, int],
+) -> bool:
+    x1, y1, x2, y2 = bbox_xyxy
+    crop = image_rgb[y1:y2, x1:x2]
+    if crop.size == 0:
+        return False
+
+    hsv = cv2.cvtColor(crop, cv2.COLOR_RGB2HSV)
+    orange = cv2.inRange(hsv, (4, 55, 95), (28, 255, 255))
+    white = cv2.inRange(hsv, (0, 0, 165), (179, 75, 255))
+    dark = cv2.inRange(hsv, (0, 0, 0), (179, 120, 80))
+    total = float(crop.shape[0] * crop.shape[1])
+    orange_fraction = np.count_nonzero(orange) / total
+    white_fraction = np.count_nonzero(white) / total
+    dark_fraction = np.count_nonzero(dark) / total
+
+    if orange_fraction >= 0.08 and white_fraction >= 0.04 and orange_fraction + white_fraction >= 0.13:
+        return True
+
+    return (
+        dark_fraction >= 0.28
+        and orange_fraction >= 0.025
+        and white_fraction >= 0.02
+        and orange_fraction + white_fraction >= 0.08
+    )
+
+
+def _looks_like_status_overlay(
+    image_rgb: np.ndarray,
+    bbox_xyxy: tuple[int, int, int, int],
+) -> bool:
+    x1, y1, x2, y2 = bbox_xyxy
+    crop = image_rgb[y1:y2, x1:x2]
+    if crop.size == 0:
+        return False
+
+    touches_screen_edge = x1 <= 2 or y1 <= 2
+    if not touches_screen_edge:
+        return False
+
+    crop_height, crop_width = crop.shape[:2]
+    if crop_width < 80 or crop_height < 80:
+        return False
+
+    hsv = cv2.cvtColor(crop, cv2.COLOR_RGB2HSV)
+    dark = cv2.inRange(hsv, (0, 0, 0), (179, 120, 55))
+    white = cv2.inRange(hsv, (0, 0, 175), (179, 70, 255))
+    total = float(crop_width * crop_height)
+    dark_fraction = np.count_nonzero(dark) / total
+    white_fraction = np.count_nonzero(white) / total
+
+    return dark_fraction >= 0.12 and white_fraction >= 0.025
 
 
 def _expand_to_traffic_light_bbox(

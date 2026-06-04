@@ -90,34 +90,39 @@ class TlClassifier:
 
     def export_onnx(self, output_path: Path) -> None:
         self.model.eval()
+        original_device = self.device
+        self.model.to("cpu")
         # Wrap with softmax — Unity Sentis consumer (OnnxClassifierService) expects
         # probabilities, not raw logits; tests assert sum-to-one.
-        export_model = nn.Sequential(self.model, nn.Softmax(dim=-1))
+        export_model = nn.Sequential(self.model, nn.Softmax(dim=-1)).cpu()
         export_model.eval()
         dummy = torch.zeros(1, 3, 84, 84)
-        torch.onnx.export(
-            export_model,
-            dummy,
-            str(output_path),
-            input_names=["image"],
-            output_names=["probabilities"],
-            dynamic_axes={"image": {0: "batch"}, "probabilities": {0: "batch"}},
-            opset_version=18,
-        )
-        # Inline external-data sidecar back into the .onnx file. PyTorch's exporter
-        # writes tensors >1024 bytes to a sibling .data file; Unity Sentis 2.x
-        # can't follow the sidecar inside StreamingAssets, so we round-trip via
-        # onnx.load (loads sidecar into memory) + clear EXTERNAL markers + save.
-        import onnx
-        model = onnx.load(str(output_path))  # loads sidecar data automatically
-        for tensor in model.graph.initializer:
-            if tensor.data_location == onnx.TensorProto.EXTERNAL:
-                tensor.data_location = onnx.TensorProto.DEFAULT
-                tensor.ClearField("external_data")
-        onnx.save(model, str(output_path), save_as_external_data=False)
-        sidecar = output_path.with_suffix(output_path.suffix + ".data")
-        if sidecar.exists():
-            sidecar.unlink()
+        try:
+            torch.onnx.export(
+                export_model,
+                dummy,
+                str(output_path),
+                input_names=["image"],
+                output_names=["probabilities"],
+                dynamic_axes={"image": {0: "batch"}, "probabilities": {0: "batch"}},
+                opset_version=18,
+            )
+            # Inline external-data sidecar back into the .onnx file. PyTorch's exporter
+            # writes tensors >1024 bytes to a sibling .data file; Unity Sentis 2.x
+            # can't follow the sidecar inside StreamingAssets, so we round-trip via
+            # onnx.load (loads sidecar into memory) + clear EXTERNAL markers + save.
+            import onnx
+            model = onnx.load(str(output_path))  # loads sidecar data automatically
+            for tensor in model.graph.initializer:
+                if tensor.data_location == onnx.TensorProto.EXTERNAL:
+                    tensor.data_location = onnx.TensorProto.DEFAULT
+                    tensor.ClearField("external_data")
+            onnx.save(model, str(output_path), save_as_external_data=False)
+            sidecar = output_path.with_suffix(output_path.suffix + ".data")
+            if sidecar.exists():
+                sidecar.unlink()
+        finally:
+            self.model.to(original_device)
 
     def save_pt(self, output_path: Path) -> None:
         torch.save(self.model.state_dict(), str(output_path))

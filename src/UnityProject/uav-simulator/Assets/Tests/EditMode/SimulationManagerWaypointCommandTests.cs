@@ -4,6 +4,7 @@ using System.Reflection;
 using NUnit.Framework;
 using UavSimulator.Contracts;
 using UavSimulator.Core;
+using UavSimulator.Vehicles;
 
 namespace UavSimulator.Tests.EditMode
 {
@@ -62,6 +63,34 @@ namespace UavSimulator.Tests.EditMode
             finally
             {
                 UnityEngine.Object.DestroyImmediate(managerObject);
+            }
+        }
+
+        [Test]
+        public void AttachCityGate_AppliesConfiguredLookAheadDistance()
+        {
+            var vehicleObject = new UnityEngine.GameObject("city-gate-vehicle");
+            var vehicle = vehicleObject.AddComponent<Ks0223Vehicle>();
+
+            try
+            {
+                InvokeAttachCityGate(
+                    vehicle,
+                    new[]
+                    {
+                        new ConfigKeyValue { key = "gate.kind", value = "ground_truth" },
+                        new ConfigKeyValue { key = "gate.look_ahead_m", value = "8.0" },
+                        new ConfigKeyValue { key = "gate.brake_start_m", value = "1.75" },
+                    });
+
+                var gate = vehicleObject.GetComponent<TrafficLightAwareController>();
+                Assert.NotNull(gate);
+                Assert.AreEqual(8f, gate.lookAheadDistance, 0.001f);
+                Assert.AreEqual(1.75f, gate.brakeStartDistance, 0.001f);
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(vehicleObject);
             }
         }
 
@@ -139,6 +168,13 @@ namespace UavSimulator.Tests.EditMode
             var method = typeof(SimulationManager).GetMethod("BuildStepResult", BindingFlags.NonPublic | BindingFlags.Instance);
             Assert.IsNotNull(method);
             return (StepResult)method!.Invoke(manager, new object[] { agent, state, null, null, routeCompleted })!;
+        }
+
+        private static void InvokeAttachCityGate(VehicleBase vehicle, ConfigKeyValue[] vehicleParams)
+        {
+            var method = typeof(SimulationManager).GetMethod("AttachCityGate", BindingFlags.NonPublic | BindingFlags.Static);
+            Assert.IsNotNull(method);
+            method!.Invoke(null, new object[] { vehicle, vehicleParams });
         }
     }
 }

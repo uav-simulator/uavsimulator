@@ -62,3 +62,14 @@ def test_load_dataset_from_jsonl_supports_city_schema(tmp_path):
     assert [label for _, label in samples] == [0, 3]
     assert samples[0][0].shape == (84, 84, 3)
     assert samples[1][0].shape == (84, 84, 3)
+
+
+def test_tl_classifier_exports_single_file_onnx(tmp_path):
+    cfg = TlClassifierConfig(epochs=1, batch_size=2, lr=1e-3, device="cpu", seed=2, n_classes=4)
+    clf = TlClassifier(cfg)
+    output_path = tmp_path / "traffic-light.onnx"
+
+    clf.export_onnx(output_path)
+
+    assert output_path.exists()
+    assert not output_path.with_suffix(".onnx.data").exists()

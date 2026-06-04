@@ -43,6 +43,8 @@ namespace UavSimulator.Core
         private const string ModelCaptureModeKey = "camera.model_capture_mode";
         private const string ControllerProfileKey = "controller.profile";
         private const string WaypointFollowerProfile = "waypoint_follower";
+        private const string GateLookAheadMKey = "gate.look_ahead_m";
+        private const string GateBrakeStartMKey = "gate.brake_start_m";
         private static readonly Vector3[] CardboardCorridorDefaultRoute =
         {
             new Vector3(0f, 0f, -0.55f),
@@ -632,9 +634,20 @@ namespace UavSimulator.Core
 
             // Always attach the ground-truth controller — it provides the telemetry snapshot
             // via raycast against TrafficLightTriggerZone (no-op if none in scene).
-            if (go.GetComponent<UavSimulator.Vehicles.TrafficLightAwareController>() == null)
+            var groundTruthGate = go.GetComponent<UavSimulator.Vehicles.TrafficLightAwareController>();
+            if (groundTruthGate == null)
             {
-                go.AddComponent<UavSimulator.Vehicles.TrafficLightAwareController>();
+                groundTruthGate = go.AddComponent<UavSimulator.Vehicles.TrafficLightAwareController>();
+            }
+            if (TryReadConfigValue(vehicleParams, GateLookAheadMKey, out var rawLookAhead) &&
+                TryParseFloat(rawLookAhead, out var lookAheadM))
+            {
+                groundTruthGate.lookAheadDistance = Mathf.Clamp(lookAheadM, 1f, 30f);
+            }
+            if (TryReadConfigValue(vehicleParams, GateBrakeStartMKey, out var rawBrakeStart) &&
+                TryParseFloat(rawBrakeStart, out var brakeStartM))
+            {
+                groundTruthGate.brakeStartDistance = Mathf.Clamp(brakeStartM, 0.25f, 15f);
             }
             if (go.GetComponent<UavSimulator.CityDemo.CityVehicleTelemetryExtender>() == null)
             {

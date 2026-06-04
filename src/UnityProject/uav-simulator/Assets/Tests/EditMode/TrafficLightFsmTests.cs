@@ -189,6 +189,121 @@ namespace UavSimulator.Tests.EditMode
             Assert.IsFalse(braked);
             Assert.AreEqual(0f, intensity, 1e-6f);
         }
+
+        [Test]
+        public void TrafficLightAwareController_RedZoneAheadButFarFromStopLine_DoesNotBrakeYet()
+        {
+            var probeGo = new GameObject("Probe");
+            var lightGo = new GameObject("Light");
+            var zoneGo = new GameObject("StopLineZone");
+
+            try
+            {
+                probeGo.transform.position = Vector3.zero;
+                probeGo.transform.rotation = Quaternion.identity;
+                var ctrl = probeGo.AddComponent<TrafficLightAwareController>();
+                ctrl.lookAheadDistance = 15f;
+
+                var light = lightGo.AddComponent<TrafficLight>();
+                light.SetState(TrafficLightState.Red);
+
+                zoneGo.transform.position = new Vector3(0f, 0f, 10f);
+                var box = zoneGo.AddComponent<BoxCollider>();
+                box.size = new Vector3(4f, 0.5f, 2f);
+                box.isTrigger = true;
+                var zone = zoneGo.AddComponent<TrafficLightTriggerZone>();
+                zone.SetTrafficLight(light);
+                Physics.SyncTransforms();
+
+                var braked = ctrl.ShouldBrake(out var intensity);
+
+                Assert.IsFalse(braked, "A visible red light must not stop the car several meters before the stop line.");
+                Assert.AreEqual(0f, intensity, 1e-6f);
+            }
+            finally
+            {
+                Object.DestroyImmediate(zoneGo);
+                Object.DestroyImmediate(lightGo);
+                Object.DestroyImmediate(probeGo);
+            }
+        }
+
+        [Test]
+        public void TrafficLightAwareController_RedZoneNearStopLine_Brakes()
+        {
+            var probeGo = new GameObject("Probe");
+            var lightGo = new GameObject("Light");
+            var zoneGo = new GameObject("StopLineZone");
+
+            try
+            {
+                probeGo.transform.position = new Vector3(0f, 0f, 7.2f);
+                probeGo.transform.rotation = Quaternion.identity;
+                var ctrl = probeGo.AddComponent<TrafficLightAwareController>();
+                ctrl.lookAheadDistance = 15f;
+
+                var light = lightGo.AddComponent<TrafficLight>();
+                light.SetState(TrafficLightState.Red);
+
+                zoneGo.transform.position = new Vector3(0f, 0f, 10f);
+                var box = zoneGo.AddComponent<BoxCollider>();
+                box.size = new Vector3(4f, 0.5f, 2f);
+                box.isTrigger = true;
+                var zone = zoneGo.AddComponent<TrafficLightTriggerZone>();
+                zone.SetTrafficLight(light);
+                Physics.SyncTransforms();
+
+                var braked = ctrl.ShouldBrake(out var intensity);
+
+                Assert.IsTrue(braked, "The car should brake only when it is close enough to stop before the line.");
+                Assert.AreEqual(1f, intensity, 1e-6f);
+            }
+            finally
+            {
+                Object.DestroyImmediate(zoneGo);
+                Object.DestroyImmediate(lightGo);
+                Object.DestroyImmediate(probeGo);
+            }
+        }
+
+        [Test]
+        public void TrafficLightAwareController_NearestSnapshotReportsStopLineSurfaceDistance()
+        {
+            var probeGo = new GameObject("Probe");
+            var lightGo = new GameObject("Light");
+            var zoneGo = new GameObject("StopLineZone");
+
+            try
+            {
+                probeGo.transform.position = Vector3.zero;
+                probeGo.transform.rotation = Quaternion.identity;
+                var ctrl = probeGo.AddComponent<TrafficLightAwareController>();
+                ctrl.lookAheadDistance = 15f;
+
+                var light = lightGo.AddComponent<TrafficLight>();
+                light.SetState(TrafficLightState.Red);
+
+                zoneGo.transform.position = new Vector3(0f, 0f, 10f);
+                var box = zoneGo.AddComponent<BoxCollider>();
+                box.size = new Vector3(4f, 0.5f, 2f);
+                box.isTrigger = true;
+                var zone = zoneGo.AddComponent<TrafficLightTriggerZone>();
+                zone.SetTrafficLight(light);
+                Physics.SyncTransforms();
+
+                var snapshot = ctrl.GetNearestLightSnapshot();
+
+                Assert.IsTrue(snapshot.hasLight);
+                Assert.AreEqual(TrafficLightState.Red.ToString(), snapshot.state);
+                Assert.AreEqual(9f, snapshot.distanceM, 0.05f, "Telemetry distance should describe the stop-line surface, not the zone center.");
+            }
+            finally
+            {
+                Object.DestroyImmediate(zoneGo);
+                Object.DestroyImmediate(lightGo);
+                Object.DestroyImmediate(probeGo);
+            }
+        }
     }
 
     /// <summary>

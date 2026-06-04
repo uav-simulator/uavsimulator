@@ -1,4 +1,9 @@
-from training.traffic.auto_label import parse_state_sample, GROUND_TRUTH_LABELS
+from training.traffic.auto_label import (
+    GROUND_TRUTH_LABELS,
+    _build_step_command,
+    _extract_frame_b64,
+    parse_state_sample,
+)
 
 
 def test_parse_state_sample_extracts_traffic_light():
@@ -57,3 +62,37 @@ def test_parse_state_sample_flat_configkv_under_extensions_key():
     sample = parse_state_sample(state)
     assert sample is not None
     assert sample.label == GROUND_TRUTH_LABELS.index("Green")
+
+
+def test_extract_frame_b64_prefers_model_frame_for_visual_gate():
+    response = {
+        "frame": {"dataBase64": "operator-frame"},
+        "modelFrame": {"dataBase64": "driver-model-frame"},
+    }
+
+    assert _extract_frame_b64(response, preferred_frame="modelFrame") == "driver-model-frame"
+
+
+def test_extract_frame_b64_falls_back_to_operator_frame():
+    response = {
+        "state": {
+            "camera": {
+                "frame": {"dataBase64": "operator-frame"},
+            }
+        }
+    }
+
+    assert _extract_frame_b64(response, preferred_frame="modelFrame") == "operator-frame"
+
+
+def test_build_step_command_requests_driver_model_frame():
+    command = _build_step_command(agent_id="ego", model_capture_mode="driver")
+
+    assert command["targetAgentId"] == "ego"
+    assert {"key": "camera.model_capture_mode", "value": "driver"} in command["extensions"]
+
+
+def test_build_step_command_omits_empty_agent_id():
+    command = _build_step_command(agent_id="", model_capture_mode="driver")
+
+    assert "targetAgentId" not in command

@@ -21,7 +21,7 @@ namespace UavSimulator.EditorTools
         private const string OutputDir = "Assets/Resources/UavSimulator/City";
         private const string OutputPrefabPath = OutputDir + "/city_runtime_compact.prefab";
         private const string DemoScenePath = "Assets/POLYGON city pack/scene/DemoScene.unity";
-        private const float DemoSceneSliceRadius = 38f;
+        private const float DemoSceneSliceRadius = 120f;
 
         private const string PolygonRoot = "Assets/POLYGON city pack/Prefabs";
         private const string StreetStraightPrefabPath = PolygonRoot + "/Floor/Street 4 Prefab.prefab";
@@ -33,6 +33,8 @@ namespace UavSimulator.EditorTools
         private static readonly Vector3 EgoApproachTrafficLightPosition = new Vector3(-5.75f, 0f, -3.55f);
         private static readonly Quaternion EgoApproachTrafficLightRotation = Quaternion.Euler(0f, 180f, 0f);
         private static readonly Vector3 EgoApproachStopZonePosition = new Vector3(-4.0f, 0.25f, -8.2f);
+        private static readonly Vector3 WestSecondSignalStopZonePosition = new Vector3(-73.4f, 0.25f, 1.2f);
+        private static readonly Quaternion WestSecondSignalStopZoneRotation = Quaternion.LookRotation(Vector3.left, Vector3.up);
         private static readonly string[] TrafficLightPrefabPaths =
         {
             PolygonRoot + "/Props/Traffic light 2 Prefab.prefab",
@@ -222,6 +224,18 @@ namespace UavSimulator.EditorTools
             AddRoadPhysicsDeck(parent, "RoadPhysicsDeck_NS", new Vector3(roadWidth, 0.2f, roadLength));
             AddRoadPhysicsDeck(parent, "RoadPhysicsDeck_EW", new Vector3(roadLength, 0.2f, roadWidth));
             AddRoadPhysicsDeck(parent, "RoadPhysicsDeck_EgoLane_NS", new Vector3(4.6f, 0.2f, 42f), new Vector3(-4f, 0f, -1f));
+            AddRoadPhysicsDeckBetween(
+                parent,
+                "RoadPhysicsDeck_WestSecondSignal_EW",
+                new Vector3(-7f, 0f, 1.2f),
+                new Vector3(-77f, 0f, 1.2f),
+                width: 4.6f);
+            AddRoadPhysicsDeckBetween(
+                parent,
+                "RoadPhysicsDeck_WestSecondSignal_SouthContinuation",
+                new Vector3(-77f, 0f, 1.2f),
+                new Vector3(-78f, 0f, -22f),
+                width: 4.6f);
         }
 
         private static void AddRoadPhysicsDeck(Transform parent, string name, Vector3 size)
@@ -234,6 +248,25 @@ namespace UavSimulator.EditorTools
             deck.transform.localPosition = localPosition;
             var collider = deck.AddComponent<BoxCollider>();
             collider.size = size;
+            collider.center = Vector3.zero;
+        }
+
+        private static void AddRoadPhysicsDeckBetween(Transform parent, string name, Vector3 from, Vector3 to, float width)
+        {
+            var delta = to - from;
+            delta.y = 0f;
+            var length = delta.magnitude;
+            if (length <= 0.01f)
+            {
+                return;
+            }
+
+            var deck = new GameObject(name);
+            deck.transform.SetParent(parent, worldPositionStays: false);
+            deck.transform.localPosition = (from + to) * 0.5f;
+            deck.transform.localRotation = Quaternion.LookRotation(delta / length, Vector3.up);
+            var collider = deck.AddComponent<BoxCollider>();
+            collider.size = new Vector3(width, 0.2f, length + 1.2f);
             collider.center = Vector3.zero;
         }
 
@@ -432,6 +465,21 @@ namespace UavSimulator.EditorTools
                 EgoApproachStopZonePosition,
                 Quaternion.identity,
                 "DemoSliceStopZone_NS_South_EgoLane");
+
+            var westSecondSignalLight = lights
+                .Where(light => light != null)
+                .OrderByDescending(light => light.transform.position.x < -50f ? 1 : 0)
+                .ThenBy(light => Mathf.Abs(light.transform.position.z - 3f))
+                .FirstOrDefault();
+            if (westSecondSignalLight != null && westSecondSignalLight.transform.position.x < -50f)
+            {
+                AddDetachedStopZone(
+                    root,
+                    westSecondSignalLight,
+                    WestSecondSignalStopZonePosition,
+                    WestSecondSignalStopZoneRotation,
+                    "DemoSliceStopZone_WestSecondSignal_EW");
+            }
         }
 
         private static TrafficLight AddEgoApproachTrafficLight(

@@ -13,15 +13,18 @@ namespace UavSimulator.Tracks
     /// <summary>
     /// City demo track backed by POLYGON City Pack (Unity Asset Store id 107224).
     ///
-    /// <para>Two assembly modes, picked at runtime:</para>
+    /// <para>Assembly modes, picked at runtime:</para>
     /// <list type="number">
-    /// <item><b>useDemoScene = true (default):</b> the prebuilt
+    /// <item><b>Runtime city prefab:</b> an audited compact city slice loaded
+    /// from Resources. This is the preferred presentation path because it
+    /// carries explicit road physics decks and traffic-light stop zones.</item>
+    /// <item><b>useDemoScene = true:</b> the prebuilt
     /// <c>Assets/POLYGON city pack/scene/DemoScene.unity</c> is loaded
     /// additively, its root GameObjects are reparented under this track,
     /// and any built-in Cameras/Lights from the demo scene are destroyed so
-    /// they don't fight the host scene's rig. ~999 GameObjects, full block
-    /// city — the same showcase scene the asset ships with.</item>
-    /// <item><b>useDemoScene = false:</b> a procedural (2N+1)×(2N+1) grid
+    /// they don't fight the host scene's rig. This remains a fallback when
+    /// the runtime prefab is unavailable.</item>
+    /// <item><b>Procedural fallback:</b> a procedural (2N+1)×(2N+1) grid
     /// of Building / Road / Intersection cells assembled from individual
     /// POLYGON prefabs. Smaller and more configurable, but visually thin.</item>
     /// </list>
@@ -119,17 +122,17 @@ namespace UavSimulator.Tracks
             if (built) return;
             built = true;
 
+            if (TryBuildRuntimePrefab())
+            {
+                return;
+            }
+
 #if UNITY_EDITOR
             if (useDemoScene && TryLoadDemoScene())
             {
                 return;
             }
 #endif
-
-            if (TryBuildRuntimePrefab())
-            {
-                return;
-            }
 
             BuildProcedural();
         }

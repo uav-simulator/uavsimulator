@@ -1,7 +1,9 @@
 using System.Linq;
+using System.Collections.Generic;
 using NUnit.Framework;
 using UavSimulator.CityDemo;
 using UavSimulator.Core;
+using UavSimulator.Vehicles;
 using UnityEditor;
 using UnityEngine;
 
@@ -99,6 +101,239 @@ namespace UavSimulator.Tests.EditMode
             }
             finally
             {
+                Object.DestroyImmediate(root);
+            }
+        }
+
+        [Test]
+        public void RuntimeCityPrefab_WestSecondSignalCandidateRouteHasRoadPhysicsCoverage()
+        {
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(RuntimeCityPrefabPath);
+            Assert.NotNull(prefab, $"Missing runtime city prefab at {RuntimeCityPrefabPath}");
+
+            var root = (GameObject)PrefabUtility.InstantiatePrefab(prefab);
+            try
+            {
+                root.transform.position = Vector3.zero;
+                Physics.SyncTransforms();
+
+                var waypoints = new[]
+                {
+                    new Vector3(-4f, 3f, -20f),
+                    new Vector3(-4f, 3f, -8f),
+                    new Vector3(-4.7f, 3f, -2.3f),
+                    new Vector3(-7f, 3f, 1.2f),
+                    new Vector3(-18f, 3f, 1.2f),
+                    new Vector3(-38f, 3f, 1.2f),
+                    new Vector3(-58f, 3f, 1.2f),
+                    new Vector3(-77f, 3f, 1.2f),
+                };
+
+                var misses = new List<Vector3>();
+                var westDeckHits = 0;
+                for (var segment = 0; segment < waypoints.Length - 1; segment++)
+                {
+                    var from = waypoints[segment];
+                    var to = waypoints[segment + 1];
+                    var distance = Vector2.Distance(new Vector2(from.x, from.z), new Vector2(to.x, to.z));
+                    var steps = Mathf.Max(1, Mathf.CeilToInt(distance / 2f));
+                    for (var i = 0; i <= steps; i++)
+                    {
+                        var sample = Vector3.Lerp(from, to, i / (float)steps);
+                        if (!Physics.Raycast(sample, Vector3.down, out var hit, 8f, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
+                        {
+                            misses.Add(sample);
+                            continue;
+                        }
+
+                        if (hit.collider.name.Contains("RoadPhysicsDeck_WestSecondSignal"))
+                        {
+                            westDeckHits++;
+                        }
+                    }
+                }
+
+                Assert.That(misses, Is.Empty, "Candidate second-signal route must not leave audited road physics.");
+                Assert.Greater(westDeckHits, 8, "Route should be supported by the dedicated west second-signal road deck, not only by the central cross deck.");
+            }
+            finally
+            {
+                Object.DestroyImmediate(root);
+            }
+        }
+
+        [Test]
+        public void RuntimeCityPrefab_WestSecondSignalCityContinuationHasRoadPhysicsCoverage()
+        {
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(RuntimeCityPrefabPath);
+            Assert.NotNull(prefab, $"Missing runtime city prefab at {RuntimeCityPrefabPath}");
+
+            var root = (GameObject)PrefabUtility.InstantiatePrefab(prefab);
+            try
+            {
+                root.transform.position = Vector3.zero;
+                Physics.SyncTransforms();
+
+                var waypoints = new[]
+                {
+                    new Vector3(-58f, 3f, 1.2f),
+                    new Vector3(-70.4f, 3f, 1.2f),
+                    new Vector3(-74.8f, 3f, 0.7f),
+                    new Vector3(-77.6f, 3f, -1.0f),
+                    new Vector3(-78f, 3f, -8f),
+                    new Vector3(-78f, 3f, -16f),
+                    new Vector3(-78f, 3f, -22f),
+                };
+
+                var misses = new List<Vector3>();
+                var continuationDeckHits = 0;
+                for (var segment = 0; segment < waypoints.Length - 1; segment++)
+                {
+                    var from = waypoints[segment];
+                    var to = waypoints[segment + 1];
+                    var distance = Vector2.Distance(new Vector2(from.x, from.z), new Vector2(to.x, to.z));
+                    var steps = Mathf.Max(1, Mathf.CeilToInt(distance / 2f));
+                    for (var i = 0; i <= steps; i++)
+                    {
+                        var sample = Vector3.Lerp(from, to, i / (float)steps);
+                        if (!Physics.Raycast(sample, Vector3.down, out var hit, 8f, Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore))
+                        {
+                            misses.Add(sample);
+                            continue;
+                        }
+
+                        if (hit.collider.name.Contains("RoadPhysicsDeck_WestSecondSignal_SouthContinuation"))
+                        {
+                            continuationDeckHits++;
+                        }
+                    }
+                }
+
+                Assert.That(misses, Is.Empty, "City continuation after the west signal must stay on audited road physics.");
+                Assert.Greater(continuationDeckHits, 6, "The west-signal continuation should use the southbound city road instead of ending at the map edge.");
+            }
+            finally
+            {
+                Object.DestroyImmediate(root);
+            }
+        }
+
+        [Test]
+        public void RuntimeCityPrefab_IncludesWestSecondSignalStopZone()
+        {
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(RuntimeCityPrefabPath);
+            Assert.NotNull(prefab, $"Missing runtime city prefab at {RuntimeCityPrefabPath}");
+
+            var root = (GameObject)PrefabUtility.InstantiatePrefab(prefab);
+            try
+            {
+                var zone = root.GetComponentsInChildren<TrafficLightTriggerZone>(includeInactive: true)
+                    .FirstOrDefault(candidate => candidate.name == "DemoSliceStopZone_WestSecondSignal_EW");
+                Assert.NotNull(zone, "Missing west second-signal stop-zone");
+
+                Assert.Less(
+                    zone.transform.position.x,
+                    -60f,
+                    "West second-signal stop-zone must be placed near the far DemoScene signal, not at the central intersection.");
+            }
+            finally
+            {
+                Object.DestroyImmediate(root);
+            }
+        }
+
+        [Test]
+        public void RuntimeCityPrefab_WestSecondSignalStopZoneIsCalibratedNearVisualStopLine()
+        {
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(RuntimeCityPrefabPath);
+            Assert.NotNull(prefab, $"Missing runtime city prefab at {RuntimeCityPrefabPath}");
+
+            var root = (GameObject)PrefabUtility.InstantiatePrefab(prefab);
+            try
+            {
+                var zone = root.GetComponentsInChildren<TrafficLightTriggerZone>(includeInactive: true)
+                    .FirstOrDefault(candidate => candidate.name == "DemoSliceStopZone_WestSecondSignal_EW");
+                Assert.NotNull(zone, "Missing west second-signal stop-zone");
+
+                Assert.That(
+                    zone.transform.position.x,
+                    Is.InRange(-73.8f, -73.0f),
+                    "West second-signal stop-zone must be close to the visible stop-line/crosswalk, not several meters before it.");
+            }
+            finally
+            {
+                Object.DestroyImmediate(root);
+            }
+        }
+
+        [Test]
+        public void RuntimeCityPrefab_WestSignalAreaUsesDemoSceneCityAssets()
+        {
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(RuntimeCityPrefabPath);
+            Assert.NotNull(prefab, $"Missing runtime city prefab at {RuntimeCityPrefabPath}");
+
+            var root = (GameObject)PrefabUtility.InstantiatePrefab(prefab);
+            try
+            {
+                var manualVisualContext = root.GetComponentsInChildren<Transform>(includeInactive: true)
+                    .FirstOrDefault(candidate => candidate.name == "CityVisualContext_WestSignal");
+                Assert.Null(
+                    manualVisualContext,
+                    "The city showcase must not place a manual west-signal backdrop; use the POLYGON DemoScene city assets instead.");
+
+                var cityContextRenderers = root.GetComponentsInChildren<MeshRenderer>(includeInactive: true)
+                    .Where(renderer => renderer.bounds.center.x < -66f)
+                    .Where(renderer => Mathf.Abs(renderer.bounds.center.z - 1.2f) < 35f)
+                    .Where(renderer =>
+                    {
+                        var path = GetTransformPath(renderer.transform).ToLowerInvariant();
+                        return !path.Contains("traffic")
+                               && !path.Contains("street")
+                               && !path.Contains("road")
+                               && !path.Contains("sideway")
+                               && !path.Contains("sidewalk")
+                               && !path.Contains("walkway")
+                               && !path.Contains("crosswalk")
+                               && !path.Contains("cityvisualcontext_westsignal");
+                    })
+                    .ToArray();
+
+                Assert.GreaterOrEqual(
+                    cityContextRenderers.Length,
+                    12,
+                    "The far west signal should be surrounded by original DemoScene city geometry, not an empty compact edge.");
+            }
+            finally
+            {
+                Object.DestroyImmediate(root);
+            }
+        }
+
+        [Test]
+        public void RuntimeCityPrefab_WestSecondSignalStopZoneIsDetectedFromApproachLane()
+        {
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(RuntimeCityPrefabPath);
+            Assert.NotNull(prefab, $"Missing runtime city prefab at {RuntimeCityPrefabPath}");
+
+            var root = (GameObject)PrefabUtility.InstantiatePrefab(prefab);
+            var probe = new GameObject("WestSecondSignalProbe");
+            try
+            {
+                root.transform.position = Vector3.zero;
+                probe.transform.position = new Vector3(-65f, 0.2f, 1.2f);
+                probe.transform.rotation = Quaternion.LookRotation(Vector3.left, Vector3.up);
+                var controller = probe.AddComponent<TrafficLightAwareController>();
+                controller.lookAheadDistance = 8f;
+                Physics.SyncTransforms();
+
+                var snapshot = controller.GetNearestLightSnapshot();
+
+                Assert.That(snapshot.hasLight, Is.True, "Westbound approach ray must detect the second-signal stop-zone before the car reaches the line.");
+                Assert.That(snapshot.distanceM, Is.InRange(6f, 8f));
+            }
+            finally
+            {
+                Object.DestroyImmediate(probe);
                 Object.DestroyImmediate(root);
             }
         }
@@ -244,6 +479,18 @@ namespace UavSimulator.Tests.EditMode
             return material.HasProperty("_EmissionColor")
                 ? material.GetColor("_EmissionColor")
                 : Color.black;
+        }
+
+        private static string GetTransformPath(Transform transform)
+        {
+            if (transform == null)
+            {
+                return string.Empty;
+            }
+
+            return transform.parent == null
+                ? transform.name
+                : $"{GetTransformPath(transform.parent)}/{transform.name}";
         }
     }
 }

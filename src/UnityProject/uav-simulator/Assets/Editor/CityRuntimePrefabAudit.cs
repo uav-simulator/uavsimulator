@@ -126,11 +126,14 @@ namespace UavSimulator.EditorTools
                 "candidate_west_second_signal_route",
                 new[]
                 {
-                    new Vector3(-4f, 3f, 16f),
-                    new Vector3(-18f, 3f, 16f),
-                    new Vector3(-38f, 3f, 16f),
-                    new Vector3(-58f, 3f, 16f),
-                    new Vector3(-77f, 3f, 3f),
+                    new Vector3(-4f, 3f, -20f),
+                    new Vector3(-4f, 3f, -8f),
+                    new Vector3(-4.7f, 3f, -2.3f),
+                    new Vector3(-7f, 3f, 1.2f),
+                    new Vector3(-18f, 3f, 1.2f),
+                    new Vector3(-38f, 3f, 1.2f),
+                    new Vector3(-58f, 3f, 1.2f),
+                    new Vector3(-77f, 3f, 1.2f),
                 },
                 root,
                 ref index);

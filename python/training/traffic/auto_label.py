@@ -5,7 +5,7 @@ Approach:
   2. Step the sim under a city scenario; vehicle is controlled by an internal
      WaypointFollowerVehicle controller (autonomous).
   3. On each step, read VehicleState.extensions.nearestTrafficLight.
-  4. Save (frame_jpeg, label_int, distance_m) into JSONL + frames/.
+  4. Save (modelFrame_jpeg, label_int, distance_m) into JSONL + frames/.
 
 Usage:
   python -m training.traffic.auto_label \
@@ -99,20 +99,61 @@ def _extract_state(step_result: Mapping[str, Any]) -> Mapping[str, Any]:
     return step_result
 
 
-def _extract_frame_b64(step_result: Mapping[str, Any]) -> str | None:
-    state = _extract_state(step_result)
-    camera = state.get("camera") if isinstance(state, Mapping) else None
-    frame = camera.get("frame") if isinstance(camera, Mapping) else None
-    data = frame.get("dataBase64") if isinstance(frame, Mapping) else None
-    if isinstance(data, str) and data:
-        return data
-    # Fallback: some response shapes put frame at the top level.
-    top_frame = step_result.get("frame") if isinstance(step_result, Mapping) else None
+def _extract_frame_b64(
+    step_result: Mapping[str, Any],
+    *,
+    preferred_frame: str = "modelFrame",
+) -> str | None:
+    for frame_name in _frame_lookup_order(preferred_frame):
+        data = _extract_named_frame_b64(step_result, frame_name)
+        if data is not None:
+            return data
+    return None
+
+
+def _frame_lookup_order(preferred_frame: str) -> tuple[str, ...]:
+    preferred = preferred_frame.strip() or "modelFrame"
+    if preferred == "modelFrame":
+        return ("modelFrame", "frame")
+    if preferred == "frame":
+        return ("frame", "modelFrame")
+    return (preferred, "modelFrame", "frame")
+
+
+def _extract_named_frame_b64(step_result: Mapping[str, Any], frame_name: str) -> str | None:
+    top_frame = step_result.get(frame_name)
     if isinstance(top_frame, Mapping):
         top_data = top_frame.get("dataBase64")
         if isinstance(top_data, str) and top_data:
             return top_data
+
+    state = _extract_state(step_result)
+    state_frame = state.get(frame_name) if isinstance(state, Mapping) else None
+    data = state_frame.get("dataBase64") if isinstance(state_frame, Mapping) else None
+    if isinstance(data, str) and data:
+        return data
+
+    if frame_name == "frame":
+        camera = state.get("camera") if isinstance(state, Mapping) else None
+        frame = camera.get("frame") if isinstance(camera, Mapping) else None
+        data = frame.get("dataBase64") if isinstance(frame, Mapping) else None
+        if isinstance(data, str) and data:
+            return data
     return None
+
+
+def _build_step_command(agent_id: str, model_capture_mode: str) -> dict[str, Any]:
+    command: dict[str, Any] = {
+        "throttle": 0.0,
+        "steer": 0.0,
+        "brake": 0.0,
+        "extensions": [
+            {"key": "camera.model_capture_mode", "value": model_capture_mode},
+        ],
+    }
+    if agent_id.strip():
+        command["targetAgentId"] = agent_id.strip()
+    return command
 
 
 def main():
@@ -121,7 +162,9 @@ def main():
     p.add_argument("--duration-min", type=float, default=60.0)
     p.add_argument("--output", type=Path, required=True)
     p.add_argument("--base-url", default="http://127.0.0.1:8000")
-    p.add_argument("--agent-id", default="ai-car")
+    p.add_argument("--agent-id", default="ego")
+    p.add_argument("--frame-source", choices=("modelFrame", "frame"), default="modelFrame")
+    p.add_argument("--model-capture-mode", default="driver")
     args = p.parse_args()
 
     # Late import — keeps unit tests free of network deps.
@@ -147,12 +190,12 @@ def main():
     with jsonl_path.open("w") as out:
         while time.monotonic() < deadline:
             tick += 1
-            response = client.step({"throttle": 0.0, "steer": 0.0, "brake": 0.0})
+            response = client.step(_build_step_command(args.agent_id, args.model_capture_mode))
             state = _extract_state(response)
             sample = parse_state_sample(dict(state))
             if sample is None:
                 continue
-            frame_b64 = _extract_frame_b64(response)
+            frame_b64 = _extract_frame_b64(response, preferred_frame=args.frame_source)
             if not frame_b64:
                 continue
             frame_bytes = base64.b64decode(frame_b64)
@@ -165,6 +208,8 @@ def main():
                 "label_idx": sample.label,
                 "label_name": GROUND_TRUTH_LABELS[sample.label],
                 "distance_m": sample.distance_m,
+                "frame_source": args.frame_source,
+                "model_capture_mode": args.model_capture_mode,
             }
             out.write(json.dumps(row) + "\n")
             counts[sample.label] += 1

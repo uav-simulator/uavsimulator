@@ -1,6 +1,7 @@
 using NUnit.Framework;
 using System.Collections;
 using System.Linq;
+using UavSimulator.CityDemo;
 using UavSimulator.Contracts;
 using UavSimulator.Core;
 using UavSimulator.Plugins;
@@ -183,6 +184,39 @@ namespace UavSimulator.Tests.PlayMode
             Assert.That(after.agents, Is.Not.Null);
             Assert.That(after.agents.Length, Is.EqualTo(2));
             Assert.That(after.state.pose.position.z, Is.GreaterThan(before.state.pose.position.z + 0.15f));
+
+            Object.Destroy(root);
+        }
+
+        [UnityTest]
+        public IEnumerator CityPolygonTrack_ResetUsesRuntimeCompactCityPrefab()
+        {
+            var root = new GameObject("PlayModeCityTrackRoot");
+            var manager = root.AddComponent<SimulationManager>();
+
+            yield return null;
+
+            var config = new SimulationConfig
+            {
+                seed = 4202,
+                timeScale = 1f,
+                selectedTrackId = BuiltinPluginFactory.CityPolygonTrackId,
+                selectedVehicleId = BuiltinPluginFactory.ArcadeRedVehicleId,
+                trackParams = new ConfigKeyValue[0],
+                vehicleParams = new ConfigKeyValue[0],
+                flags = new ConfigKeyValue[0],
+            };
+
+            manager.ResetSimulation(config);
+            yield return null;
+
+            var city = root.GetComponentsInChildren<Transform>(includeInactive: true)
+                .FirstOrDefault(candidate => candidate.name == "CityRuntimeCompact");
+            Assert.That(city, Is.Not.Null, "City showcase runtime should use the audited compact city prefab, not the editor-only DemoScene path.");
+
+            var westSecondSignalZone = city.GetComponentsInChildren<TrafficLightTriggerZone>(includeInactive: true)
+                .FirstOrDefault(candidate => candidate.name == "DemoSliceStopZone_WestSecondSignal_EW");
+            Assert.That(westSecondSignalZone, Is.Not.Null, "Runtime compact city must expose the west second-signal stop-zone used by the showcase route.");
 
             Object.Destroy(root);
         }
