@@ -46,7 +46,7 @@ namespace UavSimulator.Plugins
         };
 
         private const float RobotVisualTargetLength = 0.52f;
-        private const float CityCarVisualTargetLength = 3.80f;
+        private const float CityCarVisualTargetLength = 4.25f;
         private const float VehicleVisualGroundOffset = 0.01f;
 
         public static PluginRegistrySnapshot CreateSnapshot(PluginRegistrySource source = PluginRegistrySource.BuiltinFactory)
