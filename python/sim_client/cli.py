@@ -2111,16 +2111,51 @@ def _extract_runtime_archive(archive_path: Path, target_dir: Path) -> Path:
         for item in temp_extract.rglob("*.app")
         if "__MACOSX" not in item.parts and not any(part.startswith("._") for part in item.parts)
     )
-    if not app_candidates:
-        raise RuntimeError(f"Archive does not contain .app bundle: {archive_path}")
+    if app_candidates:
+        source_app = app_candidates[0]
+        final_app = target_dir / source_app.name
+        if final_app.exists():
+            shutil.rmtree(final_app)
+        shutil.move(str(source_app), str(final_app))
+        shutil.rmtree(temp_extract, ignore_errors=True)
+        return final_app
 
-    source_app = app_candidates[0]
-    final_app = target_dir / source_app.name
-    if final_app.exists():
-        shutil.rmtree(final_app)
-    shutil.move(str(source_app), str(final_app))
+    runtime_root = _find_extracted_runtime_root(temp_extract)
+    final_dir = target_dir / runtime_root.name if runtime_root != temp_extract else target_dir / archive_path.stem
+    if final_dir.exists():
+        shutil.rmtree(final_dir)
+
+    if runtime_root == temp_extract:
+        final_dir.mkdir(parents=True, exist_ok=True)
+        for item in temp_extract.iterdir():
+            shutil.move(str(item), str(final_dir / item.name))
+    else:
+        shutil.move(str(runtime_root), str(final_dir))
     shutil.rmtree(temp_extract, ignore_errors=True)
-    return final_app
+    return final_dir
+
+
+def _find_extracted_runtime_root(extract_root: Path) -> Path:
+    candidates = [extract_root]
+    candidates.extend(
+        item
+        for item in sorted(extract_root.rglob("*"))
+        if item.is_dir()
+        and "__MACOSX" not in item.parts
+        and not any(part.startswith("._") for part in item.parts)
+    )
+
+    for candidate in candidates:
+        try:
+            _resolve_runtime_executable(candidate)
+            return candidate
+        except (FileNotFoundError, RuntimeError, ValueError):
+            continue
+
+    raise RuntimeError(
+        "Archive does not contain a supported Unity runtime "
+        f"(.app bundle, Windows .exe directory, or Linux executable directory): {extract_root}"
+    )
 
 
 def _sha256_file(path: Path) -> str:
