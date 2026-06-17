@@ -17,16 +17,32 @@ from training.bc.dataset import (
 FIXTURES = Path(__file__).parent / "fixtures"
 
 
+def _write_mini_video(path: Path) -> Path:
+    writer = cv2.VideoWriter(
+        str(path),
+        cv2.VideoWriter_fourcc(*"mp4v"),
+        8.0,
+        (96, 96),
+    )
+    assert writer.isOpened()
+    for bgr in [(0, 0, 255), (0, 255, 0), (255, 0, 0), (0, 255, 255)]:
+        writer.write(np.full((96, 96, 3), bgr, dtype=np.uint8))
+    writer.release()
+    return path
+
+
 def test_action_index_matches_env_wrapper():
     """BC dataset uses same action indexing as DiscreteActionWrapper."""
     assert ACTION_NAMES == ["DirStop", "DirForward", "DirBack", "DirLeft", "DirRight"]
     assert ACTION_TO_INDEX == {n: i for i, n in enumerate(ACTION_NAMES)}
 
 
-def test_load_session_returns_aligned_arrays():
+def test_load_session_returns_aligned_arrays(tmp_path: Path):
+    video_path = _write_mini_video(tmp_path / "mini_session.mp4")
+
     samples = load_session(
         jsonl_path=FIXTURES / "mini_session.jsonl",
-        video_path=FIXTURES / "mini_session.mp4",
+        video_path=video_path,
     )
     assert len(samples) > 0, "Mini fixture must yield at least one (frame, ultrasonic, action) sample"
 
@@ -37,15 +53,17 @@ def test_load_session_returns_aligned_arrays():
     assert 0 <= s.action_idx < len(ACTION_NAMES), f"action_idx {s.action_idx} outside [0,5)"
 
 
-def test_load_dataset_aggregates_multiple_sessions():
+def test_load_dataset_aggregates_multiple_sessions(tmp_path: Path):
     """`load_dataset` flattens samples from multiple (jsonl, mp4) pairs."""
+    video_path = _write_mini_video(tmp_path / "mini_session.mp4")
+
     samples = load_dataset(
         [
-            (FIXTURES / "mini_session.jsonl", FIXTURES / "mini_session.mp4"),
-            (FIXTURES / "mini_session.jsonl", FIXTURES / "mini_session.mp4"),
+            (FIXTURES / "mini_session.jsonl", video_path),
+            (FIXTURES / "mini_session.jsonl", video_path),
         ]
     )
-    single = load_dataset([(FIXTURES / "mini_session.jsonl", FIXTURES / "mini_session.mp4")])
+    single = load_dataset([(FIXTURES / "mini_session.jsonl", video_path)])
     assert len(samples) == 2 * len(single), (
         f"two-copy load ({len(samples)}) must be exactly 2× single load ({len(single)})"
     )
