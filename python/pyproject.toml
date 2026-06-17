@@ -34,6 +34,7 @@ training = [
   "torch>=2.2",
   "tensorboard>=2.16",
   "opencv-python>=4.9",
+  "matplotlib>=3.8",
   "onnx>=1.15",
   "onnxruntime>=1.17",
 ]
