@@ -27,7 +27,8 @@
 - [Архитектура](architecture.md)
 - [API](api.md)
 - [Model Lifecycle](model-lifecycle.md)
-- [Преддипломная практика](prediploma-practice.md)
+- [Обучение моделей](training.md)
+- [Глоссарий](glossary.md)
 
 ## Текущий продуктовый контур
 1. Unity runtime поднимает сцену, плагины треков и машинок, а также HTTP JSON API.

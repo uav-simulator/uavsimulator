@@ -48,7 +48,7 @@ def _build_stub_env_from_observation_space(observation_space):
         def step(self, action):
             return self._zero_obs(), 0.0, True, False, {}
 
-    return DummyVecEnv([lambda: _Stub()])
+    return DummyVecEnv([_Stub])
 
 
 def prepare_ppo_from_bc(bc_zip: Path, config: BcToPpoConfig, env=None) -> PPO:

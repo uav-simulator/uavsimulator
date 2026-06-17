@@ -7,8 +7,6 @@ seeds.
 """
 from __future__ import annotations
 
-from pathlib import Path
-
 from training.bc.multi_seed_sweep import PendingRun, SweepPlan, execute_run, plan_pending_runs
 
 

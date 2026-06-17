@@ -13,12 +13,10 @@ default MlpExtractor takes over from there.
 """
 from __future__ import annotations
 
-import gymnasium as gym
 import torch
-import torch.nn as nn
 from gymnasium import spaces
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
-
+from torch import nn
 
 _CNN_OUTPUT_DIM = 512
 _MAP_CNN_OUTPUT_DIM = 128

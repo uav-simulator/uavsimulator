@@ -277,7 +277,6 @@ def drive_episode(
     #            avoids the mid-segment L/R micro-corrections that earlier
     #            single-phase controllers produced.
     align_tol_deg = 6.0
-    last_cmd = "DirStop"
     phase = "ALIGN"
     settle_ticks_left = 0  # countdown for STOP-to-kill-angular-momentum sub-phase
     wp_index = 0
@@ -388,7 +387,6 @@ def drive_episode(
             else:
                 cmd = "DirForward"
 
-        last_cmd = cmd
         # Apply the command via /step (actually moves the robot) AND through
         # WebUI /api/command (logs it to session JSONL for BC training).
         result = step_with_cmd(cmd)
@@ -414,8 +412,8 @@ def drive_episode(
                         fourcc = cv2.VideoWriter_fourcc(*"avc1")
                         video_writer = cv2.VideoWriter(str(video_path), fourcc, video_fps, (w, h))
                         if not video_writer.isOpened():
-                            print(f"    avc1 unavailable, falling back to mp4v "
-                                  f"(post-encode with ffmpeg recommended)", flush=True)
+                            print("    avc1 unavailable, falling back to mp4v "
+                                  "(post-encode with ffmpeg recommended)", flush=True)
                             fourcc = cv2.VideoWriter_fourcc(*"mp4v")
                             video_writer = cv2.VideoWriter(str(video_path), fourcc, video_fps, (w, h))
                     video_writer.write(bgr)
@@ -679,7 +677,7 @@ def main() -> int:
     if args.curated and args.spurious_turn_prob == 0.04 and args.spurious_stop_prob == 0.02:
         args.spurious_turn_prob = 0.0
         args.spurious_stop_prob = 0.0
-        print(f"[curated mode] operator noise → 0/0 for clean demos", flush=True)
+        print("[curated mode] operator noise → 0/0 for clean demos", flush=True)
 
     if args.curated:
         from training.bc.curated_paths import CURATED_MAZE_PATHS, turn_count
@@ -709,7 +707,7 @@ def main() -> int:
             seeds = list(range(int(a), int(b) + 1))
         else:
             seeds = [int(s) for s in args.seeds.split(",")]
-        from training.maze_generator import generate, MazeParams
+        from training.maze_generator import MazeParams, generate
         total = len(seeds)
         for i, seed in enumerate(seeds, start=1):
             tag = f"bc-maze-ep{i}-seed{seed}"
@@ -732,7 +730,7 @@ def main() -> int:
                 manifest_extras=extras,
             )
 
-    print(f"\nAll episodes recorded.", flush=True)
+    print("\nAll episodes recorded.", flush=True)
     return 0
 
 

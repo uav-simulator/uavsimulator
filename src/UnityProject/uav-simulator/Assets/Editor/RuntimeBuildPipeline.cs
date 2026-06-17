@@ -38,7 +38,7 @@ namespace UavSimulator.EditorTools
                 scenePath = DefaultScenePath;
             }
 
-            var absoluteOutput = Path.GetFullPath(outputPath);
+            var absoluteOutput = ResolveProjectRelativePath(outputPath);
             var outputDirectory = Path.GetDirectoryName(absoluteOutput);
             if (!string.IsNullOrWhiteSpace(outputDirectory))
             {
@@ -65,6 +65,17 @@ namespace UavSimulator.EditorTools
             UnityEngine.Debug.Log(
                 $"[RuntimeBuildPipeline] {target} build completed: {absoluteOutput}, " +
                 $"size={summary.totalSize} bytes, time={summary.totalTime}.");
+        }
+
+        private static string ResolveProjectRelativePath(string path)
+        {
+            if (Path.IsPathRooted(path))
+            {
+                return Path.GetFullPath(path);
+            }
+
+            var projectRoot = Path.GetFullPath(Path.Combine(UnityEngine.Application.dataPath, ".."));
+            return Path.GetFullPath(Path.Combine(projectRoot, path));
         }
     }
 }

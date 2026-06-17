@@ -261,8 +261,7 @@ class ABCorridorVisionEnv(gym.Env):
         resulting path_cells back into trackParams as "maze.path_encoded" so
         Unity builds geometry from the exact same path (avoids PRNG mismatch).
         """
-        from training.maze_generator import MazeParams
-        from training.maze_generator import build_from_encoded_path
+        from training.maze_generator import MazeParams, build_from_encoded_path
         from training.maze_generator import generate as generate_maze
 
         params = MazeParams()

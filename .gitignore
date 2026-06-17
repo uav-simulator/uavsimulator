@@ -95,6 +95,7 @@ __pycache__/
 tmp/
 .tmp/
 output/
+outputs/
 .mkdocs-site/
 .rusim/
 dist/
@@ -102,3 +103,11 @@ dist/
 # Python training artifacts
 python/training/artifacts/
 python/training/logs/
+
+# Local research/report archives kept outside the public repository
+docs/report/
+docs/master-thesis/
+docs/sfu-templates/
+docs/tasks.md
+docs/sample-city-autonomy.md
+docs/prediploma-practice.md

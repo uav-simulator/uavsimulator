@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import argparse
 import json
+from collections.abc import Iterable, Sequence
 from pathlib import Path
-from typing import Iterable, Sequence
 
 import numpy as np
 from PIL import Image
@@ -38,8 +38,8 @@ def build_visual_dataset(
     dataset_path = output_dir / "dataset.jsonl"
 
     rows: list[dict] = []
-    for index, image_path in enumerate(image_paths):
-        image_path = Path(image_path)
+    for index, raw_image_path in enumerate(image_paths):
+        image_path = Path(raw_image_path)
         image = np.array(Image.open(image_path).convert("RGB"))
         result = detect_traffic_light_state(image)
         if result.state == "None" and not include_none:

@@ -13,8 +13,8 @@ from typing import Any
 
 import numpy as np
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
+from torch import nn
 from torch.utils.data import DataLoader, Dataset
 
 
@@ -75,15 +75,16 @@ class TlClassifier:
             self.model.train()
             ep_loss, correct, total = 0.0, 0, 0
             for frame, label in loader:
-                frame, label = frame.to(self.device), label.to(self.device)
-                logits = self.model(frame)
-                loss = F.cross_entropy(logits, label)
+                frames = frame.to(self.device)
+                labels = label.to(self.device)
+                logits = self.model(frames)
+                loss = F.cross_entropy(logits, labels)
                 self.opt.zero_grad()
                 loss.backward()
                 self.opt.step()
-                ep_loss += loss.item() * label.size(0)
-                correct += (logits.argmax(-1) == label).sum().item()
-                total += label.size(0)
+                ep_loss += loss.item() * labels.size(0)
+                correct += (logits.argmax(-1) == labels).sum().item()
+                total += labels.size(0)
             history["train_loss"].append(ep_loss / total)
             history["train_accuracy"].append(correct / total)
         return history

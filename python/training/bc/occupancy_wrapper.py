@@ -38,7 +38,6 @@ from gymnasium import spaces
 
 from .occupancy import OccupancyMap, _synthetic_ultrasonic, directional_distances_8
 
-
 _EGO_SIZE = 21
 _ULTRASONIC_MAX_M = 2.0
 

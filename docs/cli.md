@@ -2,7 +2,14 @@
 
 `rusim` — основной CLI платформы для установки, запуска и диагностики runtime, а также для работы со сценариями, плагинами и моделями.
 
-Если команда не найдена в `zsh`, сначала выполнить:
+На Windows CLI устанавливается как Python package:
+
+```powershell
+py -3.11 -m pip install .\python
+rusim --help
+```
+
+На macOS/Linux при работе из репозитория можно поставить локальный wrapper:
 
 ```bash
 ./rusim install --write-shell-config
@@ -37,13 +44,24 @@ source ~/.zshrc
 ```bash
 rusim install --write-shell-config
 rusim version
-rusim upgrade --repo uav-simulator/uavsimulator --tag latest --check-only
+rusim upgrade --repo uav-simulator/uavsimulator --tag latest --platform windows --check-only
 ```
 
 Назначение:
 - установить CLI;
 - проверить версию и локальный runtime registry;
 - скачать и зарегистрировать runtime build из GitHub Release.
+
+Для преподавательской проверки на Windows основной поток такой:
+
+```powershell
+py -3.11 -m pip install .\python
+rusim upgrade --repo uav-simulator/uavsimulator --tag latest --platform windows
+rusim server up --build latest --mode windowed --port 8000 --scenario configs/scenarios/demo.yaml
+rusim doctor --base-url http://127.0.0.1:8000
+rusim scenario reset configs/scenarios/demo.yaml --base-url http://127.0.0.1:8000
+rusim step --base-url http://127.0.0.1:8000 --throttle 0.2 --steer 0.0 --brake 0.0
+```
 
 ## 2. Runtime lifecycle
 

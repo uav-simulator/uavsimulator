@@ -17,8 +17,8 @@ def test_trainer_overfits_small_synthetic_set(synthetic_samples):
 
 def test_export_loads_into_sb3_ppo(tmp_path, synthetic_samples):
     """BC checkpoint must round-trip through PPO.load and predict the same action."""
-    from stable_baselines3 import PPO
     import torch
+    from stable_baselines3 import PPO
 
     cfg = BcConfig(epochs=20, batch_size=4, lr=1e-3, device="cpu", seed=0)
     trainer = BcTrainer(cfg)
@@ -54,8 +54,8 @@ def test_export_loads_into_sb3_ppo(tmp_path, synthetic_samples):
 
 def test_multimodal_export_preserves_trainer_logits(tmp_path, synthetic_samples):
     """Occupancy SB3 export must match the raw PyTorch BC head numerically."""
-    from stable_baselines3 import PPO
     import torch
+    from stable_baselines3 import PPO
 
     cfg = BcConfig(epochs=1, batch_size=4, lr=1e-3, device="cpu", seed=0, use_occupancy=True)
     trainer = BcTrainer(cfg)
@@ -92,8 +92,8 @@ def test_multimodal_export_preserves_trainer_logits(tmp_path, synthetic_samples)
 
 def test_multimodal_export_with_distances_8_preserves_trainer_logits(tmp_path, synthetic_samples):
     """649-d occupancy+distances export must round-trip through PPO.load()."""
-    from stable_baselines3 import PPO
     import torch
+    from stable_baselines3 import PPO
 
     cfg = BcConfig(
         epochs=1,
@@ -142,8 +142,8 @@ def test_multimodal_export_with_distances_8_preserves_trainer_logits(tmp_path, s
 
 def test_frame_stacked_export_loads_into_sb3_ppo(tmp_path, synthetic_samples):
     """Camera-only BC export must preserve k-stacked image/ultrasonic obs shapes."""
-    from stable_baselines3 import PPO
     import torch
+    from stable_baselines3 import PPO
 
     cfg = BcConfig(
         epochs=5,
@@ -189,8 +189,8 @@ def test_frame_stacked_multimodal_export_with_distances_8_preserves_trainer_logi
     tmp_path, synthetic_samples
 ):
     """Occupancy+distances_8 export must also support temporal image/sonar context."""
-    from stable_baselines3 import PPO
     import torch
+    from stable_baselines3 import PPO
 
     cfg = BcConfig(
         epochs=1,

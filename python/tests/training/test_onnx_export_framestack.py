@@ -6,10 +6,8 @@ to ONNX with the correct (1, 84, 84, 12) image input shape.
 """
 from __future__ import annotations
 
-from pathlib import Path
-
-import numpy as np
 import gymnasium as gym
+import numpy as np
 import pytest
 from gymnasium import spaces
 from stable_baselines3 import PPO
@@ -46,7 +44,7 @@ class _Stub(gym.Env):
 def test_onnx_export_handles_frame_stack(n_stack, tmp_path):
     """Round-trip: train tiny PPO, frame-stack k, export ONNX, verify the
     ONNX graph's image input has the correct channel count."""
-    venv = DummyVecEnv([lambda: _Stub()])
+    venv = DummyVecEnv([_Stub])
     if n_stack > 1:
         venv = VecFrameStack(venv, n_stack=n_stack, channels_order="last")
     model = PPO("MultiInputPolicy", venv, n_steps=8, batch_size=8, device="cpu")

@@ -7,8 +7,8 @@ the auto-detect picks the right k.
 """
 from __future__ import annotations
 
-import numpy as np
 import gymnasium as gym
+import numpy as np
 import pytest
 from gymnasium import spaces
 from stable_baselines3 import PPO
@@ -41,7 +41,7 @@ class _StubMazeEnv(gym.Env):
 
 
 def _build_ppo(n_stack: int, tmp_path) -> tuple[PPO, str]:
-    venv = DummyVecEnv([lambda: _StubMazeEnv()])
+    venv = DummyVecEnv([_StubMazeEnv])
     if n_stack > 1:
         venv = VecFrameStack(venv, n_stack=n_stack, channels_order="last")
     model = PPO("MultiInputPolicy", venv, n_steps=8, batch_size=8, device="cpu")

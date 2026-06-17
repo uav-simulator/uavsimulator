@@ -28,15 +28,14 @@ import json
 import math
 from pathlib import Path
 
-
 _CELL_M = 0.45
 _START = (20, 20)
 
 
 def _load_pose_snapshots(jsonl_path: Path) -> list[dict]:
     snaps: list[dict] = []
-    for line in jsonl_path.read_text(encoding="utf-8").splitlines():
-        line = line.lstrip("﻿").strip()
+    for raw_line in jsonl_path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.lstrip("\ufeff").strip()
         if not line:
             continue
         try:
@@ -86,8 +85,7 @@ def _classify(px: float, pz: float, path_cells: set[tuple[int, int]]) -> dict:
             wx = (c[0] - _START[0]) * _CELL_M
             wz = (c[1] - _START[1]) * _CELL_M
             d = math.hypot(px - wx, pz - wz)
-            if d < nearest_wall:
-                nearest_wall = d
+            nearest_wall = min(nearest_wall, d)
     return {
         "cell": (gx, gz),
         "in_corridor": (gx, gz) in path_cells,
@@ -131,8 +129,8 @@ def main() -> None:
     else:
         frames = [s["step_index"] for s in snaps[::max(1, len(snaps) // 10)]]
 
-    print(f"Frame | cell  | in_path | pos              | yaw   | nearest_wall | nearest_path | offset_in_cell    | phase  | cmd_target")
-    print(f"------|-------|---------|------------------|-------|--------------|--------------|--------------------|--------|-----------")
+    print("Frame | cell  | in_path | pos              | yaw   | nearest_wall | nearest_path | offset_in_cell    | phase  | cmd_target")
+    print("------|-------|---------|------------------|-------|--------------|--------------|--------------------|--------|-----------")
     for f in frames:
         snap = next((s for s in snaps if s["step_index"] == f), None)
         if snap is None:

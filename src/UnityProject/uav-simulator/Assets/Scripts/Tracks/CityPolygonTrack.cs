@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UavSimulator.CityDemo;
 using UavSimulator.Core;
@@ -293,7 +294,7 @@ namespace UavSimulator.Tracks
 
         private static Material CreateRuntimeColorMaterial(string name, Color color, float smoothness)
         {
-            var material = new Material(RuntimeMaterialCompatibility.ResolveCompatibleLitShader())
+            var material = new Material(RuntimeMaterialCompatibility.ResolveCompatibleUnlitShader())
             {
                 name = name,
                 color = color,
@@ -615,13 +616,130 @@ namespace UavSimulator.Tracks
                 {
                     var source = mats[i];
                     if (source == null) continue;
-                    if (!RuntimeMaterialCompatibility.NeedsReplacement(source)) continue;
-                    mats[i] = RuntimeMaterialCompatibility.CreateReplacementMaterial(source, defaultSmoothness: 0.2f, copyTextures: true);
-                    mats[i].color = RuntimeMaterialCompatibility.ReadSourceColor(source);
+                    var objectPath = GetTransformPath(renderer.transform);
+                    var materialContext = $"{objectPath}/{source.name}";
+                    var sourceColor = RuntimeMaterialCompatibility.ReadSourceColor(source);
+                    var debugMagenta = LooksLikeDebugMagenta(sourceColor);
+                    var hotPink = LooksLikePresentationHotPink(sourceColor);
+                    var forceCitySafeMaterial = ShouldForceCitySafeMaterial(materialContext);
+                    if (!debugMagenta && !hotPink && !forceCitySafeMaterial && !RuntimeMaterialCompatibility.NeedsReplacement(source)) continue;
+
+                    var needsForcedColor = debugMagenta || forceCitySafeMaterial || hotPink;
+                    var replacement = needsForcedColor
+                        ? CreateRuntimeColorMaterial($"{source.name}_CitySafe", ResolveCitySafeReplacement(materialContext), 0.08f)
+                        : RuntimeMaterialCompatibility.CreateReplacementMaterial(
+                            source,
+                            defaultSmoothness: 0.2f,
+                            copyTextures: true);
+                    if (!needsForcedColor)
+                    {
+                        ApplyMaterialColor(replacement, sourceColor);
+                    }
+
+                    mats[i] = replacement;
                     changed = true;
                 }
                 if (changed) renderer.sharedMaterials = mats;
             }
+        }
+
+        private static bool LooksLikeDebugMagenta(Color color)
+            => color.r > 0.85f && color.g < 0.20f && color.b > 0.85f;
+
+        private static bool LooksLikePresentationHotPink(Color color)
+            => color.r > 0.72f && color.b > 0.55f && color.g < 0.58f && color.b > color.g + 0.18f;
+
+        private static bool ShouldForceCitySafeMaterial(string objectName)
+            => ContainsAny(
+                objectName ?? string.Empty,
+                "flower", "bush", "plant", "grass", "water", "tank",
+                "street", "road", "asphalt", "walkway", "sideway", "sidewalk", "stone");
+
+        private static Color ResolveCitySafeReplacement(string objectName)
+        {
+            var name = objectName ?? string.Empty;
+            if (ContainsAny(name, "flower", "bush", "plant", "grass", "tree"))
+            {
+                return new Color(0.22f, 0.42f, 0.18f, 1f);
+            }
+
+            if (ContainsAny(name, "sideway", "sidewalk", "walkway"))
+            {
+                return new Color(0.56f, 0.57f, 0.55f, 1f);
+            }
+
+            if (ContainsAny(name, "street", "road", "asphalt"))
+            {
+                return new Color(0.105f, 0.120f, 0.115f, 1f);
+            }
+
+            if (ContainsAny(name, "stone"))
+            {
+                return new Color(0.40f, 0.40f, 0.38f, 1f);
+            }
+
+            if (ContainsAny(name, "water", "tank", "roof"))
+            {
+                return new Color(0.48f, 0.58f, 0.64f, 1f);
+            }
+
+            return new Color(0.48f, 0.48f, 0.44f, 1f);
+        }
+
+        private static void ApplyMaterialColor(Material material, Color color)
+        {
+            if (material == null)
+            {
+                return;
+            }
+
+            material.color = color;
+            if (material.HasProperty("_BaseColor"))
+            {
+                material.SetColor("_BaseColor", color);
+            }
+
+            if (material.HasProperty("_Color"))
+            {
+                material.SetColor("_Color", color);
+            }
+        }
+
+        private static bool ContainsAny(string value, params string[] tokens)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return false;
+            }
+
+            foreach (var token in tokens)
+            {
+                if (value.IndexOf(token, StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static string GetTransformPath(Transform target)
+        {
+            if (target == null)
+            {
+                return string.Empty;
+            }
+
+            var names = new List<string>();
+            var current = target;
+            while (current != null)
+            {
+                names.Add(current.name);
+                current = current.parent;
+            }
+
+            names.Reverse();
+            return string.Join("/", names);
         }
 
         private enum Axis { X, Y, Z }

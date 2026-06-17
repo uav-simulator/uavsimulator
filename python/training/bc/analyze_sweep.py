@@ -157,9 +157,9 @@ def _render_one_metric(
 
     table = [
         f"# Variance table ({display_name})\n",
-        f"| Branch | N | Mean SR | Std SR | Seeds |"
+        "| Branch | N | Mean SR | Std SR | Seeds |"
         if is_headline else
-        f"| Branch | N | Mean | Std | Seeds |",
+        "| Branch | N | Mean | Std | Seeds |",
         "|---|---|---|---|---|",
     ]
     for b in branches:

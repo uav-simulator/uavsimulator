@@ -621,9 +621,9 @@ namespace UavSimulator.Vehicles
                         fieldOfView = 76f;
                         break;
                     case "chase":
-                        localPosition = new Vector3(0f, 2.15f, -5.60f);
-                        localEuler = new Vector3(17f, 0f, 0f);
-                        fieldOfView = 66f;
+                        localPosition = new Vector3(0f, 4.35f, -4.80f);
+                        localEuler = new Vector3(34f, 0f, 0f);
+                        fieldOfView = 60f;
                         break;
                     case "spectator":
                         localPosition = new Vector3(3.8f, 2.45f, -6.10f);

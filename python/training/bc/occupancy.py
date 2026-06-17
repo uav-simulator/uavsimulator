@@ -42,7 +42,6 @@ from pathlib import Path
 
 import numpy as np
 
-
 _CELL_M = 0.225          # map resolution (half of corridor width 0.45 m)
 _MAZE_CELL_M = 0.45      # the maze track's corridor width
 _GRID_SIZE = 80          # 80 × 0.225 = 18 m world extent
@@ -60,7 +59,7 @@ class OccupancyMap:
     grid: np.ndarray  # shape (3, GRID_SIZE, GRID_SIZE)
 
     @classmethod
-    def empty(cls) -> "OccupancyMap":
+    def empty(cls) -> OccupancyMap:
         return cls(grid=np.zeros((3, _GRID_SIZE, _GRID_SIZE), dtype=np.float32))
 
     def _world_to_grid(self, world_x: float, world_z: float) -> tuple[int, int]:
@@ -197,7 +196,7 @@ _DIST_8_OFFSETS_DEG = (0.0, 45.0, 90.0, 135.0, 180.0, -135.0, -90.0, -45.0)
 
 def directional_distances_8(
     world_x: float, world_z: float, yaw_deg: float, wall_cells: set[tuple[int, int]],
-) -> "np.ndarray":
+) -> np.ndarray:
     """8-direction raycast in the robot's ego frame, normalised to [0, 1] of
     _ULTRASONIC_MAX_M.
 

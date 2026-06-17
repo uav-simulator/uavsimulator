@@ -7,7 +7,6 @@ import json
 import mimetypes
 import os
 import re
-import sys
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -15,10 +14,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-
 MANIFEST_SCHEMA_VERSION = 1
 DEFAULT_CHANNEL = "stable"
 DEFAULT_MANIFEST_NAME = "rusim-release-manifest.json"
+ARCHIVE_SUFFIXES = (".zip", ".tar.gz", ".tgz")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -212,9 +211,38 @@ def _infer_asset_kind(name: str) -> str:
         return "manifest"
     if lowered.endswith(".sha256"):
         return "checksum"
-    if lowered.endswith(".zip") or lowered.endswith(".tar.gz") or lowered.endswith(".tgz"):
+    if _is_python_package_artifact(lowered):
+        return "package"
+    if _is_runtime_archive(lowered):
         return "runtime"
     return "unknown"
+
+
+def _is_python_package_artifact(lowered_name: str) -> bool:
+    if lowered_name.endswith(".whl"):
+        return True
+
+    sdist_stem = _strip_archive_suffix(lowered_name)
+    if sdist_stem == lowered_name:
+        return False
+
+    normalized_stem = sdist_stem.replace("-", "_")
+    return normalized_stem == "uav_sim_client" or normalized_stem.startswith("uav_sim_client_")
+
+
+def _is_runtime_archive(lowered_name: str) -> bool:
+    if not lowered_name.endswith(ARCHIVE_SUFFIXES):
+        return False
+    if lowered_name.endswith(".app.zip"):
+        return True
+    return lowered_name.startswith("uav-simulator-") and _infer_platform(lowered_name) != "unknown"
+
+
+def _strip_archive_suffix(lowered_name: str) -> str:
+    for suffix in (".tar.gz", ".tgz", ".zip", ".whl"):
+        if lowered_name.endswith(suffix):
+            return lowered_name[: -len(suffix)]
+    return lowered_name
 
 
 def _infer_platform(name: str) -> str:

@@ -24,7 +24,6 @@ sees turning labels.
 """
 from __future__ import annotations
 
-
 # 10 curated layouts. Each is a (name, encoded-path) pair; the name
 # becomes the demo tag (filename suffix) and the encoded-path is
 # what CardboardMazeTrack reads as maze.path_encoded.

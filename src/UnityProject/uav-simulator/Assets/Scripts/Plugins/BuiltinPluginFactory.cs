@@ -48,6 +48,7 @@ namespace UavSimulator.Plugins
         private const float RobotVisualTargetLength = 0.52f;
         private const float CityCarVisualTargetLength = 4.25f;
         private const float VehicleVisualGroundOffset = 0.01f;
+        private const float CityCarVisualGroundOffset = -0.09f;
 
         public static PluginRegistrySnapshot CreateSnapshot(PluginRegistrySource source = PluginRegistrySource.BuiltinFactory)
         {
@@ -163,7 +164,8 @@ namespace UavSimulator.Plugins
             // KS0223 uses its own small-scale presentation visuals (Ks0223Vehicle.EnsurePresentationVisuals),
             // not the full-size Prometeo prefab. Skip prefab loading for it.
             var visualTargetLength = isKs0223 ? RobotVisualTargetLength : CityCarVisualTargetLength;
-            var hasCustomVisual = !isKs0223 && TryAttachVisual(root.transform, visualProfile, visualTargetLength);
+            var visualGroundOffset = isKs0223 ? VehicleVisualGroundOffset : CityCarVisualGroundOffset;
+            var hasCustomVisual = !isKs0223 && TryAttachVisual(root.transform, visualProfile, visualTargetLength, visualGroundOffset);
             if (!hasCustomVisual)
             {
                 var accentColor = GetFallbackAccentColor(descriptorId);
@@ -479,7 +481,11 @@ namespace UavSimulator.Plugins
                 visualRoot.transform.localPosition = Vector3.zero;
                 visualRoot.transform.localRotation = Quaternion.identity;
                 visualRoot.transform.localScale = Vector3.one;
-                FitVisualToVehicleBounds(root.transform, visualRoot.transform, RobotVisualTargetLength);
+                FitVisualToVehicleBounds(
+                    root.transform,
+                    visualRoot.transform,
+                    RobotVisualTargetLength,
+                    VehicleVisualGroundOffset);
                 StripVisualPhysicsAndScripts(visualRoot);
             }
 
@@ -528,7 +534,11 @@ namespace UavSimulator.Plugins
             return false;
         }
 
-        private static bool TryAttachVisual(Transform parent, VehicleVisualProfile visualProfile, float targetLength)
+        private static bool TryAttachVisual(
+            Transform parent,
+            VehicleVisualProfile visualProfile,
+            float targetLength,
+            float groundOffset)
         {
             var prefab = LoadVisualPrefab(visualProfile);
             if (prefab == null)
@@ -542,7 +552,7 @@ namespace UavSimulator.Plugins
             visualRoot.transform.localPosition = Vector3.zero;
             visualRoot.transform.localScale = Vector3.one;
 
-            FitVisualToVehicleBounds(parent, visualRoot.transform, targetLength);
+            FitVisualToVehicleBounds(parent, visualRoot.transform, targetLength, groundOffset);
             StripVisualPhysicsAndScripts(visualRoot);
             // Keep original style from imported assets and only replace shader-incompatible materials.
             SanitizeRendererMaterials(visualRoot, forceFallback: false, copyTextures: true);
@@ -550,7 +560,11 @@ namespace UavSimulator.Plugins
             return true;
         }
 
-        private static void FitVisualToVehicleBounds(Transform vehicleRoot, Transform visualRoot, float targetLength)
+        private static void FitVisualToVehicleBounds(
+            Transform vehicleRoot,
+            Transform visualRoot,
+            float targetLength,
+            float groundOffset)
         {
             if (!TryCalculateRenderBounds(vehicleRoot, visualRoot, out var localBounds))
             {
@@ -571,7 +585,7 @@ namespace UavSimulator.Plugins
 
             var correction = new Vector3(
                 -localBounds.center.x,
-                VehicleVisualGroundOffset - localBounds.min.y,
+                groundOffset - localBounds.min.y,
                 -localBounds.center.z);
             visualRoot.localPosition += correction;
         }

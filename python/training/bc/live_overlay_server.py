@@ -49,7 +49,6 @@ import requests
 
 from .occupancy import OccupancyMap
 
-
 _HTML_PAGE = """<!DOCTYPE html>
 <html lang="ru">
 <head>
@@ -294,7 +293,7 @@ def main() -> None:
     if wall_cells:
         print(f"[live-overlay] using {len(wall_cells)} wall cells from {args.scenario}")
     else:
-        print(f"[live-overlay] no wall cells loaded — falling back to sim telemetry ultrasonic")
+        print("[live-overlay] no wall cells loaded — falling back to sim telemetry ultrasonic")
     app = make_app(args.sim_base, wall_cells)
     print(f"[live-overlay] open http://localhost:{args.port}/ in browser")
     app.run(host="0.0.0.0", port=args.port, threaded=True)

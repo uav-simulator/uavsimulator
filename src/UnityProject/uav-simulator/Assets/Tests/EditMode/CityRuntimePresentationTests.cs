@@ -1,8 +1,10 @@
 using System.Linq;
 using System.Collections.Generic;
+using System.Reflection;
 using NUnit.Framework;
 using UavSimulator.CityDemo;
 using UavSimulator.Core;
+using UavSimulator.Tracks;
 using UavSimulator.Vehicles;
 using UnityEditor;
 using UnityEngine;
@@ -385,6 +387,77 @@ namespace UavSimulator.Tests.EditMode
         }
 
         [Test]
+        public void CityPolygonTrack_MaterialSanitizerDampsGrassPresentationTint()
+        {
+            var root = new GameObject("CityRuntimeCompact");
+            var grass = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            var sourceMaterial = new Material(RuntimeMaterialCompatibility.ResolveCompatibleLitShader())
+            {
+                name = "Grass Debug Tint",
+            };
+            try
+            {
+                grass.name = "Grass";
+                grass.transform.SetParent(root.transform, worldPositionStays: false);
+                SetDisplayColor(sourceMaterial, Color.magenta);
+                grass.GetComponent<MeshRenderer>().sharedMaterial = sourceMaterial;
+
+                var sanitizer = typeof(CityPolygonTrack).GetMethod(
+                    "ReplaceIncompatibleMaterials",
+                    BindingFlags.NonPublic | BindingFlags.Static);
+                Assert.NotNull(sanitizer, "City material sanitizer method is missing.");
+
+                sanitizer.Invoke(null, new object[] { root });
+
+                var sanitized = grass.GetComponent<MeshRenderer>().sharedMaterial;
+                var color = ReadDisplayColor(sanitized);
+                Assert.Less(color.r, 0.35f);
+                Assert.Greater(color.g, 0.35f);
+                Assert.Less(color.b, 0.30f);
+            }
+            finally
+            {
+                Object.DestroyImmediate(root);
+                Object.DestroyImmediate(sourceMaterial);
+            }
+        }
+
+        [Test]
+        public void CityPolygonTrack_MaterialSanitizerForcesStreetMaterialToAsphalt()
+        {
+            var root = new GameObject("CityRuntimeCompact");
+            var street = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            var sourceMaterial = new Material(RuntimeMaterialCompatibility.ResolveCompatibleLitShader())
+            {
+                name = "street 4",
+            };
+            try
+            {
+                street.name = "Street 4 Prefab";
+                street.transform.SetParent(root.transform, worldPositionStays: false);
+                SetDisplayColor(sourceMaterial, Color.magenta);
+                street.GetComponent<MeshRenderer>().sharedMaterial = sourceMaterial;
+
+                var sanitizer = typeof(CityPolygonTrack).GetMethod(
+                    "ReplaceIncompatibleMaterials",
+                    BindingFlags.NonPublic | BindingFlags.Static);
+                Assert.NotNull(sanitizer, "City material sanitizer method is missing.");
+
+                sanitizer.Invoke(null, new object[] { root });
+
+                var sanitized = street.GetComponent<MeshRenderer>().sharedMaterial;
+                var color = ReadDisplayColor(sanitized);
+                Assert.Less(color.maxColorComponent, 0.18f);
+                Assert.Greater(color.r, 0.08f);
+            }
+            finally
+            {
+                Object.DestroyImmediate(root);
+                Object.DestroyImmediate(sourceMaterial);
+            }
+        }
+
+        [Test]
         public void TrafficLightPolygonAdapter_UsesCompatibleLitMaterialCopies()
         {
             Assume.That(RuntimeMaterialCompatibility.IsUrpActive(), Is.True);
@@ -472,6 +545,20 @@ namespace UavSimulator.Tests.EditMode
             }
 
             return material.color;
+        }
+
+        private static void SetDisplayColor(Material material, Color color)
+        {
+            material.color = color;
+            if (material.HasProperty("_BaseColor"))
+            {
+                material.SetColor("_BaseColor", color);
+            }
+
+            if (material.HasProperty("_Color"))
+            {
+                material.SetColor("_Color", color);
+            }
         }
 
         private static Color ReadEmissionColor(Material material)

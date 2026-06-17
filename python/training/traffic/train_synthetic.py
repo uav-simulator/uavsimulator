@@ -1,9 +1,12 @@
 """Train TL classifier on synthetic color-tinted data — smoke deliverable."""
 import sys
+
 sys.path.insert(0, "python")
 
 from pathlib import Path
+
 import numpy as np
+
 from training.traffic.tl_classifier import TlClassifier, TlClassifierConfig
 
 rng = np.random.default_rng(42)
@@ -30,8 +33,8 @@ for label, dominant_channel in [(0, 0), (1, [0, 1]), (2, 1)]:  # 0=red, 1=yellow
                             f[y, x, (dominant_channel+2)%3] = 30
         samples.append((f, label))
 
-print(f"Generated {len(samples)} synthetic samples ({sum(1 for _, l in samples if l==0)} red, "
-      f"{sum(1 for _, l in samples if l==1)} yellow, {sum(1 for _, l in samples if l==2)} green)")
+print(f"Generated {len(samples)} synthetic samples ({sum(1 for _, sample_label in samples if sample_label==0)} red, "
+      f"{sum(1 for _, sample_label in samples if sample_label==1)} yellow, {sum(1 for _, sample_label in samples if sample_label==2)} green)")
 
 cfg = TlClassifierConfig(epochs=15, batch_size=32, lr=1e-3, device="cpu", seed=42)
 clf = TlClassifier(cfg)
@@ -48,6 +51,7 @@ clf.save_pt(out_dir / "tl-classifier.pt")
 streaming = Path("src/UnityProject/uav-simulator/Assets/StreamingAssets")
 streaming.mkdir(exist_ok=True)
 import shutil
+
 shutil.copy2(onnx_path, streaming / "tl-classifier.onnx")
 print(f"ONNX written: {onnx_path} ({onnx_path.stat().st_size} bytes)")
 print(f"Streamed to: {streaming / 'tl-classifier.onnx'}")
@@ -55,6 +59,7 @@ print(f"Streamed to: {streaming / 'tl-classifier.onnx'}")
 # Sanity-check inference on each class
 clf.model.eval()
 import torch
+
 for cls in range(3):
     test_sample = samples[cls * 150 + 50]  # middle sample of each class
     t = torch.from_numpy(test_sample[0].transpose(2,0,1)).float().unsqueeze(0) / 255.0

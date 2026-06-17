@@ -1210,6 +1210,7 @@ function App() {
     unityCatalog,
     unityCatalogBusy,
     unityCameraMode,
+    unityVehicleId,
     unityControlAgentId,
     unityCameraAgentId,
     unityCollisionsEnabled,

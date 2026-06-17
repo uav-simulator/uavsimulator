@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Alert, Box, Card, CardContent, Chip, Stack, Typography } from '@mui/material'
 import type { AutopilotPreviewDto } from '../api'
 import type { AutopilotStatusDto, ModelBindingDto, SensorTelemetryDto } from '../types'
@@ -35,6 +35,12 @@ type OccupancyState = {
   trail: PoseSample[]
 }
 
+type OccupancySnapshot = {
+  selectedTrackId?: string
+  lastPose: PoseSample | null
+  occupancy: OccupancyState
+}
+
 const MAZE_TRACK_ID = 'track.cardboard_maze.v1'
 const CELL_M = 0.225
 const GRID_SIZE = 80
@@ -52,6 +58,10 @@ const ACTION_COLORS = ['#9b9b9b', '#58d68d', '#dc5a5a', '#f4ac45', '#60a5fa']
 
 function emptyOccupancy(): OccupancyState {
   return { grid: new Float32Array(3 * GRID_SIZE * GRID_SIZE), trail: [] }
+}
+
+function emptyOccupancySnapshot(selectedTrackId?: string): OccupancySnapshot {
+  return { selectedTrackId, lastPose: null, occupancy: emptyOccupancy() }
 }
 
 function gridIndex(channel: number, gx: number, gz: number): number {
@@ -208,6 +218,41 @@ function updateOccupancy(prev: OccupancyState, pose: PoseSample, frontM: number)
   }
 }
 
+function isDuplicateOccupancyPose(lastPose: PoseSample | null, pose: PoseSample): boolean {
+  return Boolean(lastPose && lastPose.timestamp === pose.timestamp && Math.hypot(lastPose.x - pose.x, lastPose.z - pose.z) < 0.005)
+}
+
+function resolveOccupancySnapshot(
+  previous: OccupancySnapshot,
+  selectedTrackId: string | undefined,
+  isMazeSelected: boolean,
+  pose: PoseSample | null,
+  frontM: number,
+): OccupancySnapshot {
+  const trackChanged = previous.selectedTrackId !== selectedTrackId
+  if (trackChanged) {
+    const next = emptyOccupancySnapshot(selectedTrackId)
+    if (!pose || !isMazeSelected) {
+      return next
+    }
+    return {
+      selectedTrackId,
+      lastPose: pose,
+      occupancy: updateOccupancy(next.occupancy, pose, frontM),
+    }
+  }
+
+  if (!pose || !isMazeSelected || isDuplicateOccupancyPose(previous.lastPose, pose)) {
+    return previous
+  }
+
+  return {
+    selectedTrackId,
+    lastPose: pose,
+    occupancy: updateOccupancy(previous.occupancy, pose, frontM),
+  }
+}
+
 function egoWindow(grid: Float32Array, pose: PoseSample): Array<{ r: number; g: number; b: number }> {
   const out: Array<{ r: number; g: number; b: number }> = []
   const center = worldToGrid(pose.x, pose.z)
@@ -291,7 +336,7 @@ export function MazeMapPanel({
   embedded = false,
 }: Props) {
   const parsed = useMemo(() => parseTelemetry(sensorTelemetry), [sensorTelemetry])
-  const [occupancy, setOccupancy] = useState<OccupancyState>(() => emptyOccupancy())
+  const [occupancySnapshot, setOccupancySnapshot] = useState<OccupancySnapshot>(() => emptyOccupancySnapshot(selectedTrackId))
   const isMazeSelected = selectedTrackId === MAZE_TRACK_ID || !selectedTrackId
   const frontM = policyPreview?.frontUltrasonicM ?? asNumber(parsed.sensor['sensor.ultrasonic.front.m']) ?? ULTRASONIC_MAX_M
   const { finalAction, rule } = estimateFinalAction(policyPreview?.chosenAction, frontM, autopilot)
@@ -299,17 +344,17 @@ export function MazeMapPanel({
     ? Number(parsed.route['route.current_index']) / Math.max(1, Number(parsed.route['route.total_waypoints']))
     : null
 
-  useEffect(() => {
-    setOccupancy(emptyOccupancy())
-  }, [selectedTrackId])
-
-  useEffect(() => {
-    if (!parsed.pose || !isMazeSelected) {
-      return
-    }
-
-    setOccupancy((prev) => updateOccupancy(prev, parsed.pose!, frontM))
-  }, [frontM, isMazeSelected, parsed.pose])
+  const nextOccupancySnapshot = resolveOccupancySnapshot(
+    occupancySnapshot,
+    selectedTrackId,
+    isMazeSelected,
+    parsed.pose,
+    frontM,
+  )
+  if (nextOccupancySnapshot !== occupancySnapshot) {
+    setOccupancySnapshot(nextOccupancySnapshot)
+  }
+  const occupancy = nextOccupancySnapshot.occupancy
 
   const occupancyCells = parsed.pose ? egoWindow(occupancy.grid, parsed.pose) : []
   const distanceValues = parsed.pose

@@ -2163,24 +2163,36 @@ def _select_manifest_release(manifest: dict[str, Any], channel: str, preferred_t
 def _select_runtime_asset(release_entry: dict[str, Any], platform: str) -> dict[str, Any]:
     assets = release_entry.get("assets") or []
     if not assets:
-        raise RuntimeError("Release entry does not contain assets.")
+        raise RuntimeError(
+            f"Release entry does not contain assets; no runtime asset is available for platform '{platform}'."
+        )
+
+    runtime_assets = [item for item in assets if str(item.get("kind") or "") == "runtime"]
+    if not runtime_assets:
+        raise RuntimeError(
+            f"Release entry does not contain runtime assets for platform '{platform}'. "
+            "Available runtime platforms/assets: none."
+        )
 
     exact = next(
         (
             item
-            for item in assets
-            if str(item.get("kind") or "") == "runtime"
-            and str(item.get("platform") or "") == platform
+            for item in runtime_assets
+            if str(item.get("platform") or "") == platform
         ),
         None,
     )
     if exact:
         return exact
 
-    fallback = next((item for item in assets if str(item.get("kind") or "") == "runtime"), None)
-    if fallback:
-        return fallback
-    raise RuntimeError("Release entry does not contain runtime assets.")
+    available = ", ".join(
+        f"{str(item.get('platform') or 'unknown')}: {str(item.get('name') or '<unnamed>')}"
+        for item in runtime_assets
+    )
+    raise RuntimeError(
+        f"Release entry does not contain runtime asset for platform '{platform}'. "
+        f"Available runtime platforms/assets: {available}."
+    )
 
 
 def _resolve_runtime_asset_url(runtime_asset: dict[str, Any], *, github_token: str) -> str:
