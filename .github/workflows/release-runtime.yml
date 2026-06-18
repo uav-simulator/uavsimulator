@@ -65,6 +65,7 @@ jobs:
           output_dir="dist/runtime/${RELEASE_TAG}"
           runtime_dir="src/UnityProject/uav-simulator/build/runtime/windows"
           test -f "${runtime_dir}/uav-simulator.exe"
+          rm -rf "${runtime_dir}"/*_BurstDebugInformation_DoNotShip
           mkdir -p "$output_dir"
           (cd "$runtime_dir" && zip -qr "${GITHUB_WORKSPACE}/${output_dir}/${asset_name}" .)
           (cd "$output_dir" && sha256sum "$asset_name" > "${asset_name}.sha256")
