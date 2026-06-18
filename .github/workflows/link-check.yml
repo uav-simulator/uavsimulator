@@ -33,7 +33,6 @@ jobs:
             --cache
             --max-cache-age 1d
             --max-concurrency 8
-            --exclude-mail
             --exclude-loopback
             --exclude '127\.0\.0\.1'
             --exclude '192\.168\.'
