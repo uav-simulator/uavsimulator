@@ -54,8 +54,8 @@ curl -X POST "http://localhost:5058/api/models/upload" \
 /tmp/uavsim-eval-venv313/bin/python python/training/evaluate_ab_policy.py \
   --episodes 20 \
   --max-steps 220 \
-  --output-json docs/report/prediploma-practice/evidence/ab-corridor-kpi-2026-03-29.json \
-  --output-svg docs/report/prediploma-practice/evidence/ab-corridor-kpi-2026-03-29.svg
+  --output-json python/training/artifacts/eval/ab-corridor-kpi.json \
+  --output-svg python/training/artifacts/eval/ab-corridor-kpi.svg
 ```
 
 Ограничения текущего evaluator:

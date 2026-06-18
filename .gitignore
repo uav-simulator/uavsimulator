@@ -111,3 +111,26 @@ docs/sfu-templates/
 docs/tasks.md
 docs/sample-city-autonomy.md
 docs/prediploma-practice.md
+
+# Local thesis/research automation kept on disk, but not in the public repo
+configs/sweeps/
+python/diagnostics/
+python/training/bc/render_article_numbers.py
+python/training/traffic/render_article_numbers.py
+python/tests/training/traffic/test_city_demoscene_inventory_summary.py
+python/tests/training/traffic/test_city_showcase_audit_summary.py
+python/tests/training/traffic/test_city_showcase_maneuver_routes.py
+scripts/collect_bc_demos.sh
+scripts/evaluate_real_corridor_recordings_*.py
+scripts/export_phase*_webui_onnx_*.py
+scripts/fill_article_tbd.sh
+scripts/overnight_maze_bc_train_*.sh
+scripts/phase*_*.py
+scripts/phase*_*.sh
+scripts/record_bc_demos.sh
+scripts/record_city_showcase_maneuvers_*.py
+scripts/record_phase*_*.py
+scripts/summarize_city_*.py
+scripts/sweep_*.sh
+scripts/verify_maze_reproducible.sh
+scripts/win/

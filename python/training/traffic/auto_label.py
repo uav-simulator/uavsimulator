@@ -11,7 +11,7 @@ Usage:
   python -m training.traffic.auto_label \
     --scenario configs/scenarios/showcase-city.yaml \
     --duration-min 90 \
-    --output docs/report/master-thesis/sprint-4-bc-variance-2026-06/traffic-light/dataset/
+    --output python/training/artifacts/traffic-light/dataset/
 """
 from __future__ import annotations
 

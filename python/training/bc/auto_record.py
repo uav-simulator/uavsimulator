@@ -652,7 +652,7 @@ def main() -> int:
                         "instead of procedurally-generated mazes from --seeds.")
     p.add_argument("--seeds", default="42-56", help="Range like '42-56' or comma list '42,43,44'")
     p.add_argument("--yaml", type=Path, default=Path("configs/scenarios/cardboard-maze-bc.yaml"))
-    p.add_argument("--evidence", type=Path, default=Path("docs/report/master-thesis/sprint-4-bc-variance-2026-06/demos"))
+    p.add_argument("--evidence", type=Path, default=Path("python/training/artifacts/bc-demos"))
     p.add_argument("--max-steps", type=int, default=500)
     p.add_argument("--noise-seed", type=int, default=0, help="RNG seed for operator-noise model")
     p.add_argument("--spurious-turn-prob", type=float, default=0.04,

@@ -63,29 +63,6 @@ Registry build-артефактов и runtime state:
 - Прогресс маршрута возвращается в `StepResult.info`:
   - `route.current_index`, `route.remaining_waypoints`, `route.completed`.
 
-## Presentation Notebook
-- Файл: `output/jupyter-notebook/ks0223-presentation-demo.ipynb`
-- Что делает:
-  - API sanity check
-  - camera preview
-  - scripted drive + telemetry plots
-  - interactive control widgets
-
-## Quickstart Notebook
-- Файл: `output/jupyter-notebook/uavsim-quickstart-demo.ipynb`
-- Что делает:
-  - пошаговый smoke (`health/contract/reset`)
-  - короткий rollout с `step`
-  - графики скорости и управляющих сигналов
-  - несколько кадров фронтальной камеры
-
-## ROS2 Training Notebook
-- Файл: `output/jupyter-notebook/ks0223-ros2-training-demo.ipynb`
-- Что делает:
-  - сбор сенсоров из ROS2 топиков (`line_tracker`, `speedometer`)
-  - мини-обучение линейной steering-модели
-  - rollout обученной политики через ROS2 `/cmd_vel`
-
 ## ROS2 bridge
 - Док: `python/bridges/README.md`
 - Native запуск: `make ros-bridge`
@@ -104,4 +81,4 @@ Registry build-артефактов и runtime state:
 
 ## Next steps
 - Добавить helpers для типизированных telemetry DTO в Python.
-- Добавить e2e notebook smoke (auto-run cells subset).
+- Добавить e2e smoke для `rusim runtime run` и `rusim scenario reset`.

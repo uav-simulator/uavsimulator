@@ -1,14 +1,15 @@
 # Обучение моделей
 
-Краткий обзор контура обучения. Полная техническая спецификация — в
-[главе 6 диссертации «Программная обвязка обучения»](master-thesis/08-training-python.md).
+Краткий обзор публичного контура обучения моделей для `uav-simulator`.
+Подробности runtime-контракта вынесены в страницы [API](api.md),
+[Architecture](architecture.md) и [Model lifecycle](model-lifecycle.md).
 
 ## Контур
 
 Обучение запускается из Python и использует Unity-симулятор как
 HTTP-окружение. Никакая часть тренировочного кода не импортирует Unity-сборку
 напрямую — связь идёт через `python/sim_client/http_client.py` и
-runtime API, описанный в [главе 4 диссертации](master-thesis/06-api-spec.md).
+HTTP API симулятора.
 
 ```
 python/training/  →  SimClient  →  Unity HTTP API (:8000)  →  SimulationManager
@@ -25,7 +26,7 @@ python/training/  →  SimClient  →  Unity HTTP API (:8000)  →  SimulationMa
   возвращаются Unity в поле `info` каждого `step()`.
 
 Полная схема DTO зафиксирована в `Assets/Scripts/Contracts/SimulatorContracts.cs`
-и в разделе 4.3 диссертации.
+и описана на странице [API](api.md).
 
 ## Где живут эксперименты
 
@@ -38,8 +39,8 @@ python/training/  →  SimClient  →  Unity HTTP API (:8000)  →  SimulationMa
 ## KPI и приёмка
 
 Скрипт `python/training/evaluate_ab_policy.py` запускает 20 эпизодов на
-канонической трассе и фиксирует success rate. Целевой порог и trace
-по revisions описаны в [главе 7 «Sim-to-real»](master-thesis/09-sim2real-real-car.md).
+канонической трассе и фиксирует success rate. Для публичных прогонов сохраняйте
+результаты в `python/training/artifacts/<run-name>/`.
 
 ## Запуск
 
@@ -60,7 +61,5 @@ rusim model activate cardboard-corridor-ppo-v9-rev42
 
 ## См. также
 
-- [Глава 6 диссертации — Программная обвязка обучения](master-thesis/08-training-python.md)
-- [Глава 7 диссертации — Sim-to-real эксперименты](master-thesis/09-sim2real-real-car.md)
 - [Model lifecycle](model-lifecycle.md) — как обученная модель попадает в backend и активируется.
 - [CLI](cli.md) — команды `rusim server`, `rusim model`, `rusim scenario`.

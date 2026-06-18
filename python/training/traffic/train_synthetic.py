@@ -41,7 +41,7 @@ clf = TlClassifier(cfg)
 hist = clf.fit(samples)
 print(f"Final train acc: {hist['train_accuracy'][-1]:.3f}, loss: {hist['train_loss'][-1]:.4f}")
 
-out_dir = Path("docs/report/master-thesis/sprint-4-bc-variance-2026-06/checkpoints")
+out_dir = Path("python/training/artifacts/traffic-light/checkpoints")
 out_dir.mkdir(parents=True, exist_ok=True)
 onnx_path = out_dir / "tl-classifier.onnx"
 clf.export_onnx(onnx_path)
